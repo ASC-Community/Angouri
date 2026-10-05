@@ -1,7 +1,11 @@
 export const icon = (name: string, size = 18) => {
   const paths: Record<string,string> = {
     menu:'<path d="M4 6h16M4 12h16M4 18h16"/>',
-    book:'<path d="M12 5C9 3 5 3 2 4v15c3-1 7-1 10 1 3-2 7-2 10-1V4c-3-1-7-1-10 1Zm0 0v15M5 8h4m6 0h4M5 12h4m6 0h4"/>',
+    move:'<path d="M12 3v18M3 12h18M9.5 6 12 3 14.5 6M9.5 18 12 21 14.5 18M6 9.5 3 12 6 14.5M18 9.5 21 12 18 14.5" stroke-width="1.8"/>',
+    resize:'<path d="M3 12h18M6 9l-3 3 3 3M18 9l3 3-3 3"/>',
+    fit:'<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/><circle cx="12" cy="12" r="4"/>',
+    bulb:'<path d="M9 17h6v-1c0-1.7 3-2.6 3-6a6 6 0 0 0-12 0c0 3.4 3 4.3 3 6v1ZM9 20h6m-5 2h4M12 1v1M3 5l1 1M1 11h2M20 6l1-1M21 11h2"/>',
+    book:'<path d="M12 5v16M12 5C9 3 5 3 2 4v15c3-1 7-1 10 2 3-3 7-3 10-2V4c-3-1-7-1-10 1Z"/>',
     external:'<path d="M14 3h7v7m0-7L11 13M10 4H4v16h16v-6"/>',
     throw:'<circle cx="3" cy="19" r="1.5" fill="currentColor" stroke="none"/><path d="M3 19C4 4 15 2 21 13"/><path d="m15 12 6 1-1-6" stroke-width="2"/>',
     puzzles:'<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><path d="m14 18 3 3 5-7"/>',
@@ -14,6 +18,7 @@ export const icon = (name: string, size = 18) => {
     copy:'<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H3v13h5"/>',
     download:'<path d="M12 3v12m-4-4 4 4 4-4M4 17v4h16v-4"/>',
     save:'<path d="M4 3h13l4 4v14H3V3h1Zm3 0v7h10V3M7 21v-7h10v7"/>',
+    rename:'<path d="m4 15 11-11 5 5L9 20l-6 1 1-6Zm9-9 5 5M14 20h7"/>',
     target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="m8 12 3 3 6-7"/>',
     blocks:'<rect x="2" y="7" width="8" height="11" rx="2"/><path d="M5 10v5M7 10v5m4-2h3m-1-2 2 2-2 2"/><rect x="16" y="7" width="6" height="11" rx="2" stroke-dasharray="2 2"/>',
     return:'<path d="M7 5H3v4m0-4 7 7M14 5h5v14H5v-5"/>',

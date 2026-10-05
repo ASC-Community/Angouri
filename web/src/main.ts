@@ -3,9 +3,14 @@ import './play.css';
 import { renderBrand } from './brand';
 import { Kernel } from './engine';
 import { icon } from './icons';
+import { adjacentSlot, insertedSlots, movedSlots, normalizeSlots, type RailSlots } from './rail';
+import { navigateTablist, rememberFocus, restoreFocus } from './keyboard';
+import { circleEdited, circleEquation, circleFlow, circleInput, circleRecipe, chooseCircleInspection, decorateCircleFlight, installCircleHandles, resetCircleInspection, sizeCircleControls, updateCircleProbe } from './circle';
 import { ShapeNotes, chapterArt } from './notes';
-import { functionView, flow, interpolate, path, sizeFlightAnnotations, targetDescription, targetMark, targetStatus, tex, transform, updateFlowProbe, flightView, type Camera, type Flight } from './views';
-import { CHAPTERS, chapterIndex, CURVES, curveId, escape, fraction, isCapstone, LEVELS, OPS, PUZZLE_ORDER, type Action, type Artifact, type Op, type Response, type Result, type State, type View } from './types';
+import { puzzleHints } from './hints';
+import { drawnPaths, flightPoints, nearestIndex, sampledPosition, travelledPaths } from './geometry';
+import { functionView, flow, interpolate, launcherPose, operationTex, path, sizeFlightAnnotations, targetDescription, targetMark, targetStatus, tex, transform, updateFlowProbe, flightView, type Camera, type Flight } from './views';
+import { CHAPTERS, chapterIndex, CURVES, curveId, escape, EXTRA_PUZZLES, fraction, isCapstone, isCircleSource, LEVELS, OPS, PUZZLE_ORDER, puzzleLabel, type Action, type Artifact, type Circle, type Op, type Response, type Result, type State, type View } from './types';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const SAVE = 'angouri:vine:v1:progress', PREF = 'angouri:vine:v1:preferences', SEEDS = 'angouri:vine:v1:seeds';
@@ -39,17 +44,18 @@ let camera: Camera = {min:-.8,max:5.2};
 let insertionIndex: number | undefined, selectedStage = '';
 let probeIndex=40;
 let flowScroll={left:0,top:0},resetFlowScroll=false;
-type RailSlots=(string|null)[];
 type Snapshot={state:State;slots:RailSlots};
 let railSlots:RailSlots=[];
 let undo: Snapshot[] = [], redo: Snapshot[] = [];
 let completed = new Set<number>();
 const introStage=()=>state?.mode==='puzzle'&&[1,2].includes(state.sourceId)?state.sourceId:0;
 const introActive=()=>introStage()>0;
+const choiceActive=()=>!!state&&state.mode!=='remix'&&!state.circle&&!state.station&&state.limit===1;
 const displayedView=():View=>introActive()?'flight':view;
-const notesOrders=new Set<string>();
-let notesOffered=false,notesCue=false;
-let notesBlockSet='',bestTargetHits=-1,unsuccessfulRevisions=0;
+const followingPuzzle=(sourceId:number)=>{const order=PUZZLE_ORDER.includes(sourceId)?PUZZLE_ORDER:EXTRA_PUZZLES;return order[order.indexOf(sourceId)+1];};
+const hintOrders=new Set<string>();
+let hintOffered=false,hintCue=false;
+let hintBlockSet='',bestTargetHits=-1,unsuccessfulRevisions=0;
 let initialized = false, pending = 0;
 let chain = Promise.resolve();
 let notice = {text:'Tap or drag a block.',kind:''};
@@ -59,24 +65,19 @@ const storedSeeds = read(SEEDS);
 let seeds: Seed[] = Array.isArray(storedSeeds) ? storedSeeds.slice(0,12).filter((s):s is Seed=>!!s&&typeof s.name==='string'&&s.name.length<=60&&s.artifact?.type==='creation') : [];
 const kernel = new Kernel((message)=> { notice={text:message,kind:'error'}; showNotice(); });
 const shapeNotes = new ShapeNotes(kernel);
+const circleCommit=(circle:Circle)=>serial(async()=>accept(await kernel.run(state,{type:'circle',...circle})),true);
+const cancelCirclePickup=installCircleHandles($('scene'),()=>state?.circle&&result?.circle&&pending===0&&!['flying','releasing'].includes(flight.phase)?{state,result,camera}:undefined,circleCommit,async(snapshot,circle)=>{const reply=await kernel.run(snapshot,{type:'circle',...circle});return reply.status==='ok'?reply.result:undefined;});
 
 function preferences() { write(PREF,{view,motion:reduced}); }
 function progress() { if(state) write(SAVE,{schema:1,type:'save',state,slots:railSlots,completed:[...completed],view,entry:location.hash.slice(0,8192)}); }
-function normalizeSlots(next:State,preferred?:RailSlots):RailSlots {
-  const ids=next.nodes.map(node=>node.id),size=next.mode==='remix'?ids.length+1:next.limit;
-  let slots=(preferred||ids).map(id=>id&&ids.includes(id)?id:null);
-  if(JSON.stringify(slots.filter(Boolean))!==JSON.stringify(ids))slots=[...ids];
-  while(slots.length>size){const empty=slots.lastIndexOf(null);if(empty<0)break;slots.splice(empty,1);}
-  while(slots.length<size)slots.push(null);
-  return slots;
-}
 function showNotice() {
   $('feedback').className=`feedback ${notice.kind}`;
   $('feedback').innerHTML=`${notice.kind==='error'?'':icon('hand',16)}<span>${escape(notice.text)}</span>`;
   $('feedback').hidden=!notice.text||(throwWon&&notice.kind!=='error');
 }
 function error(message: string) { notice={text:message,kind:'error'}; showNotice(); }
-function serial<T>(work: ()=>Promise<T>): Promise<T | undefined> {
+function serial<T>(work: ()=>Promise<T>,retainCirclePreview=false): Promise<T | undefined> {
+  if(!retainCirclePreview)cancelCirclePickup();
   pending++; $('playground').setAttribute('aria-busy','true');updatePrimary();
   const task=chain.then(work);
   chain=task.then(()=>{},e=>error(e instanceof Error ? e.message : String(e))).finally(()=>{
@@ -87,38 +88,44 @@ function serial<T>(work: ()=>Promise<T>): Promise<T | undefined> {
 function requireOk(reply: Response): asserts reply is Response & {state: State; result: Result} {
   if(reply.status!=='ok' || !reply.state || !reply.result) throw new Error(reply.message || 'This move could not be accepted. Your previous recipe is safe.');
 }
-function updateNotesCue(history:'push'|'keep'|'clear') {
-  if(!state||!result||state.mode!=='puzzle'||state.sourceId===1||notesOffered)return false;
+function updateHintCue(history:'push'|'keep'|'clear') {
+  if(!state||!result||state.mode!=='puzzle'||introActive()||hintOffered)return false;
   const order=state.nodes.map(node=>node.op).join(''),blockSet=[...order].sort().join('');
   const hits=result.checkpoints.filter(c=>c.hit).length;
-  if(blockSet!==notesBlockSet) {notesBlockSet=blockSet;notesOrders.clear();bestTargetHits=-1;unsuccessfulRevisions=0;}
+  if(blockSet!==hintBlockSet) {hintBlockSet=blockSet;hintOrders.clear();bestTargetHits=-1;unsuccessfulRevisions=0;}
   // Count accepted new orderings, not building, empty-slot moves or Undo/Redo.
   if(hits>bestTargetHits||result.solved)unsuccessfulRevisions=0;
-  else if(history==='push'&&!notesOrders.has(order))unsuccessfulRevisions++;
-  notesOrders.add(order);bestTargetHits=Math.max(bestTargetHits,hits);
+  else if(history==='push'&&!hintOrders.has(order))unsuccessfulRevisions++;
+  hintOrders.add(order);bestTargetHits=Math.max(bestTargetHits,hits);
   if(unsuccessfulRevisions<3)return false;
-  notesOffered=true;notesCue=true;return true;
+  hintOffered=true;hintCue=true;return true;
 }
 function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:RailSlots,requestedView?:View) {
   requireOk(reply);
-  const previousState=state,previousResult=result,previousPoints=displayedPoints||result?.points;
+  const previousState=state,previousResult=result,previousPoints=displayedPoints||result?.points,previousProbeX=result?.points[probeIndex]?.[0];
   const previousScroll=$('construction').querySelector('.pipeline')?.scrollLeft||0;
   const previousRects=new Map([...document.querySelectorAll<HTMLElement>('.recipe-part')].map(el=>[el.dataset.part!,el.getBoundingClientRect()]));
   const changed=state && JSON.stringify(state)!==JSON.stringify(reply.state);
   const nextSlots=normalizeSlots(reply.state,history==='clear'?slots:slots||railSlots);
   const layoutChanged=JSON.stringify(nextSlots)!==JSON.stringify(railSlots);
-  if(history==='clear') {undo=[];redo=[];resetFlowScroll=true;}
+  // Blur can report a field that Enter already committed. Replacing controls
+  // for that no-op can swallow typing in the next field.
+  if(state&&!changed&&!layoutChanged&&history!=='clear'&&!requestedView)return true as const;
+  if(history==='clear') {
+    undo=[];redo=[];resetFlowScroll=true;
+    $('construction').querySelectorAll<HTMLElement>('.pipeline,.rail-slots').forEach(rail=>rail.scrollLeft=0);
+  }
   else if(history==='push'&&state&&(changed||layoutChanged)) {undo.push({state:clone(state),slots:[...railSlots]}); if(undo.length>100)undo.shift(); redo=[];}
   const newSource=!state||state.sourceId!==reply.state.sourceId||state.mode!==reply.state.mode;
-  if(newSource||history==='clear') {notesOrders.clear();notesOffered=false;notesCue=false;notesBlockSet='';bestTargetHits=-1;unsuccessfulRevisions=0;}
+  if(newSource||history==='clear') {hintOrders.clear();hintOffered=false;hintCue=false;hintBlockSet='';bestTargetHits=-1;unsuccessfulRevisions=0;}
   state=reply.state;result=reply.result;railSlots=nextSlots;initialized=true;
   if(requestedView&&!introActive())view=requestedView;
-  const offeredNotes=updateNotesCue(history);
+  const offeredHint=updateHintCue(history);
   const previousOrder=previousState?.nodes.map(node=>node.op).join('')||'',order=state.nodes.map(node=>node.op).join('');
-  const repeatNotes=notesCue&&!offeredNotes&&history==='push'&&previousOrder!==order&&[...previousOrder].sort().join('')===[...order].sort().join('');
+  const repeatHint=hintCue&&!offeredHint&&history==='push'&&previousOrder!==order&&[...previousOrder].sort().join('')===[...order].sort().join('');
   $('playground').setAttribute('aria-busy',String(pending>0));
   if(newSource) {
-    selectedStage='';
+    selectedStage='';resetCircleInspection();
     const guide=result.heightGuide;
     probeIndex=Math.floor(result.points.length/2);
     if(guide) {
@@ -128,32 +135,40 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
       probeIndex=result.points.findIndex(point=>point[0]===position);
     }
   }
+  if(!newSource&&previousProbeX!==undefined&&!state.circle)probeIndex=nearestIndex(result.points,previousProbeX);
   if(changed||newSource||history==='clear') {
     flight={phase:'ready',position:0};throwWon=false;
-    const [baseMin,baseMax]=LEVELS[state.sourceId-1].y;
-    const ys=[...result.points.map(p=>p[1]),...state.goals.map(g=>fraction(g.y))];
-    const min=Math.min(0,baseMin,...ys),max=Math.max(0,baseMax,...ys),padding=Math.max((max-min)*.12,.6);
-    camera={...camera,min:min<baseMin?min-padding:baseMin,max:max>baseMax?max+padding:baseMax};
+    if(result.circle||result.relation) {
+      // Geometry edits keep their frame. Refitting on every radius change made
+      // the centre and targets appear to move even though their values did not.
+      if(newSource||history==='clear'||!previousResult?.circle&&!previousResult?.relation)fitCircleCamera(state.mode!=='remix');
+    } else {
+      const [baseMin,baseMax]=LEVELS[state.sourceId-1].y;
+      const ys=[...result.points.map(p=>p[1]),...state.goals.map(g=>fraction(g.y))];
+      const min=Math.min(0,baseMin,...ys),max=Math.max(0,baseMax,...ys),padding=Math.max((max-min)*.12,.6);
+      camera={min:min<baseMin?min-padding:baseMin,max:max>baseMax?max+padding:baseMax};
+    }
   }
   if(!result.stages.some(s=>s.id===selectedStage)) selectedStage='';
   insertionIndex=undefined;
-  notice={text:state.nodes.length?'':introActive()?'Choose a block.':'Tap or drag a block.',kind:''};
+  notice={text:result.relation&&!result.relation.playback.length?'No real heights yet. Bring the right side to zero or above.':state.circle?'':state.nodes.length?'':choiceActive()?'Choose a block.':'Tap or drag a block.',kind:''};
   progress();render();
-  if(repeatNotes&&notesCue)for(const animation of $('ideas-open').getAnimations()) {
-    if(animation instanceof CSSAnimation&&animation.animationName==='notes-invite')animation.currentTime=0;
+  if(repeatHint&&hintCue)for(const animation of $('hints-open').getAnimations()) {
+    if(animation instanceof CSSAnimation&&animation.animationName==='hint-invite')animation.currentTime=0;
   }
   const added=state.nodes.find(node=>!previousState?.nodes.some(before=>before.id===node.id));
   if(added&&!newSource) {
+    if(state.mode==='remix'&&!reduced)document.querySelector(`[data-op="${added.op}"]`)?.closest('.ingredient-stack')?.classList.add('refilling');
     const index=railSlots.indexOf(added.id),reveal=state.mode==='remix'&&index===railSlots.length-2?index+1:index;
     document.querySelector<HTMLElement>(`[data-cell="${reveal}"]`)?.scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'});
     const scrollDelta=($('construction').querySelector('.pipeline')?.scrollLeft||0)-previousScroll;
     if(scrollDelta)previousRects.forEach((r,id)=>previousRects.set(id,new DOMRect(r.x-scrollDelta,r.y,r.width,r.height)));
   }
   if((changed||layoutChanged)&&!newSource&&previousState&&previousResult&&previousPoints) {
-    $('move-announcement').textContent=changed?`${state.nodes.map(n=>OPS[n.op].name).join(', ')||'Recipe cleared'}. Ready to throw.`:'Empty slot moved.';
+    $('move-announcement').textContent=state.circle?`Centre ${state.circle.x}, ${state.circle.y}. Radius ${state.circle.radius}. ${result.checkpoints.filter(c=>c.hit).length} targets match.`:changed?`${state.nodes.map(n=>OPS[n.op].name).join(', ')||'Recipe cleared'}. Ready to throw.`:'Empty slot moved.';
     animateChange(previousState,previousPoints,previousRects);
   }
-  if(offeredNotes)$('move-announcement').textContent+=' Shape notes connect ideas from earlier puzzles.';
+  if(offeredHint)$('move-announcement').textContent+=' Hints can help with this puzzle.';
   return true as const;
 }
 function perform(action: Action, history: 'push'|'keep'|'clear'='push',slots?:RailSlots) { return serial(async()=>accept(await kernel.run(state,action),history,slots)); }
@@ -166,53 +181,64 @@ function historyMove(back: boolean) {
   });
 }
 function cue(op: Op) {
-  if(op==='D')return chapterArt(4).replace('<svg ','<svg class="ingredient-cue" ');
-  if(op==='I')return chapterArt(5).replace('<svg ','<svg class="ingredient-cue" ');
+  if(op==='D')return chapterArt(chapterIndex(32)).replace('<svg ','<svg class="ingredient-cue" ');
+  if(op==='I')return chapterArt(chapterIndex(37)).replace('<svg ','<svg class="ingredient-cue" ');
+  if(op==='S')return chapterArt(chapterIndex(50)).replace('<svg ','<svg class="ingredient-cue" ');
+  if(op==='F'||op==='C')return `<svg class="ingredient-cue" viewBox="0 0 36 36" aria-hidden="true"><path d="M2 30H34" stroke="currentColor" opacity=".2"/><path class="cue-before" d="M3 30L33 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 3" opacity=".45"/><path class="cue-after" d="${op==='F'?'M3 30H13M13 21H23M23 12H33':'M3 21H13M13 12H23M23 3H33'}" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/></svg>`;
   if(op==='Q')return `<svg class="ingredient-cue" viewBox="0 0 36 36" aria-hidden="true"><path d="M2 19H34" stroke="currentColor" opacity=".2"/><path d="M3 32L33 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 3" opacity=".45"/><path d="M3 5Q18 33 33 5" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/></svg>`;
-  const transformed: Record<Exclude<Op,'Q'|'D'|'I'>,string>={H:'M3 26Q17 14 33 26',A:'M3 15Q17 0 33 15',N:'M3 19Q17 34 33 19'};
+  const transformed: Record<Exclude<Op,'Q'|'D'|'I'|'S'|'F'|'C'>,string>={H:'M3 26Q17 14 33 26',A:'M3 15Q17 0 33 15',N:'M3 19Q17 34 33 19'};
   return `<svg class="ingredient-cue" viewBox="0 0 36 36" aria-hidden="true"><path d="M3 27Q17 1 33 27" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 3" opacity=".4"/><path d="${transformed[op]}" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/></svg>`;
 }
 function palette() {
-  const choosing=introActive();
-  const creating=state?.mode==='remix',inventory=creating?{H:1,A:1,N:1,Q:1,D:1,I:1}:state?.inventory || {H:1,A:1};
+  if(state?.circle){$('palette').innerHTML='';$('palette').dataset.count='0';return;}
+  const choosing=choiceActive();
+  const creating=state?.mode==='remix',inventory=creating?{H:1,A:1,N:1,Q:1,D:1,I:1,S:1,F:1,C:1}:state?.inventory || {H:1,A:1};
   $('palette').setAttribute('role','group');
   $('palette').setAttribute('aria-label',choosing?'Choose a block':'Add a block to your recipe');
   $('palette').dataset.count=String(Object.values(inventory).filter(n=>n>0).length);
   // Reserve the whole pile, including a return above condensed or reusable stock.
-  $('palette').style.setProperty('--stack-room',String(creating?1:Math.max(0,Math.min(5,Math.max(0,...Object.values(inventory))-1))));
+  $('palette').style.setProperty('--stack-room',String(choosing?0:creating?3:Math.max(0,Math.min(5,Math.max(0,...Object.values(inventory))-1))));
   $('palette').innerHTML=(Object.keys(OPS) as Op[]).filter(op=>(inventory[op]||0)>0).map(op=>{
-    const n=inventory[op]!;
+    const n=choosing?1:inventory[op]!;
     const used=creating||choosing?0:state?.nodes.filter(node=>node.op===op).length || 0;
     const returning=state?.nodes.find(node=>node.id===(drag?.id||selectedStage)&&node.op===op);
     const availability=choosing?'ready':used>=n?'used':!creating&&(state?.nodes.length||0)>=(state?.limit||1)?'full':'ready';
     const disabled=!initialized||availability!=='ready'&&!returning;
     const title=choosing?`Choose ${OPS[op].name}`:returning?'Return the selected block to this stack':availability==='used'?'All copies are in your recipe':availability==='full'?'Recipe full — return a block or Undo':`${OPS[op].description} Tap to add, or drag to a recipe slot.`;
-    const remaining=n-used,layers=Math.min(remaining,5)+(returning?1:0),capacity=creating?1:Math.max(0,Math.min(n-1,5));
-    return `<div class="ingredient-stack ${OPS[op].color}" style="--stack-capacity:${capacity};--stack-depth:${Math.max(0,layers-1)};--return-layer:${returning?1:0}"><span class="stock-deck" aria-hidden="true">${Array.from({length:Math.max(0,layers-1)},(_,i)=>`<i style="--layer:${i+1}"></i>`).join('')}</span><button class="ingredient ${OPS[op].color} ${returning?'return-ready':''}" data-op="${op}" ${returning?`data-return="${returning.id}"`:''} data-availability="${availability}" data-stock="${creating?'reusable':remaining}" draggable="false" ${disabled?'disabled':''} ${choosing?`aria-pressed="${state?.nodes[0]?.op===op}"`:''} aria-label="${choosing?'Choose '+OPS[op].name:returning?'Return selected '+OPS[op].name+', '+(creating?'reusable stack':`${remaining} available below`):'Add '+OPS[op].name+', '+(creating?'reusable':`${remaining} available`)}" title="${title}"><span class="ingredient-surface"><span class="piece-grip">${icon(returning?'return':disabled?availability==='used'?'check':'lock':'grip',16)}</span><span class="ingredient-face"><span class="op-formula">${tex(OPS[op].formula)}</span><strong>${OPS[op].name}</strong></span>${cue(op)}${creating?`<span class="reusable-mark" aria-hidden="true">${icon('reset',12)}</span>`:''}</span>${remaining>5?`<span class="stock-total" aria-hidden="true">${tex(String(remaining))}</span>`:''}</button></div>`;
+    const remaining=n-used,layers=(creating?3:Math.min(remaining,5))+(returning?1:0),capacity=creating?3:Math.max(0,Math.min(n-1,5));
+    return `<div class="ingredient-stack ${OPS[op].color} ${creating?'reusable-stack':''}" style="--stack-capacity:${capacity};--stack-depth:${Math.max(0,layers-1)};--return-layer:${returning?1:0}"><span class="stock-deck" aria-hidden="true">${Array.from({length:Math.max(0,layers-1)},(_,i)=>`<i style="--layer:${i+1}"></i>`).join('')}</span><button class="ingredient ${OPS[op].color} ${returning?'return-ready':''}" data-op="${op}" ${returning?`data-return="${returning.id}"`:''} data-availability="${availability}" data-stock="${creating?'reusable':remaining}" draggable="false" ${disabled?'disabled':''} ${choosing?`aria-pressed="${state?.nodes[0]?.op===op}"`:''} aria-label="${choosing?'Choose '+OPS[op].name:returning?'Return selected '+OPS[op].name+', '+(creating?'reusable stack':`${remaining} available below`):'Place '+OPS[op].name+' block, '+(creating?'reusable':`${remaining} available`)}" title="${title}"><span class="ingredient-surface"><span class="piece-grip">${icon(returning?'return':disabled?availability==='used'?'check':'lock':'grip',16)}</span><span class="ingredient-face"><span class="op-formula">${operationTex(op)}</span><strong>${OPS[op].name}</strong></span>${cue(op)}${creating?`<span class="reusable-mark" aria-hidden="true">${tex('\\infty')}</span>`:''}</span>${remaining>5?`<span class="stock-total" aria-hidden="true">${tex(String(remaining))}</span>`:''}</button></div>`;
   }).join('');
 }
 function recipe() {
   if(!state||!result)return;
+  if(state.circle){$('construction').innerHTML=circleRecipe(state,result);return;}
   const previousScroll=$('construction').querySelector('.pipeline')?.scrollLeft||0;
+  const zoneScrolls=[...$('construction').querySelectorAll<HTMLElement>('.rail-slots')].map(zone=>zone.scrollLeft);
   $('construction').classList.toggle('has-selection',!!selectedStage||insertionIndex!==undefined);
   const cells=railSlots.map((id,index)=>{
+    if(id===state!.station?.id)return '';
     if(!id)return `<button class="empty-slot insert-slot ${insertionIndex===index?'selected':''}" data-cell="${index}" data-empty="${index}" data-insert="${index}" draggable="false" aria-label="${selectedStage?'Move selected block to':'Empty'} slot ${index+1}" aria-pressed="${insertionIndex===index}" aria-describedby="empty-keyboard-help" title="Choose a block for this slot, or drag the empty slot to reposition it"><span class="piece-grip">${icon('grip',12)}</span>${icon('plus',18)}</button>`;
     const node=state!.nodes.find(n=>n.id===id)!,receiving=selectedStage&&selectedStage!==id||insertionIndex!==undefined;
-    return `<div class="recipe-part ${OPS[node.op].color} ${selectedStage===node.id?'inspected':''} ${receiving?'receiving-cell':''}" data-cell="${index}" data-part="${node.id}" draggable="false"><button class="part-body" data-stage="${node.id}" aria-label="${receiving?'Move selection to slot '+(index+1):OPS[node.op].name+', slot '+(index+1)}" aria-pressed="${selectedStage===node.id}" aria-describedby="block-keyboard-help" title="${receiving?'Move selection here':OPS[node.op].name+' · drag to move, drag off the recipe to return'}"><span class="piece-grip">${icon('grip',14)}</span><span class="part-formula">${tex(OPS[node.op].formula)}</span></button></div>`;
-  }).join('');
-  const source=state.mode==='remix'?`<button id="source-choose" class="source-choice" aria-label="Change starting curve" aria-haspopup="dialog" aria-controls="curves-dialog" title="Change starting curve">${tex(result.stages[0].latex)}<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4 3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>`:tex(result.stages[0].latex);
-  $('construction').innerHTML=`<div class="pipeline" role="group" aria-label="${state.mode==='remix'?'Recipe with reusable blocks':`Recipe, ${state.nodes.length} of ${state.limit} slots filled`}"><div class="source-part" aria-label="Starting curve"><span class="source-label">Start</span>${source}</div>${cells}</div>`;
+    return `<div class="recipe-part ${OPS[node.op].color} ${selectedStage===node.id?'inspected':''} ${receiving?'receiving-cell':''}" data-cell="${index}" data-part="${node.id}" draggable="false"><button class="part-body" data-stage="${node.id}" aria-label="${receiving?'Move selection to slot '+(index+1):OPS[node.op].name+', slot '+(index+1)}" aria-pressed="${selectedStage===node.id}" aria-describedby="block-keyboard-help" title="${receiving?'Move selection here':OPS[node.op].name+' · drag to move, drag off the recipe to return'}"><span class="piece-grip">${icon('grip',14)}</span><span class="part-formula">${operationTex(node.op)}</span></button></div>`;
+  });
+  const source=state.mode==='remix'?`<button id="source-choose" class="source-choice" aria-label="Change starting curve" aria-haspopup="dialog" aria-controls="curves-dialog" title="Change starting curve">${tex((result.relation?'h^2 = ':'h = ')+result.stages[0].latex)}<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4 3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>`:tex((result.relation?'h^2 = ':'h = ')+result.stages[0].latex);
+  const station=state.station;
+  const machine=station?`<div class="fixed-station ${OPS[station.op].color}" role="img" aria-label="Fixed ${OPS[station.op].name} station. ${station.before&&station.after?'Blocks can go before or after it.':station.before?'Blocks go before it.':'Blocks go after it.'}"><span class="station-foundation" aria-hidden="true"></span><span class="station-surface"><span class="station-title">${OPS[station.op].name}</span>${operationTex(station.op)}<span class="station-mounts" aria-hidden="true"></span></span></div>`:'';
+  const rail=station?`${station.before?`<div class="rail-zone" role="group" aria-label="Before the station"><span class="rail-zone-label">Input</span><div class="rail-slots">${cells.slice(0,station.before).join('')}</div></div>`:''}${machine}${station.after?`<div class="rail-zone" role="group" aria-label="After the station"><span class="rail-zone-label">Output</span><div class="rail-slots">${cells.slice(station.before+1).join('')}</div></div>`:''}`:cells.join('');
+  $('construction').innerHTML=`<div class="pipeline ${station?'station-pipeline':''}" role="group" aria-label="${state.mode==='remix'?'Recipe with reusable blocks':station?'Recipe with a fixed transformation station':`Recipe, ${state.nodes.length} of ${state.limit} slots filled`}"><div class="source-part" aria-label="Starting curve"><span class="source-label">Start</span>${source}</div>${rail}</div>`;
   $('construction').querySelector('.pipeline')!.scrollLeft=previousScroll;
+  $('construction').querySelectorAll<HTMLElement>('.rail-slots').forEach((zone,i)=>zone.scrollLeft=zoneScrolls[i]||0);
 }
 function renderLevels() {
   if(!state)return;
-  const option=(id:number,chapter:number,step:number)=>{
+  const option=(id:number)=>{
     const level=LEVELS[id-1],current=state!.mode==='puzzle'&&state!.sourceId===id;
     const challenge=isCapstone(id)?id===PUZZLE_ORDER.at(-1)?'Final challenge':'Chapter challenge':'';
-    return `<button class="level-option ${current?'current':''}" data-level="${id}" aria-label="Chapter ${chapter+1}, puzzle ${step+1}: ${level.name}${challenge?', '+challenge:''}${completed.has(id)?', completed':''}" ${current?'aria-current="step"':''}><span class="level-number">${chapter+1}.${step+1}</span><span>${level.name}${challenge?`<small class="challenge-label">${icon('flag',12)}${challenge}</small>`:''}</span><span class="level-completion" aria-hidden="true">${icon(completed.has(id)?'check':current?'target':'arrow',20)}</span></button>`;
+    return `<button class="level-option ${current?'current':''}" data-level="${id}" aria-label="Puzzle ${puzzleLabel(id)}: ${level.name}${challenge?', '+challenge:''}${completed.has(id)?', completed':''}" ${current?'aria-current="step"':''}><span class="level-number">${puzzleLabel(id)}</span><span>${level.name}${challenge?`<small class="challenge-label">${icon('flag',12)}${challenge}</small>`:''}</span><span class="level-completion" aria-hidden="true">${icon(completed.has(id)?'check':current?'target':'arrow',20)}</span></button>`;
   };
   const currentChapter=chapterIndex(state.sourceId);
-  $('level-nav').innerHTML=CHAPTERS.map((chapter,i)=>`<details class="chapter-group" name="chapters" ${i===Math.max(0,currentChapter)?'open':''}><summary><span class="chapter-art ${chapter.color}">${chapterArt(i)}</span><span><small>Chapter ${i+1}</small><strong>${chapter.name}</strong></span><span class="chapter-progress" aria-label="${chapter.levels.filter(id=>completed.has(id)).length} of ${chapter.levels.length} puzzles complete">${chapter.levels.filter(id=>completed.has(id)).length} / ${chapter.levels.length}</span>${icon('arrow',16)}</summary><div class="chapter-levels">${chapter.levels.map((id,step)=>option(id,i,step)).join('')}</div></details>`).join('');
+  $('level-nav').innerHTML=CHAPTERS.map((chapter,i)=>`<details class="chapter-group" name="chapters" ${i===Math.max(0,currentChapter)?'open':''}><summary><span class="chapter-art ${chapter.color}">${chapterArt(i)}</span><span><small>Chapter ${i+1}</small><strong>${chapter.name}</strong></span><span class="chapter-progress" aria-label="${chapter.levels.filter(id=>completed.has(id)).length} of ${chapter.levels.length} puzzles complete">${chapter.levels.filter(id=>completed.has(id)).length} / ${chapter.levels.length}</span>${icon('arrow',16)}</summary><div class="chapter-levels">${chapter.levels.map(option).join('')}</div></details>`).join('');
+  $('level-nav').insertAdjacentHTML('beforeend',`<details class="chapter-group extra-puzzles" name="chapters" ${currentChapter<0?'open':''}><summary><span class="chapter-art neutral">${icon('puzzles',28)}</span><span><small>Optional collection</small><strong>More shape puzzles</strong></span>${icon('arrow',16)}</summary><div class="chapter-levels">${EXTRA_PUZZLES.map(id=>`<button class="level-option" data-level="${id}" ${state!.sourceId===id?'aria-current="step"':''}><span class="level-number">${icon(completed.has(id)?'check':'blocks',18)}</span><span>${LEVELS[id-1].name}</span>${icon('arrow',18)}</button>`).join('')}</div></details>`);
 }
 function renderCurves() {
   $('curve-choices').innerHTML=CURVES.map(curve=>{
@@ -222,15 +248,12 @@ function renderCurves() {
 }
 function renderScene() {
   if(!state||!result)return;
-  const oldFlow=$('scene').querySelector<HTMLElement>('.flow-line');
-  if(resetFlowScroll){flowScroll={left:0,top:0};resetFlowScroll=false;}
-  else if(oldFlow)flowScroll={left:oldFlow.scrollLeft,top:oldFlow.scrollTop};
   const visibleView=displayedView();
   $('scene').dataset.view=visibleView;$('scene').setAttribute('role',introActive()?'region':'tabpanel');$('scene').setAttribute('aria-labelledby',introActive()?'level-title':`tab-${visibleView}`);
-  $('scene').innerHTML=visibleView==='flight'?flightView(state,result,camera,flight):visibleView==='function'?functionView(state,result,flight):flow(state,result,selectedStage,probeIndex,flight);
-  if(visibleView==='flight')sizeFlightAnnotations($('scene'));
+  $('scene').innerHTML=visibleView==='flight'?flightView(state,result,camera,flight):visibleView==='function'?(state.circle?circleEquation(state,result,flight):functionView(state,result,flight)):(state.circle?circleFlow(state,result,probeIndex,flight):flow(state,result,selectedStage,probeIndex,flight));
+  if(visibleView==='flight'){sizeFlightAnnotations($('scene'));if(state.circle)decorateCircleFlight($('scene'),state,result,camera);}
   if(visibleView==='flow') {
-    updateFlowProbe($('scene'),state,result,probeIndex);
+    if(state.circle)updateCircleProbe($('scene'),state,result,probeIndex,camera);else updateFlowProbe($('scene'),state,result,probeIndex);
     const line=$('scene').querySelector<HTMLElement>('.flow-line')!;
     line.scrollLeft=flowScroll.left;line.scrollTop=flowScroll.top;
   }
@@ -240,11 +263,13 @@ function updatePrimary() {
   const won=throwWon;
   const advancing=won&&state?.mode!=='remix';
   const active=flight.phase==='flying'||flight.phase==='releasing';
+  $<HTMLButtonElement>('circle-fit').disabled=!initialized||pending>0||active;
   $('rethrow').hidden=!advancing;
   $<HTMLButtonElement>('rethrow').disabled=!initialized||pending>0||active;
-  const next=state?.mode==='puzzle'?PUZZLE_ORDER[PUZZLE_ORDER.indexOf(state.sourceId)+1]:undefined;
-  const label=advancing?(state?.mode==='puzzle'?next?next===PUZZLE_ORDER.at(-1)?'Final challenge':chapterIndex(next)!==chapterIndex(state.sourceId)?'Next chapter':isCapstone(next)?'Chapter challenge':'Next puzzle':'Finish':'Create'):active?'In flight':flight.phase==='landed'?'Throw again':'Throw';
-  $<HTMLButtonElement>('launch').disabled=!initialized||pending>0||active&&!advancing;
+  const next=state?.mode==='puzzle'?followingPuzzle(state.sourceId):undefined;
+  const label=advancing?(state?.mode==='puzzle'?next?next===PUZZLE_ORDER.at(-1)?'Final challenge':chapterIndex(next)!==chapterIndex(state.sourceId)?'Next chapter':isCapstone(next)?'Chapter challenge':'Next puzzle':EXTRA_PUZZLES.includes(state.sourceId)?'More puzzles':'Finish':'Create'):active?'In flight':flight.phase==='landed'?'Throw again':'Throw';
+  $<HTMLButtonElement>('launch').disabled=!initialized||pending>0||active&&!advancing||!!result?.relation&&!result.relation.playback.length;
+  $('launch').title=result?.relation&&!result.relation.playback.length?'No real heights yet. Make the right side reach zero or above.':'';
   $('launch').innerHTML=advancing?`<span>${label}</span>${icon('arrow',21)}`:`${icon('throw',21)}<span>${label}</span>`;
   $('launch').classList.toggle('continue-ready',advancing);
   $('launch').dataset.action=advancing?'continue':'throw';
@@ -256,14 +281,20 @@ function updatePrimary() {
 }
 function render() {
   if(!state||!result)return;
+  // Read before replacing the tray. WebKit can clamp the old Flow scroller
+  // during that temporary layout, before its own replacement is rendered.
+  const oldFlow=$('scene').querySelector<HTMLElement>('.flow-line');
+  if(resetFlowScroll){flowScroll={left:0,top:0};resetFlowScroll=false;}
+  else if(oldFlow)flowScroll={left:oldFlow.scrollLeft,top:oldFlow.scrollTop};
   document.querySelector('.game-shell')!.classList.toggle('intro',introActive());
+  document.querySelector('.game-shell')!.classList.toggle('choice-game',choiceActive());
   document.querySelector('.game-shell')!.classList.toggle('landing',introStage()===1);
+  document.querySelector('.game-shell')!.classList.toggle('circle-game',!!state.circle);
+  cancelCirclePickup();
   // A concurrent edit or view change invalidates the held DOM node.
   if(pointer)finishPointer(undefined,true);
   cancelAnimationFrame(morphFrame);displayedPoints=undefined;
-  const active=document.activeElement as HTMLElement|null;
-  const focusAttr=['op','insert','stage'].find(k=>active?.dataset[k]!==undefined);
-  const focusValue=focusAttr?active?.dataset[focusAttr]:undefined;
+  const focus=rememberFocus();
   const level=LEVELS[state.sourceId-1];
   const chapter=chapterIndex(state.sourceId),chapterInfo=CHAPTERS[chapter];
   $('level-category').textContent=state.mode==='puzzle'?(chapter<0?'BONUS PUZZLE':`CHAPTER ${chapter+1} · ${chapterInfo.name.toUpperCase()} · ${chapterInfo.levels.indexOf(state.sourceId)+1} OF ${chapterInfo.levels.length}`):state.mode==='remix'?'CREATE':'A SHARED CHALLENGE';
@@ -275,29 +306,56 @@ function render() {
   for(const v of views) {$(`tab-${v}`).setAttribute('aria-selected',String(view===v));$(`tab-${v}`).tabIndex=view===v?0:-1;}
   $('level-hint').textContent=state.mode==='remix'?'Explore a curve.':state.mode==='challenge'?'Hit every target.':level.hint;
   $<HTMLButtonElement>('ideas-open').disabled=false;
-  if(result.solved)notesCue=false;
-  $('ideas-open').classList.toggle('notes-cue',notesCue);
+  if(result.solved)hintCue=false;
+  $<HTMLButtonElement>('hints-open').disabled=false;
+  $('hints-open').hidden=state.mode!=='puzzle';
+  $('hints-open').classList.toggle('hint-cue',hintCue);
+  $('circle-fit').hidden=!(result.circle||result.relation)||displayedView()==='function';
+  $('circle-fit').setAttribute('aria-label',result.relation?'Fit path and targets':'Fit circle and targets');
+  if(result.circle) {
+    const {centre:[x,y],radius}=result.circle;
+    const outside=x-radius<(camera.minX??-1)||x+radius>(camera.maxX??5)||y-radius<camera.min||y+radius>camera.max;
+    $('circle-fit').classList.toggle('needs-fit',outside);
+    $('circle-fit').title=outside?'Circle extends beyond the view. Fit circle and targets.':'Fit circle and targets';
+  } else {
+    const outside=result.relation?.playback.some(([x,y])=>x<(camera.minX??-1)||x>(camera.maxX??5)||y<camera.min||y>camera.max)??false;
+    $('circle-fit').classList.toggle('needs-fit',outside);
+    $('circle-fit').title=outside?'Path extends beyond the view. Fit path and targets.':'Fit path and targets';
+  }
   palette();recipe();
   $<HTMLButtonElement>('undo').disabled=!undo.length;
   $<HTMLButtonElement>('redo').disabled=!redo.length;
-  $<HTMLButtonElement>('reset').disabled=!state.nodes.length;
+  $<HTMLButtonElement>('reset').disabled=state.circle?!circleEdited(state,result):!state.nodes.some(node=>node.id!==state!.station?.id);
   const restartLabel=state.mode==='remix'?'Clear recipe':state.mode==='challenge'?'Restart challenge':'Restart puzzle';
   $('reset').setAttribute('aria-label',restartLabel);$('reset').title=restartLabel;
   $<HTMLButtonElement>('reset-progress-open').disabled=false;
   $('undo').classList.toggle('retry-cue',flight.phase==='landed'&&!result.solved);
   for(const id of ['share-open','nav-create','favorite-save'])$<HTMLButtonElement>(id).disabled=false;
   updatePrimary();renderScene();
-  if(focusAttr&&focusValue!==undefined) {const candidate=document.querySelector<HTMLElement>(`[data-${focusAttr}="${CSS.escape(focusValue)}"]`);if(candidate&&!(candidate as HTMLButtonElement).disabled)candidate.focus({preventScroll:true});}
+  restoreFocus(focus);
 }
 function setView(next: View) {view=next;preferences();progress();render();}
+function fitCircleCamera(targetsFirst=false) {
+  if(!result)return;
+  if(result.circle){const b=result.circle.bounds;camera={min:b.minY,max:b.maxY,minX:b.minX,maxX:b.maxX};return;}
+  if(result.relation){
+    // An unfinished curve can be much taller than the intended shape. Keep the
+    // required geometry readable on entry; explicit Fit includes the whole path.
+    const goals=state!.goals.map(g=>[fraction(g.x),fraction(g.y)] as [number,number]);
+    const points=targetsFirst&&goals.length?goals:[...result.relation.playback,...goals],ys=points.map(p=>p[1]);
+    camera={min:Math.min(-1,...ys)-.7,max:Math.max(1,...ys)+.7,minX:-.7,maxX:4.7};
+  }
+}
+$('circle-fit').onclick=()=>{if(!(result?.circle||result?.relation)||pending||['flying','releasing'].includes(flight.phase))return;cancelCirclePickup();fitCircleCamera();render();$('circle-fit').focus({preventScroll:true});};
 function animateChange(previousState:State, from:Result['points'], rects:Map<string,DOMRect>) {
   if(reduced||!state||!result)return;
+  if(state.circle||previousState.circle)return;
   document.querySelectorAll<HTMLElement>('.recipe-part').forEach(el=>{
     const before=rects.get(el.dataset.part!),after=el.getBoundingClientRect();
     if(!previousState.nodes.some(n=>n.id===el.dataset.part))el.classList.add('just-placed');
     else if(before&&Math.abs(before.left-after.left)>2)el.animate([{transform:`translate(${before.left-after.left}px,${before.top-after.top}px)`},{transform:'translate(0,0)'}],{duration:220,easing:'ease-out'});
   });
-  if(displayedView()!=='flight')return;
+  if(displayedView()!=='flight'||result.relation||result.paths)return;
   const to=result.points,start=performance.now(),startX=from[0][0],range=from.at(-1)![0]-startX;
   const previous=to.map(([x])=>interpolate(from,(x-startX)/range)[1]);
   const paint=(time:number)=>{
@@ -309,7 +367,7 @@ function animateChange(previousState:State, from:Result['points'], rects:Map<str
   paint(start);
 }
 function paintTrajectory(points:Result['points']) {
-  $('trajectory')?.setAttribute('d',path(points,state!,camera));
+  $('trajectory')?.setAttribute('d',result?.relation||result?.paths?drawnPaths(result).map(p=>path(p.points,state!,camera)).join(' '):path(points,state!,camera));
 }
 function updateTargets() {
   if(!state||!result)return;
@@ -333,12 +391,13 @@ function updateTargets() {
 }
 function animatePosition() {
   if(!state||!result)return;
-  const points=displayedPoints||result.points,xy=interpolate(points,flight.position),[x,y]=transform(state,camera,xy);
+  const points=displayedPoints||flightPoints(result),xy=displayedPoints?interpolate(points,flight.position):sampledPosition(result,flight.position),[x,y]=transform(state,camera,xy);
+  const origin=points[0]??[0,0];
+  for(const id of ['launcher','launcher-front','cucumber'])$(id)?.setAttribute('visibility',points.length?'visible':'hidden');
+  const tangent=result.relation&&points.length>1?[points[1][0]-origin[0],points[1][1]-origin[1]] as [number,number]:result.circle?.tangent??[1,result.startSlope] as [number,number];
   // The kernel supplies the exact initial slope. Project it through the same
   // coordinate map as the curve; a mathematical angle is not a screen angle.
-  const start=transform(state,camera,points[0]),ahead=transform(state,camera,[points[0][0]+1,points[0][1]+result.startSlope]);
-  const angle=Math.atan2(ahead[1]-start[1],ahead[0]-start[0]),degrees=angle*180/Math.PI;
-  const launcherTransform=`translate(${start[0]} ${start[1]}) rotate(${degrees}) translate(-40 12)`;
+  const {angle,degrees,transform:launcherTransform}=launcherPose(state,camera,origin,tangent);
   $('launcher')?.setAttribute('transform',launcherTransform);
   $('launcher-front')?.setAttribute('transform',launcherTransform);
   const pull=flight.phase==='ready'?1:flight.phase==='releasing'?1-(flight.release||0):0;
@@ -347,7 +406,7 @@ function animatePosition() {
   // pose through release, then gradually introduce the airborne tumble.
   const tumble=620*flight.position*flight.position;
   $('flight-spin')?.setAttribute('transform',`rotate(${degrees+90+tumble})`);
-  const before=transform(state,camera,interpolate(points,Math.max(0,flight.position-.005))),after=transform(state,camera,interpolate(points,Math.min(1,flight.position+.005)));
+  const before=transform(state,camera,sampledPosition(result,Math.max(0,flight.position-.005))),after=transform(state,camera,sampledPosition(result,Math.min(1,flight.position+.005)));
   $('flight-motion')?.setAttribute('transform',`rotate(${flight.position===0?degrees:Math.atan2(after[1]-before[1],after[0]-before[0])*180/Math.PI})`);
   const pouchX=-52*pull,pouchY=-3-9*pull,pouchScale=.75+.25*pull,pouchAngle=-90*(1-pull);
   const radians=pouchAngle*Math.PI/180;
@@ -359,29 +418,30 @@ function animatePosition() {
     $(id)?.setAttribute('d',`M${forkX} -8Q${middleX.toFixed(2)} ${middleY.toFixed(2)} ${endX.toFixed(2)} ${endY.toFixed(2)}`);
   }
   $('slingshot-pouch')?.setAttribute('transform',`translate(${pouchX} ${pouchY}) rotate(${pouchAngle}) scale(${pouchScale})`);
-  if(displayedView()==='flight')$('flight-trail')?.setAttribute('d',flight.phase==='ready'||flight.phase==='releasing'?'':path([...points.filter(p=>p[0]<xy[0]),xy],state,camera));
+  if(displayedView()==='flight')$('flight-trail')?.setAttribute('d',flight.phase==='ready'||flight.phase==='releasing'?'':travelledPaths(result,flight.position).map(p=>path(p,state!,camera)).join(' '));
   if(displayedView()==='flow') {
     const slider=$<HTMLInputElement>('flow-position'),playing=flight.phase==='releasing'||flight.phase==='flying';
-    const index=playing?Math.round(flight.position*(result.points.length-1)):probeIndex;
+    const index=playing?(state.circle?Math.round(flight.position*(result.points.length-1)):nearestIndex(result.points,xy[0])):probeIndex;
     slider.disabled=playing;
     slider.closest('.flow-controls')!.classList.toggle('playing',playing);
-    if(Number(slider.dataset.probeIndex)!==index)updateFlowProbe($('scene'),state,result,index);
+    if(Number(slider.dataset.probeIndex)!==index){if(state.circle)updateCircleProbe($('scene'),state,result,index,camera);else updateFlowProbe($('scene'),state,result,index);}
   }
   updateTargets();
 }
 function finishFlight() {
   flight={phase:'landed',position:1};animatePosition();
-  notice={text:state?.mode==='remix'?'':result?.solved?'':introActive()?'Pick another block and try again.':'Adjust a block and try again.',kind:''};
+  notice={text:state?.mode==='remix'?'':result?.solved?'':state?.circle?'Adjust the centre or radius.':choiceActive()?'Pick another block and try again.':'Adjust a block and try again.',kind:''};
   updatePrimary();$('undo').classList.toggle('retry-cue',!!state?.nodes.length&&!result?.solved);
   $('success').classList.toggle('just-solved',!!result?.solved&&!reduced);
-  $('move-announcement').textContent=state?.mode==='remix'?'Throw complete.':result?.solved?'Every target hit. Puzzle solved.':`${result?.checkpoints.filter(c=>c.hit).length} of ${result?.checkpoints.length} targets hit. ${introActive()?'Pick another block':'Adjust your recipe'} and throw again.`;
+  $('move-announcement').textContent=state?.mode==='remix'?'Throw complete.':result?.solved?'Every target hit. Puzzle solved.':`${result?.checkpoints.filter(c=>c.hit).length} of ${result?.checkpoints.length} targets hit. ${choiceActive()?'Pick another block':'Adjust your recipe'} and throw again.`;
 }
 function launch() {
   if(!initialized||pending)return;
-  if(introActive()&&!state!.nodes.length)return;
+  if(choiceActive()&&!state!.nodes.length)return;
   if(throwWon&&state?.mode!=='remix') {
-    const index=PUZZLE_ORDER.indexOf(state!.sourceId),next=PUZZLE_ORDER[index+1];
-    if(state!.mode==='puzzle'&&index>=0&&next)goToPuzzle(next,false);
+    const next=followingPuzzle(state!.sourceId);
+    if(state!.mode==='puzzle'&&next)goToPuzzle(next,false);
+    else if(state!.mode==='puzzle'&&EXTRA_PUZZLES.includes(state!.sourceId)){renderLevels();open('puzzles-dialog','launch');}
     else if(state!.mode==='puzzle')showEnding();
     else void perform({type:'remix'},'clear');
     return;
@@ -391,6 +451,7 @@ function launch() {
 function throwCucumber(replay=false) {
   if(!initialized||pending)return;
   if(flight.phase==='flying'||flight.phase==='releasing')return;
+  cancelCirclePickup();
   cancelAnimationFrame(morphFrame);displayedPoints=undefined;
   if(displayedView()==='flight')paintTrajectory(result!.points);
   flight={phase:'releasing',position:0,release:0};if(!replay)throwWon=false;notice={text:'',kind:''};$('success').classList.remove('just-solved');updatePrimary();animatePosition();
@@ -411,22 +472,22 @@ function frame(time: number) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-new ResizeObserver(()=>sizeFlightAnnotations($('scene'))).observe($('scene'));
+new ResizeObserver(()=>{sizeFlightAnnotations($('scene'));sizeCircleControls($('scene'));}).observe($('scene'));
 
 function closeDialogs(){document.querySelectorAll<HTMLDialogElement>('dialog[open]').forEach(dialog=>dialog.close());}
 let leaveAction:(()=>Promise<unknown>)|undefined;
 function recipeKey(snapshot:Snapshot) {
   const s=snapshot.state;
-  return JSON.stringify([s.mode,s.sourceId,s.goals,s.inventory,s.limit,snapshot.slots.map(id=>id?s.nodes.find(node=>node.id===id)?.op:null)]);
+  return JSON.stringify([s.mode,s.sourceId,s.goals,s.inventory,s.limit,s.circle,snapshot.slots.map(id=>id?s.nodes.find(node=>node.id===id)?.op:null)]);
 }
 function unsavedRecipe() {
-  if(!state?.nodes.length)return false;
+  if(!state||(state.circle?!circleEdited(state,result):!state.nodes.some(node=>node.id!==state!.station?.id)))return false;
   const current=recipeKey({state,slots:railSlots});
   return !seeds.some(seed=>{try{return seed.snapshot&&recipeKey(seed.snapshot)===current;}catch{return false;}});
 }
 function changeWorkspace(action:()=>Promise<unknown>,destination:string,carry=false) {
   if(!unsavedRecipe()){closeDialogs();void action();return;}
-  $('leave-description').textContent=carry?'Create carries your blocks over. Save this puzzle recipe to resume it later.':`Save your current recipe before opening ${destination}.`;
+  $('leave-description').textContent=carry?'Create carries your construction over. Save this puzzle recipe to resume it later.':`Save your current recipe before opening ${destination}.`;
   $<HTMLInputElement>('leave-name').value=state?.mode==='puzzle'?LEVELS[state.sourceId-1].name:'My flight';
   $('leave-error').hidden=true;
   open('leave-dialog');leaveAction=action;
@@ -438,8 +499,8 @@ function goToPuzzle(sourceId:number,protect=true) {
 }
 function showEnding() {
   const count=PUZZLE_ORDER.filter(id=>completed.has(id)).length,all=count===PUZZLE_ORDER.length;
-  $('ending-title').textContent=all?'You shaped every flight.':'Your final flight, shaped.';
-  $('ending-description').textContent=all?'Heights, shapes, slopes and area. You brought them together. Now make something of your own.':'A familiar shape, found in a new way. More puzzles are waiting whenever you want them.';
+  $('ending-title').textContent=all?'A whole garden of ideas.':'Your garden, shaped.';
+  $('ending-description').textContent=all?'Heights, folds, change, accumulation — and a path that comes back. You explored every puzzle. There are still shapes to revisit and flights of your own to make.':'You brought the ideas together. More chapters are waiting whenever you want to explore them.';
   $('ending-progress').textContent=`${count} of ${PUZZLE_ORDER.length} puzzles complete`;
   $('ending-chapters').innerHTML=CHAPTERS.map((chapter,i)=>{
     const done=chapter.levels.filter(id=>completed.has(id)).length,complete=done===chapter.levels.length;
@@ -454,23 +515,27 @@ function focusPart(id:string) {
 function moveCell(from:number,to:number) {
   if(!state)return;
   if(from===to||from<0||to<0||from>=railSlots.length||to>=railSlots.length)return;
-  const slots=[...railSlots],id=slots[from];
-  // An existing block fills a hole in place; unrelated slots keep their positions.
-  if(id&&slots[to]===null){slots[to]=id;slots[from]=null;}
-  else {slots.splice(from,1);slots.splice(to,0,id);}
+  const id=railSlots[from],slots=movedSlots(railSlots,state,from,to);
+  if(!slots)return;
+  if(state.station) {
+    const nodes=slots.flatMap(id=>id?[state!.nodes.find(node=>node.id===id)!]:[]);
+    return serial(async()=>accept(await kernel.run({...state!,nodes},{type:'evaluate'}),'push',slots));
+  }
   if(!id)return serial(async()=>{if(!state||!result)return;return accept({status:'ok',state,result},'push',slots);});
   const index=slots.slice(0,to).filter(Boolean).length;
   return perform({type:'move',id,index},'push',slots);
 }
 function insertIntoSlot(op:Op,index=insertionIndex??railSlots.indexOf(null)) {
-  if(index<0||index>=railSlots.length)return;
+  if(!state||index<0||index>=railSlots.length)return;
   // Insert at the indicated slot, shifting only as far as a free slot. Prefer
   // the right; a hole to the left still lets the new block land where dropped.
-  const right=railSlots.indexOf(null,index),empty=right<0?railSlots.lastIndexOf(null):right;
-  if(empty<0)return;
-  const id=crypto.randomUUID(),slots=[...railSlots];
-  slots.splice(empty,1);slots.splice(index,0,id);
+  const id=crypto.randomUUID(),slots=insertedSlots(railSlots,state,id,index);
+  if(!slots)return;
   selectedStage='';
+  if(state.station) {
+    const nodes=slots.flatMap(slot=>slot?[slot===id?{id,op}:state!.nodes.find(node=>node.id===slot)!]:[]);
+    return {id,work:serial(async()=>accept(await kernel.run({...state!,nodes},{type:'evaluate'}),'push',slots))};
+  }
   return {id,work:perform({type:'insert',op,id,index:slots.slice(0,index).filter(Boolean).length},'push',slots)};
 }
 function removePart(id:string) {
@@ -487,10 +552,25 @@ function removePart(id:string) {
 $('scene').addEventListener('input',event=>{
   const input=event.target as HTMLInputElement;
   if(input.id!=='flow-position'||input.disabled||!state||!result)return;
+  if(state.circle){probeIndex=Math.max(0,Math.min(result.points.length-1,Math.round(input.valueAsNumber*(result.points.length-1))));updateCircleProbe($('scene'),state,result,probeIndex,camera);return;}
   const start=result.points[0][0],end=result.points.at(-1)![0];
-  probeIndex=Math.max(0,Math.min(result.points.length-1,Math.round((input.valueAsNumber-start)/(end-start)*(result.points.length-1))));
+  probeIndex=nearestIndex(result.points,input.valueAsNumber);
   updateFlowProbe($('scene'),state,result,probeIndex);
 });
+$('construction').addEventListener('change',event=>{
+  const input=event.target as HTMLInputElement,key=input.dataset.circleValue as keyof Circle|undefined;
+  if(!key||!state?.circle)return;
+  const value=circleInput(input.value);
+  if(value===state.circle[key])return;
+  void serial(async()=>{if(!state?.circle)return;accept(await kernel.run(state,{type:'circle',...state.circle,[key]:value}));}).then(()=>{const current=document.querySelector<HTMLInputElement>(`[data-circle-value="${key}"]`);if(current&&state?.circle)current.value=state.circle[key];});
+});
+$('construction').addEventListener('keydown',event=>{
+  const input=event.target as HTMLInputElement,key=input.dataset.circleValue as keyof Circle|undefined;
+  if(!key||!state?.circle)return;
+  if(event.key==='Enter'){event.preventDefault();input.dispatchEvent(new Event('change',{bubbles:true}));}
+  if(event.key==='Escape'){event.preventDefault();input.value=state.circle[key];}
+});
+$('scene').addEventListener('change',event=>{if((event.target as HTMLElement).id==='circle-pair'){chooseCircleInspection(undefined,Number((event.target as HTMLSelectElement).value));renderScene();$('circle-pair')?.focus({preventScroll:true});}});
 document.addEventListener('click',event=>{
   const button=(event.target as Element).closest<HTMLButtonElement>('button');
   if(!button&&!suppressClick&&!(event.target as Element).closest('input,select,textarea,label')&&(event.target as Element).closest('#playground')&&(selectedStage||insertionIndex!==undefined)){selectedStage='';insertionIndex=undefined;render();}
@@ -510,21 +590,27 @@ document.addEventListener('click',event=>{
     return;
   }
   if(!initialized)return;
+  if(d.circleTarget!==undefined){chooseCircleInspection(Number(d.circleTarget));renderScene();document.querySelector<HTMLElement>(`[data-circle-target="${d.circleTarget}"]`)?.focus({preventScroll:true});return;}
   if(d.level){goToPuzzle(Number(d.level));return;}
   if(pending)return;
   if(button.id==='source-choose'){renderCurves();open('curves-dialog','source-choose');return;}
   if(d.source){
     closeDialogs();const sourceId=Number(d.source);
-    if(state!.mode==='remix'&&sourceId!==curveId(state!.sourceId))void perform({type:'source',sourceId}).then(()=>$('source-choose')?.focus({preventScroll:true}));
+    if(state!.mode==='remix'&&sourceId!==curveId(state!.sourceId)) {
+      const switchSource=()=>perform({type:'source',sourceId}).then(()=>$('source-choose')?.focus({preventScroll:true}));
+      if(Boolean(state!.circle)!==isCircleSource(sourceId))changeWorkspace(()=>serial(async()=>{
+        const reply=await kernel.run({...state!,nodes:[]},{type:'source',sourceId});accept(reply);$('source-choose')?.focus({preventScroll:true});
+      }),CURVES.find(curve=>curve.id===sourceId)!.name);
+      else void switchSource();
+    }
     else $('source-choose')?.focus({preventScroll:true});
     return;
   }
   if(d.return){void removePart(d.return);return;}
   if(d.op){
-    if(introActive()) {
-      if(state!.nodes[0]?.op===d.op)return;
-      const op=d.op as Op,id=crypto.randomUUID();
-      void serial(async()=>accept(await kernel.run({...state!,nodes:[{id,op}]},{type:'evaluate'}),'push',[id])).then(()=>document.querySelector<HTMLElement>(`[data-op="${op}"]`)?.focus({preventScroll:true}));
+    if(choiceActive()) {
+      const op=d.op as Op,nodes=state!.nodes[0]?.op===op?[]:[{id:crypto.randomUUID(),op}];
+      void serial(async()=>accept(await kernel.run({...state!,nodes},{type:'evaluate'}),'push',[nodes[0]?.id??null])).then(()=>document.querySelector<HTMLElement>(`[data-op="${op}"]`)?.focus({preventScroll:true}));
       return;
     }
     void insertIntoSlot(d.op as Op)?.work.then(()=>{
@@ -561,21 +647,17 @@ document.addEventListener('keydown',event=>{
     if(event.key.toLowerCase()==='y'){event.preventDefault();void historyMove(false);}
     return;
   }
-  if(target.matches('[role=tab]')&&['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) {
-    event.preventDefault();const index=views.indexOf(view);
-    const next=event.key==='Home'?0:event.key==='End'?2:(index+(event.key==='ArrowRight'?1:2))%3;
-    setView(views[next]);$(`tab-${views[next]}`).focus({preventScroll:true});return;
-  }
+  if(navigateTablist(event,views.map(view=>$(`tab-${view}`)),tab=>setView(tab.dataset.view as View)))return;
   if(target.matches('.part-body')&&state&&!pending) {
     const id=target.dataset.stage!,index=railSlots.indexOf(id);
     if(event.key==='ArrowLeft'||event.key==='ArrowRight') {
-      event.preventDefault();const to=Math.max(0,Math.min(railSlots.length-1,index+(event.key==='ArrowLeft'?-1:1)));
+      event.preventDefault();const to=adjacentSlot(railSlots,state,index,event.key==='ArrowLeft'?-1:1);
       if(to!==index){selectedStage=id;void moveCell(index,to)?.then(()=>focusPart(id));}
     }
     if(event.key==='Delete'||event.key==='Backspace'){event.preventDefault();void removePart(id);}
   }
   if(target.matches('.empty-slot')&&!pending&&(event.key==='ArrowLeft'||event.key==='ArrowRight')) {
-    event.preventDefault();const from=Number(target.dataset.empty),to=Math.max(0,Math.min(railSlots.length-1,from+(event.key==='ArrowLeft'?-1:1)));
+    event.preventDefault();const from=Number(target.dataset.empty),to=adjacentSlot(railSlots,state!,from,event.key==='ArrowLeft'?-1:1);
     void moveCell(from,to)?.then(()=>document.querySelector<HTMLElement>(`[data-empty="${to}"]`)?.focus({preventScroll:true}));
   }
   if(event.key===' '&&target.id==='scene'){event.preventDefault();launch();}
@@ -602,7 +684,10 @@ function dropSlotAt(x:number,y:number):HTMLElement|undefined {
   const pipeline=$('construction').querySelector<HTMLElement>('.pipeline');if(!pipeline)return;
   const bounds=pipeline.getBoundingClientRect();
   if(x<bounds.left||x>bounds.right||y<bounds.top-8||y>bounds.bottom+12)return;
-  const slots=[...pipeline.querySelectorAll<HTMLElement>('[data-cell]')].filter(el=>{const r=el.getBoundingClientRect();return r.right>bounds.left&&r.left<bounds.right;});
+  const slots=[...pipeline.querySelectorAll<HTMLElement>('[data-cell]')].filter(el=>{
+    const r=el.getBoundingClientRect(),zone=el.closest('.rail-slots')?.getBoundingClientRect();
+    return r.right>Math.max(bounds.left,zone?.left??bounds.left)&&r.left<Math.min(bounds.right,zone?.right??bounds.right)&&(!zone||y>=zone.top&&y<=zone.bottom);
+  });
   return slots.sort((a,b)=>Math.abs(a.getBoundingClientRect().left+a.offsetWidth/2-x)-Math.abs(b.getBoundingClientRect().left+b.offsetWidth/2-x))[0];
 }
 function overRail(x:number,y:number) {
@@ -614,7 +699,7 @@ $('playground').addEventListener('pointerdown',event=>{
   if(event.button!==0||pointer||!initialized||pending)return;
   const target=event.target as Element,element=target.closest<HTMLElement>('[data-op],[data-part],[data-empty]');
   if(!element||(element as HTMLButtonElement).disabled)return;
-  if(introActive())return;
+  if(choiceActive())return;
   if(element.dataset.return)return;
   // A browser text selection must never turn a piece pickup into native text dragging.
   event.preventDefault();window.getSelection()?.removeAllRanges();
@@ -628,7 +713,7 @@ document.addEventListener('pointermove',event=>{
     pointer.active=true;suppressClick=true;drag={op:pointer.element.dataset.op as Op|undefined,id:pointer.element.dataset.part,empty:pointer.element.dataset.empty===undefined?undefined:Number(pointer.element.dataset.empty)};
     const op=drag.op||state!.nodes.find(n=>n.id===drag!.id)?.op;
     ghost=document.createElement('div');ghost.className=`drag-ghost ${op?OPS[op].color:'empty-ghost'}`;ghost.setAttribute('aria-hidden','true');
-    ghost.innerHTML=`<span class="piece-grip">${icon('grip',14)}</span>${op?`<span class="part-formula">${tex(OPS[op].formula)}</span>`:icon('plus',18)}`;
+    ghost.innerHTML=`<span class="piece-grip">${icon('grip',14)}</span>${op?`<span class="part-formula">${operationTex(op)}</span>`:icon('plus',18)}`;
     document.body.append(ghost);pointer.element.classList.add('dragging');$('playground').classList.add('is-dragging');
     if(drag.id)palette();
     $('move-announcement').textContent=`Moving ${op?OPS[op].name:'empty slot'}. Drop into the recipe${drag.id?' or outside it to return the block to its stack':''}; Escape cancels.`;
@@ -690,11 +775,28 @@ function finishPointer(event?:PointerEvent,cancel=false){
 document.addEventListener('pointerup',event=>finishPointer(event));document.addEventListener('pointercancel',event=>finishPointer(event,true));
 window.addEventListener('blur',()=>finishPointer(undefined,true));
 
-const open=(id:string,returnId='menu-open')=>{if(pointer)finishPointer(undefined,true);closeDialogs();$(returnId).focus({preventScroll:true});$<HTMLDialogElement>(id).showModal();};
+const open=(id:string,returnId='menu-open')=>{cancelCirclePickup();if(pointer)finishPointer(undefined,true);closeDialogs();$(returnId).focus({preventScroll:true});$<HTMLDialogElement>(id).showModal();};
 document.querySelectorAll<HTMLDialogElement>('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();const e=event as MouseEvent;if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}}));
 for(const [button,dialog] of [['help-open','help-dialog'],['menu-open','menu-dialog'],['settings-open','settings-dialog']])$(button).onclick=()=>open(dialog);
 $('puzzles-open').onclick=()=>{renderLevels();open('puzzles-dialog');};
-$('ideas-open').onclick=()=>{if(!state)return;notesOffered=true;notesCue=false;$('ideas-open').classList.remove('notes-cue');open('ideas-dialog','ideas-open');shapeNotes.show(state.mode==='puzzle'?state.sourceId:0);};
+$('ideas-open').onclick=()=>{if(!state)return;open('ideas-dialog','ideas-open');shapeNotes.show(state.mode==='puzzle'?state.sourceId:0);};
+$('hints-open').onclick=()=>{if(!state||!result||state.mode!=='puzzle'||introActive())return;hintOffered=true;hintCue=false;$('hints-open').classList.remove('hint-cue');$('hints-content').innerHTML=puzzleHints(state,result);open('hints-dialog','hints-open');};
+$('hints-content').onclick=event=>{
+  const target=event.target as Element,button=target.closest<HTMLButtonElement>('#hint-more-toggle');
+  if(button){const expanded=button.getAttribute('aria-expanded')!=='true';button.setAttribute('aria-expanded',String(expanded));$('hint-extra').hidden=!expanded;}
+  const sketchButton=target.closest<HTMLButtonElement>('#hint-sketch-toggle');
+  if(sketchButton&&state) {
+    const panel=$('hint-sketch'),expanded=sketchButton.getAttribute('aria-expanded')!=='true';
+    sketchButton.setAttribute('aria-expanded',String(expanded));panel.hidden=!expanded;
+    if(expanded&&!panel.dataset.loaded) {
+      const source=state.sourceId;panel.dataset.loaded='loading';panel.setAttribute('aria-busy','true');panel.innerHTML='<p class="notes-loading">Opening the sketch…</p>';
+      void shapeNotes.hintSketch(source).then(html=>{
+        if(panel.isConnected&&state?.sourceId===source){panel.innerHTML=html;panel.dataset.loaded='true';}
+      }).catch(()=>{if(panel.isConnected){delete panel.dataset.loaded;panel.innerHTML='<p>The sketch could not load. Close and reopen it to try again.</p>';}}).finally(()=>panel.setAttribute('aria-busy','false'));
+    }
+  }
+  if(target.closest('#hint-notes'))$('ideas-open').click();
+};
 $('menu-version').onclick=()=>open('releases-dialog','menu-version');
 $('ending-create').onclick=()=>$('nav-create').click();
 $('ending-revisit').onclick=()=>{renderLevels();open('puzzles-dialog');};
@@ -724,7 +826,7 @@ $('leave-save').onclick=async()=>{
 };
 document.querySelectorAll<HTMLElement>('[data-icon]').forEach(el=>el.innerHTML=icon(el.dataset.icon!,el.matches('.menu-art,.help-art')?32:18));
 renderBrand(document.querySelector<HTMLElement>('.brand')!,'./cucumber.svg');
-$('axis-help').innerHTML=`${tex('h(x)')} is the height at horizontal position ${tex('x')}. The blocks shape the path; throwing speed does not affect the result.`;
+$('axis-help').innerHTML=`The dashed ${operationTex()} in a block stands for its input. ${tex('h(x)')} is the height at horizontal position ${tex('x')}. The blocks shape the path; throwing speed does not affect the result.`;
 $<HTMLInputElement>('motion-toggle').checked=reduced;document.body.classList.toggle('reduced-motion',reduced);
 $<HTMLInputElement>('motion-toggle').onchange=()=>{reduced=$<HTMLInputElement>('motion-toggle').checked;document.body.classList.toggle('reduced-motion',reduced);preferences();if(reduced&&(flight.phase==='flying'||flight.phase==='releasing'))finishFlight();render();};
 
@@ -751,7 +853,7 @@ async function updateShare() {
   const tooLarge=url.href.length>8192;
   $<HTMLTextAreaElement>('share-link').value=tooLarge?'This recipe needs a file to travel. Use Download JSON.':url.href;
   ($('copy-link') as HTMLButtonElement).disabled=tooLarge;($('download-artifact') as HTMLButtonElement).disabled=false;$('download-artifact').hidden=!tooLarge;
-  $('share-description').textContent=kind==='level'?'A fresh start on this puzzle.':kind==='challenge'?'Your flight sets their targets. Your recipe stays hidden.':'Your starting function and blocks, ready to change.';
+  $('share-description').textContent=kind==='level'?'A fresh start on this puzzle.':kind==='challenge'?'Your flight sets their targets. Your recipe stays hidden.':'Your construction, ready to change.';
 }
 $('share-open').onclick=()=>{const option=$<HTMLSelectElement>('share-kind').options[0];option.disabled=state?.mode!=='puzzle';$<HTMLSelectElement>('share-kind').value=state?.mode==='puzzle'?'level':'creation';open('share-dialog');void updateShare();};
 $<HTMLSelectElement>('share-kind').onchange=()=>void updateShare();
@@ -759,17 +861,20 @@ $('copy-link').onclick=async()=>{try{await navigator.clipboard.writeText($<HTMLT
 function download(value:unknown,name:string){const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 $('download-artifact').onclick=()=>{if(sharingArtifact)download(sharingArtifact,`angouri-${sharingArtifact.type}.json`);};
 $('download-save').onclick=()=>{if(state)download({schema:1,type:'save',state,slots:railSlots,completed:[...completed],view},'angouri-progress.json');};
+let renamingSeed:number|undefined;
 function renderSeeds(){
   const dateFormat=new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeStyle:'short'});
   $('favorites-list').innerHTML=seeds.length?seeds.map((s,i)=>{
     const saved=s.snapshot?.state,chapter=saved?chapterIndex(saved.sourceId):-1;
-    const context=saved?.mode==='puzzle'?chapter<0?'Puzzle':`Puzzle ${chapter+1}.${CHAPTERS[chapter].levels.indexOf(saved.sourceId)+1}`:saved?.mode==='challenge'?'Shared challenge':'Create';
+    const context=saved?.mode==='puzzle'?chapter<0?'Puzzle':`Puzzle ${puzzleLabel(saved.sourceId)}`:saved?.mode==='challenge'?'Shared challenge':'Create';
     const date=typeof s.savedAt==='string'?new Date(s.savedAt):undefined;
     const when=date&&Number.isFinite(date.getTime())?`<time datetime="${date.toISOString()}">${escape(dateFormat.format(date))}</time>`:'<span>Date unavailable</span>';
-    return `<div class="favorite-row"><div class="favorite-info"><span class="favorite-name">${escape(s.name)}</span><span class="favorite-meta"><span class="favorite-context">${context}</span><span aria-hidden="true">·</span>${when}</span></div><button class="button" data-seed="${i}" aria-label="Open ${escape(s.name)}">${icon('folder',16)} Open</button><button class="icon-button" data-delete-seed="${i}" aria-label="Delete ${escape(s.name)}">${icon('trash',16)}</button></div>`;
+    const meta=`<span class="favorite-meta"><span class="favorite-context">${context}</span><span aria-hidden="true">·</span>${when}</span>`;
+    if(renamingSeed===i)return `<form class="favorite-row favorite-edit" data-rename-form="${i}"><div class="favorite-info"><label for="rename-seed">Recipe name</label><input id="rename-seed" type="text" maxlength="60" required value="${escape(s.name)}" aria-describedby="rename-error">${meta}</div><div class="favorite-actions"><button type="button" class="button" data-cancel-rename="${i}">Cancel</button><button class="button primary" type="submit">${icon('check',16)} Save name</button></div><p id="rename-error" class="reset-progress-error" role="alert" hidden></p></form>`;
+    return `<div class="favorite-row"><div class="favorite-info"><span class="favorite-name">${escape(s.name)}</span>${meta}</div><div class="favorite-actions"><button class="button" data-seed="${i}" aria-label="Open ${escape(s.name)}">${icon('folder',16)} Open</button><button class="icon-button" data-rename-seed="${i}" aria-label="Rename ${escape(s.name)}" title="Rename">${icon('rename',16)}</button><button class="icon-button" data-delete-seed="${i}" aria-label="Delete ${escape(s.name)}" title="Delete">${icon('trash',16)}</button></div></div>`;
   }).join(''):`<div class="empty-library">${icon('folder',32)}<p>Your saved recipes appear here.</p></div>`;
 }
-$('library-open').onclick=()=>{renderSeeds();open('library-dialog');};
+$('library-open').onclick=()=>{renamingSeed=undefined;renderSeeds();open('library-dialog');};
 function saveRecipe(name:string) {
   return serial(async()=>{
     if(!state)return;
@@ -789,7 +894,36 @@ function openSeed(seed:Seed) {
     accept(reply,'clear',saved.slots,saved.view);preferences();return true;
   });
 }
-$('favorites-list').onclick=event=>{const b=(event.target as Element).closest<HTMLElement>('button');if(!b)return;if(b.dataset.deleteSeed!==undefined){seeds.splice(Number(b.dataset.deleteSeed),1);write(SEEDS,seeds);renderSeeds();}if(b.dataset.seed!==undefined){const seed=seeds[Number(b.dataset.seed)];changeWorkspace(()=>openSeed(seed).then(ok=>{if(ok)closeDialogs();}),seed.name);}};
+function finishRename(index:number) {
+  renamingSeed=undefined;renderSeeds();
+  $('favorites-list').querySelector<HTMLButtonElement>(`[data-rename-seed="${index}"]`)?.focus({preventScroll:true});
+}
+$('favorites-list').onclick=event=>{
+  const b=(event.target as Element).closest<HTMLElement>('button');if(!b)return;
+  if(b.dataset.renameSeed!==undefined){
+    renamingSeed=Number(b.dataset.renameSeed);renderSeeds();
+    const input=$<HTMLInputElement>('rename-seed');input.focus({preventScroll:true});input.select();
+  }
+  if(b.dataset.cancelRename!==undefined)finishRename(Number(b.dataset.cancelRename));
+  if(b.dataset.deleteSeed!==undefined){
+    const index=Number(b.dataset.deleteSeed),next=seeds.filter((_,i)=>i!==index);
+    if(write(SEEDS,next)){seeds=next;renamingSeed=undefined;renderSeeds();$('favorites-list').querySelector<HTMLButtonElement>(`[data-seed="${Math.min(index,seeds.length-1)}"]`)?.focus({preventScroll:true});}
+  }
+  if(b.dataset.seed!==undefined){const seed=seeds[Number(b.dataset.seed)];changeWorkspace(()=>openSeed(seed).then(ok=>{if(ok)closeDialogs();}),seed.name);}
+};
+$('favorites-list').addEventListener('submit',event=>{
+  const form=(event.target as Element).closest<HTMLFormElement>('[data-rename-form]');if(!form)return;
+  event.preventDefault();
+  const index=Number(form.dataset.renameForm),input=$<HTMLInputElement>('rename-seed'),name=input.value.trim();
+  const fail=(message:string)=>{$('rename-error').textContent=message;$('rename-error').hidden=false;input.focus({preventScroll:true});};
+  if(!name){fail('Enter a recipe name.');return;}
+  const next=seeds.map((seed,i)=>i===index?{...seed,name}:seed);
+  if(!write(SEEDS,next)){fail('Could not save the name on this device. Try again.');return;}
+  seeds=next;finishRename(index);$('move-announcement').textContent=`Recipe renamed to ${name}.`;
+});
+$('favorites-list').addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&renamingSeed!==undefined){event.preventDefault();event.stopPropagation();finishRename(renamingSeed);}
+});
 function parseSave(value:unknown) {
   if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Choose an Angouri JSON file.');
   const data={...value,view:canonicalView((value as Record<string,unknown>).view)} as Record<string,unknown>;
@@ -807,7 +941,7 @@ function importData(value:unknown) {
       if(data.schema!==1||Object.keys(data).some(k=>!['schema','type','sourceId','view'].includes(k))||!isView(data.view))throw new Error('Unsupported puzzle link file.');
       const reply=await kernel.run(undefined,{type:'level',sourceId:data.sourceId,mode:'puzzle'});requireOk(reply);accept(reply,'clear',undefined,data.view);
     } else {const reply=await kernel.run(state,{type:'import',artifact:data});requireOk(reply);accept(reply,'clear',undefined,isView(data.view)?data.view:undefined);}
-    preferences();return true;
+    closeDialogs();preferences();return true;
   });
 }
 $('import-open').onclick=()=>{closeDialogs();$<HTMLInputElement>('import-file').click();};

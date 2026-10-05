@@ -30,7 +30,7 @@ The build job has read-only repository permission. The deploy job receives only 
 
 ## Local builds and releases
 
-Use `npm run build` for the same clean `dist/` build used by CI. `npm run build:pages` invokes the older `--stage` convenience path, which also copies the generated site into the repository root for local inspection of the legacy branch layout. It is not the workflow's publication path, and its staged output should not be committed as a deployment step.
+Use `npm run build` for the same clean `dist/` build used by CI. `npm run build:pages` invokes the older `--stage` convenience path, which also copies the generated site into the repository root for local inspection of the legacy branch layout. These generated previews are ignored and no longer tracked in the source branch. Their source assets remain under `web/public/`. The staged root is not the workflow's publication path and should not be committed as a deployment step.
 
 Version adoption and release tagging are documented in [releases.md](releases.md). Release tags do not deploy independently; publication follows a successful default-branch build.
 

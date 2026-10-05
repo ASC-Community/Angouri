@@ -1,8 +1,16 @@
 import katex from 'katex';
-import { fraction, OPS, type Checkpoint, type Result, type State } from './types';
+import { decimalTex, fraction, isRelationSource, OPS, type Checkpoint, type CurvePath, type Point, type Op, type Result, type State } from './types';
 import { icon } from './icons';
-export type Camera = { min: number; max: number };
+import { drawnPaths, flightPoints, heightsAt } from './geometry';
+import { stationScene, updateStationScene } from './station-scene';
+export type Camera = { min: number; max: number; minX?:number; maxX?:number };
 export type Flight = { phase:'ready'|'releasing'|'flying'|'landed'; position:number; release?:number };
+/** Keep the loaded artwork and its interactive grip on the same projected tangent. */
+export function launcherPose(state:State,camera:Camera,origin:[number,number],tangent:[number,number]) {
+  const start=transform(state,camera,origin),ahead=transform(state,camera,[origin[0]+tangent[0],origin[1]+tangent[1]]);
+  const angle=Math.atan2(ahead[1]-start[1],ahead[0]-start[0]),degrees=angle*180/Math.PI;
+  return {start,angle,degrees,transform:`translate(${start[0]} ${start[1]}) rotate(${degrees}) translate(-40 12)`,grip:[start[0]-58*Math.cos(angle)-10*Math.sin(angle),start[1]-58*Math.sin(angle)+10*Math.cos(angle)]};
+}
 const mathCache=new Map<string,string>();
 export const tex=(latex:string)=>{
   const cached=mathCache.get(latex);if(cached)return cached;
@@ -10,80 +18,146 @@ export const tex=(latex:string)=>{
   if(mathCache.size>=256)mathCache.delete(mathCache.keys().next().value!);
   mathCache.set(latex,html);return html;
 };
-const rationalTex=(value:string)=>{const [n,d]=value.split('/');return d?`${n.startsWith('-')?'-':''}\\frac{${n.replace(/^-/,'')}}{${d}}`:n;};
+const operationCache=new Map<string,string>();
+/** Only our fixed operation templates may attach the incoming-expression class.
+ * Arbitrary equations still use tex(), with every HTML command untrusted. */
+export function operationTex(op?:Op) {
+  const formula=op?OPS[op].formula:'\\square',cached=operationCache.get(formula);
+  if(cached)return cached;
+  const latex=formula.replaceAll('\\square','\\htmlClass{input-placeholder}{\\square}');
+  const html=katex.renderToString(latex,{throwOnError:false,strict:'ignore',output:'htmlAndMathml',trust:context=>context.command==='\\htmlClass'});
+  operationCache.set(formula,html);return html;
+}
+export const rationalTex=(value:string)=>{const [n,d]=value.split('/');return d?`${n.startsWith('-')?'-':''}\\frac{${n.replace(/^-/,'')}}{${d}}`:n;};
 // Fit one diagram uniformly. Resizing or browser zoom never stretches its axes.
 // Reserve space beyond both ends of the vertical plot for a steep pullback.
 const plotArea=()=>({width:760,height:414,top:62,bottom:310});
-const svgMath=(latex:string,x:number,y:number,width=48,extraClass='',offsetY=0)=>`<foreignObject data-axis-x="${x}" data-axis-y="${y}" data-axis-offset-y="${offsetY}" data-axis-width="${width}" x="${x-width/2}" y="${y-12}" width="${width}" height="28"><div xmlns="http://www.w3.org/1999/xhtml" class="axis-math ${extraClass}">${tex(latex)}</div></foreignObject>`;
+// Keep KaTeX in HTML. WebKit can paint positioned KaTeX descendants at the SVG
+// origin when they live inside foreignObject, even when its box is correct.
+const flightMath=(latex:string,x:number,y:number,width=48,extraClass='',offsetY=0)=>`<span class="flight-label" data-axis-x="${x}" data-axis-y="${y}" data-axis-offset-y="${offsetY}" data-axis-width="${width}"><span class="axis-math ${extraClass}">${tex(latex)}</span></span>`;
 export function sizeFlightAnnotations(root:HTMLElement) {
-  const svg=root.querySelector<SVGSVGElement>('#flight-svg'),scale=svg?.getScreenCTM()?.a;
-  if(!svg||!scale)return;
+  const svg=root.querySelector<SVGSVGElement>('#flight-svg'),matrix=svg?.getScreenCTM();
+  const overlay=root.querySelector<HTMLElement>('.flight-annotations');
+  if(!svg||!matrix||!overlay)return;
+  const scale=matrix.a,box=overlay.getBoundingClientRect();
   // Text stays at 12 CSS pixels as the diagram fits, so browser zoom can enlarge
   // the notation normally. Only label boxes change; the coordinate map does not.
-  for(const label of svg.querySelectorAll<SVGForeignObjectElement>('[data-axis-x]')) {
-    const width=Number(label.dataset.axisWidth)/scale;
+  for(const label of overlay.querySelectorAll<HTMLElement>('[data-axis-x]')) {
+    const width=Number(label.dataset.axisWidth);
     const x=Math.max(16/scale,Math.min(760-16/scale,Number(label.dataset.axisX)));
     const y=Math.max(14/scale,Math.min(414-16/scale,Number(label.dataset.axisY)+Number(label.dataset.axisOffsetY)/scale));
-    label.setAttribute('x',String(x-width/2));label.setAttribute('y',String(y-12/scale));
-    label.setAttribute('width',String(width));label.setAttribute('height',String(28/scale));
-    label.querySelector<HTMLElement>('.axis-math')!.style.fontSize=`${12/scale}px`;
+    label.style.left=`${matrix.e+x*scale-box.left}px`;
+    label.style.top=`${matrix.f+y*matrix.d-box.top-12}px`;
+    label.style.width=`${width}px`;
+  }
+  if(svg.dataset.relation) {
+    // Dense paired targets need outside labels. This only runs when a scene is
+    // laid out or resized, never while validating or advancing the flight.
+    const entries=[...overlay.querySelectorAll<HTMLElement>('.target-label')].map(parent=>{
+      const label=parent.querySelector<HTMLElement>('.flight-label')!,rect=label.querySelector('.katex-html')!.getBoundingClientRect();
+      return {label,rect,x:matrix.e+Number(parent.dataset.plotX)*scale,y:matrix.f+Number(parent.dataset.plotY)*matrix.d,h:Number(parent.dataset.height),radius:Number(parent.dataset.radius)*scale};
+    });
+    const positive=entries.filter(e=>e.h>0),negative=entries.filter(e=>e.h<0),zeros=entries.filter(e=>e.h===0),leaders:string[]=[];
+    const height=(group:typeof entries)=>Math.max(18,...group.map(e=>e.rect.height));
+    const bottom=Math.max(box.top+box.height/2,...entries.map(e=>e.y));
+    const positiveY=Math.max(box.top+height(positive)/2+8,Math.min(...entries.map(e=>e.y))-height(positive)/2-25);
+    const negativeY=Math.min(box.bottom-height(negative)/2-height(zeros)-(zeros.length?24:8),bottom+height(negative)/2+25);
+    const zeroY=Math.min(box.bottom-height(zeros)/2-8,(negative.length?negativeY+height(negative)/2:bottom+14)+height(zeros)/2+12);
+    for(const [group,y] of [[positive,positiveY],[negative,negativeY],[zeros,zeroY]] as const) {
+      const sorted=[...group].sort((a,b)=>a.x-b.x);let right=box.left+8;
+      const placed=sorted.map(entry=>{const x=Math.max(entry.x,right+entry.rect.width/2);right=x+entry.rect.width/2+8;return {entry,x};});
+      const shift=Math.max(0,right-8-(box.right-8));
+      for(const {entry,x:rawX} of placed){
+        const x=rawX-shift,dx=x-(entry.rect.left+entry.rect.width/2),dy=y-(entry.rect.top+entry.rect.height/2);
+        entry.label.style.left=`${parseFloat(entry.label.style.left)+dx}px`;entry.label.style.top=`${parseFloat(entry.label.style.top)+dy}px`;
+        const endY=y+Math.sign(entry.y-y)*(entry.rect.height/2+3),distance=Math.hypot(x-entry.x,endY-entry.y),offset=Math.min(entry.radius+3,distance);
+        const startX=entry.x+(x-entry.x)*offset/(distance||1),startY=entry.y+(endY-entry.y)*offset/(distance||1);
+        if(distance>entry.radius+9)leaders.push(`M${(startX-matrix.e)/scale} ${(startY-matrix.f)/matrix.d}L${(x-matrix.e)/scale} ${(endY-matrix.f)/matrix.d}`);
+      }
+    }
+    root.querySelector('#target-leaders')?.setAttribute('d',leaders.join(' '));
   }
   // Keep the zero numeral left of the first target's full formula. Its text
   // keeps a CSS-pixel size even when the coordinate diagram becomes smaller.
-  const zero=svg.querySelector('.zero-label')?.closest('foreignObject');
-  const firstTarget=svg.querySelector('.target-label .katex-html');
-  if(zero&&firstTarget) {
+  const zero=overlay.querySelector<HTMLElement>('.zero-label')?.closest<HTMLElement>('.flight-label');
+  const firstTarget=overlay.querySelector('.target-label .katex-html');
+  if(zero&&firstTarget&&!svg.dataset.relation) {
     const numeral=zero.querySelector('.katex-html')!.getBoundingClientRect();
     const target=firstTarget.getBoundingClientRect();
     const shift=Math.min(0,target.left-numeral.right-8);
-    if(numeral.width&&target.width)zero.setAttribute('x',String(Number(zero.getAttribute('x'))+shift/scale));
+    if(numeral.width&&target.width)zero.style.left=`${parseFloat(zero.style.left)+shift}px`;
   }
 }
-export const interpolate=(points:[number,number][],p:number):[number,number]=>{
+export const interpolate=(points:[number,number][],p:number,loop=false):[number,number]=>{
   if(!points.length)return [0,0];
+  if(loop) {
+    const index=Math.max(0,Math.min(points.length-1,p*(points.length-1))),a=Math.floor(index),b=Math.min(a+1,points.length-1),t=index-a;
+    return [points[a][0]+(points[b][0]-points[a][0])*t,points[a][1]+(points[b][1]-points[a][1])*t];
+  }
   const start=points[0][0],end=points.at(-1)![0],x=start+(end-start)*p,index=points.findIndex(v=>v[0]>=x);
   if(index<=0)return points[index===-1?points.length-1:0];
   const a=points[index-1],b=points[index],t=(x-a[0])/(b[0]-a[0]);return [x,a[1]+(b[1]-a[1])*t];
 };
 export function transform(state:State,camera:Camera,point:[number,number]) {
+  if(state.circle||isRelationSource(state.sourceId)) {
+    const minX=camera.minX??-1,maxX=camera.maxX??5,relation=isRelationSource(state.sourceId),scale=Math.min((relation?460:322)/(maxX-minX),(relation?310:272)/(camera.max-camera.min));
+    return [380+(point[0]-(minX+maxX)/2)*scale,200-(point[1]-(camera.min+camera.max)/2)*scale];
+  }
   const {width,top,bottom}=plotArea(),end=state.sourceId===5?2:4;
   return [120+point[0]/end*(width-210),bottom-(point[1]-camera.min)/(camera.max-camera.min)*(bottom-top)];
 }
 export const path=(points:[number,number][],state:State,camera:Camera)=>points.map((v,i)=>`${i?'L':'M'}${transform(state,camera,v).map(n=>n.toFixed(2)).join(',')}`).join(' ');
-export const targetStatus=(checkpoint:Checkpoint,state:State,flight:Flight)=>state.mode!=='remix'&&(flight.phase==='flying'||flight.phase==='landed')&&fraction(checkpoint.x)/(state.sourceId===5?2:4)<=flight.position+1e-8?(checkpoint.hit?'hit':'miss'):'waiting';
+/** Endpoint dots explain ownership at a jump. Continuous joins need no dots. */
+function pathEnds(paths:CurvePath[]|undefined,project:(p:Point)=>number[]) {
+  if(!paths||paths.length<2)return '';
+  const same=(a:Point|undefined,b:Point)=>!!a&&Math.abs(a[0]-b[0])<1e-8&&Math.abs(a[1]-b[1])<1e-8;
+  return paths.flatMap((p,i)=>{
+    const ends:[Point,boolean,boolean][]=[[p.points[0],p.startClosed,i>0&&!same(paths[i-1]?.points.at(-1),p.points[0])],[p.points.at(-1)!,p.endClosed,i<paths.length-1&&!same(paths[i+1]?.points[0],p.points.at(-1)!)]];
+    return ends.filter(([, ,show])=>show).map(([point,closed])=>{const [x,y]=project(point);return `<circle class="path-end ${closed?'closed':'open'}" cx="${x}" cy="${y}" r="2.6"/>`;});
+  }).join('');
+}
+export const targetStatus=(checkpoint:Checkpoint,state:State,flight:Flight)=>state.mode!=='remix'&&(flight.phase==='flying'||flight.phase==='landed')&&(checkpoint.phase??fraction(checkpoint.x)/(state.sourceId===5?2:4))<=flight.position+1e-8?(checkpoint.hit?'hit':'miss'):'waiting';
 export const targetDescription=(checkpoint:Checkpoint,index:number,status:string)=>`Target ${index+1}: ${status==='waiting'?(checkpoint.hit?'path matches, ready to throw':'path misses'):(checkpoint.hit?'hit confirmed':'miss confirmed')}`;
 export const targetMark=(status:string)=>status==='hit'?icon('check',13):status==='miss'?icon('close',13):'';
 export function flightView(state:State,result:Result,camera:Camera,flight:Flight) {
   const {width,height,top,bottom}=plotArea();
+  const circular=!!state.circle||!!result.relation;
+  const coordinates=result.checkpoints.map(c=>transform(state,camera,[fraction(c.x),fraction(c.target)]));
+  const radii=coordinates.map(([x,y],i)=>result.relation?Math.min(20,...coordinates.flatMap(([a,b],j)=>j===i?[]:[Math.hypot(x-a,y-b)*.39])):20);
   const rings=(state.mode==='remix'?[]:result.checkpoints).map((c,i)=>{
     const [x,y]=transform(state,camera,[fraction(c.x),fraction(c.target)]),status=targetStatus(c,state,flight);
-    return `<g class="ring ${status}" data-ring="${i}" data-target="${i}" data-match="${c.hit?'hit':'miss'}" data-status="${status}" aria-label="${targetDescription(c,i,status)}"><circle class="ring-burst" cx="${x}" cy="${y}" r="22"/><circle class="ring-outer" cx="${x}" cy="${y}" r="20"/><circle class="ring-inner" cx="${x}" cy="${y}" r="13"/><g class="target-badge" transform="translate(${x} ${y})"><circle r="12"/><path class="hit-mark" d="m-7 0 5 5 9-10"/><path class="miss-mark" d="m-5-5 10 10m0-10-10 10"/></g></g>`;
+    const radius=radii[i];
+    return `<g class="ring ${status}" data-ring="${i}" data-target="${i}" data-match="${c.hit?'hit':'miss'}" data-status="${status}" aria-label="${targetDescription(c,i,status)}"><circle class="ring-burst" cx="${x}" cy="${y}" r="${radius*1.1}"/><circle class="ring-outer" cx="${x}" cy="${y}" r="${radius}"/><circle class="ring-inner" cx="${x}" cy="${y}" r="${radius*.65}"/><g class="target-badge" transform="translate(${x} ${y}) scale(${radius/20})"><circle r="12"/><path class="hit-mark" d="m-7 0 5 5 9-10"/><path class="miss-mark" d="m-5-5 10 10m0-10-10 10"/></g></g>`;
   }).join('');
-  const targetLabels=(state.mode==='remix'?[]:result.checkpoints).map(c=>{
+  const targetLabels=(state.mode==='remix'?[]:result.checkpoints).map((c,i)=>{
     const [x,y]=transform(state,camera,[fraction(c.x),fraction(c.target)]);
     // Put labels toward the open middle of the plot, clear of the launcher and
     // axis ticks. Their gap includes CSS pixels because the text does not shrink.
-    const direction=y<(top+bottom)/2?1:-1;
-    return `<g class="target-label" data-match="${c.hit?'hit':'miss'}">${svgMath(`h = ${rationalTex(c.target)}`,x,y+20*direction,70,'target-height',16*direction)}</g>`;
+    const direction=circular?(y<200?-1:1):y<(top+bottom)/2?1:-1;
+    return `<span class="target-label" data-match="${c.hit?'hit':'miss'}" data-plot-x="${x}" data-plot-y="${y}" data-height="${fraction(c.target)}" data-radius="${radii[i]}">${flightMath(circular?`(${rationalTex(c.x)},${rationalTex(c.target)})`:`h = ${rationalTex(c.target)}`,x,y+20*direction,circular?96:70,'target-height',16*direction)}</span>`;
   }).join('');
-  const ticks=Array.from({length:(state.sourceId===5?2:4)+1},(_,i)=>{
+  const ticks=circular?Array.from({length:Math.min(25,Math.ceil(camera.maxX!)-Math.floor(camera.minX!)+1)},(_,i)=>{
+    const [x]=transform(state,camera,[Math.floor(camera.minX!)+i,0]);
+    return `<path class="flight-grid" d="M${x} 40V356" stroke="#dce6d0" stroke-dasharray="2 8"/>`;
+  }).join(''):Array.from({length:(state.sourceId===5?2:4)+1},(_,i)=>{
     const [x]=transform(state,camera,[i,0]);
     return `<path class="flight-grid" d="M${x} ${top}V${bottom}" stroke="#dce6d0" stroke-dasharray="2 8"/>`;
   }).join('');
-  const [startX,startY]=transform(state,camera,result.points[0]),[zeroX,zeroY]=transform(state,camera,[0,0]);
-  return `<svg id="flight-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${state.mode==='remix'?'Your cucumber’s flight path.':`Your cucumber's flight path through ${result.checkpoints.length} targets.`}">
+  const [startX,startY]=transform(state,camera,flightPoints(result)[0]??[0,0]),[zeroX,zeroY]=transform(state,camera,[0,0]);
+  const annotations=circular?`${flightMath('0',zeroX-13,zeroY,24,'zero-label',15)}${flightMath('h',zeroX,25,28)}${flightMath('x',575,zeroY,26,'',15)}`:`${Array.from({length:(state.sourceId===5?2:4)+1},(_,i)=>flightMath(String(i),transform(state,camera,[i,0])[0],height-25)).join('')}${flightMath('0',64,zeroY,24,'zero-label')}${flightMath('h',zeroX,Math.max(16,top-12),28)}${flightMath('x',width-20,height-25,26)}`;
+  return `<div class="flight-diagram"><svg id="flight-svg" ${result.relation?'data-relation="true"':''} viewBox="${circular?'132 0 496 414':`0 0 ${width} ${height}`}" role="img" aria-label="${result.circle?'A complete circle, travelled counterclockwise from the rightmost point. ':result.relation?'Both real heights of the equation. ':''}${state.mode==='remix'?'Your cucumber’s flight path.':`Your cucumber's flight path through ${result.checkpoints.length} targets.`}">
     <defs><clipPath id="plot-clip"><rect x="16" y="0" width="${width-32}" height="${height-38}" rx="12"/></clipPath></defs>
     <g clip-path="url(#plot-clip)">${ticks}
-      <path class="flight-height-axis" d="M${zeroX} ${top}V${bottom}"/>
-      <path class="flight-zero-line" data-zero-line d="M84 ${zeroY}H${width-46}"/>
-      <path id="trajectory" d="${path(result.points,state,camera)}"/>
+      <path class="flight-height-axis" d="M${zeroX} ${circular?40:top}V${circular?356:bottom}"/>
+      <path class="flight-zero-line" data-zero-line d="M${circular?185:84} ${zeroY}H${circular?575:width-46}"/>
+      <path id="target-leaders" class="target-leaders" d=""/><path id="trajectory" d="${drawnPaths(result).map(p=>path(p.points,state,camera)).join(' ')}"/>
+      <g class="flight-path-ends">${pathEnds(result.relation?.paths??result.paths,p=>transform(state,camera,p))}</g>
       <path id="flight-trail" d=""/>
       <g id="launcher" transform="translate(${startX-40} ${startY+12})" aria-hidden="true"><ellipse cx="0" cy="28" rx="18" ry="3" fill="#dce5ce"/><path d="m-2 25 1-15-10-18m10 18 13-18" fill="none" stroke="#8c7955" stroke-width="7" stroke-linecap="round"/><path d="m-3 24 1-14-9-17m10 17 11-17" fill="none" stroke="#b4a078" stroke-width="2" stroke-linecap="round"/><path id="band-back" class="slingshot-band"/><path id="band-front" class="slingshot-band"/></g>
       ${rings}
       <g id="cucumber" aria-hidden="true"><g id="flight-motion"><path class="speed-lines" d="M-32-8h-14m13 8h-21m22 8h-13"/></g><g id="flight-spin"><image href="./cucumber.svg" x="-29" y="-29" width="58" height="58"/></g></g>
       <g id="launcher-front" transform="translate(${startX-40} ${startY+12})" aria-hidden="true"><path id="slingshot-pouch" d="M3-8Q-5 0 3 8"/></g>
-    </g><g id="target-labels">${targetLabels}</g><g id="axis-labels">${Array.from({length:(state.sourceId===5?2:4)+1},(_,i)=>svgMath(String(i),transform(state,camera,[i,0])[0],height-25)).join('')}${svgMath('0',64,zeroY,24,'zero-label')}${svgMath('h',zeroX,Math.max(16,top-12),28)}${svgMath('x',width-20,height-25,26)}</g>
-  </svg>`;
+    </g></svg><div class="flight-annotations"><div id="target-labels">${targetLabels}</div><div id="axis-labels">${annotations}</div></div></div>`;
 }
 // These are reading aids for exact kernel values, never inputs to validation.
 const decimalMatches=(exact:string,decimal:string)=>{
@@ -93,27 +167,47 @@ const decimalMatches=(exact:string,decimal:string)=>{
   const digits=BigInt(mantissa.replace('.',''));
   return places>=0?numerator*10n**BigInt(places)===digits*denominator:numerator===digits*10n**BigInt(-places)*denominator;
 };
-const comparisonValue=(exact:string)=>{
+export const comparisonValue=(exact:string,latex?:string,number?:number)=>{
+  if(!/^-?\d+(?:\/\d+)?$/.test(exact)){const decimal=Number.isFinite(number)?`<span class="decimal-value">${tex('\\approx '+decimalTex(Number(number!.toPrecision(4))))}</span>`:'';return `<span class="comparison-value"><span class="exact-value">${tex(latex??'\\text{unavailable}')}</span>${decimal}</span>`;}
   const value=fraction(exact);
   const rounded=exact.includes('/')&&Number.isFinite(value)&&value!==0?String(Number(value.toPrecision(4))):undefined;
-  const [mantissa,exponent]=rounded?.split('e')||[];
-  const decimal=exponent?`${mantissa}\\times 10^{${Number(exponent)}}`:mantissa;
+  const decimal=rounded===undefined?undefined:decimalTex(rounded);
   const relation=rounded&&decimalMatches(exact,rounded)?'=':'\\approx';
   return `<span class="comparison-value"><span class="exact-value">${tex(rationalTex(exact))}</span>${decimal?`<span class="decimal-value">${tex(`${relation} ${decimal}`)}</span>`:''}</span>`;
 };
+export function solvedHeights(relation:Result['relation']) {
+  const groups:{condition:string;heights:string[]}[]=[];
+  for(const line of relation?.solvedLines??[]) {
+    const group=groups.find(group=>group.condition===line.conditionLatex);
+    if(group)group.heights.push(line.heightLatex);else groups.push({condition:line.conditionLatex,heights:[line.heightLatex]});
+  }
+  return groups.map(group=>`<div class="solution-group"><div class="solution-heights">${group.heights.map(height=>`<div>${tex(height)}</div>`).join('')}</div><div class="solution-condition">${tex(group.condition)}</div></div>`).join('');
+}
+/** Both forms come from the kernel; this only arranges their presentation. */
+export function equationForms(result:Result) {
+  const simplified=result.circle?.equationLatex??result.relation?.solvedLatex??result.relation?.equationLatex??`h = ${result.stages.at(-1)!.latex}`;
+  const constructed=result.constructedLatex;
+  const normalized=(latex:string)=>latex.replace(/\\(?:left|right)|\s/g,'');
+  const differs=normalized(constructed)!==normalized(simplified),solution=solvedHeights(result.relation);
+  return `<span class="scene-tag">${differs?'YOUR CONSTRUCTION':'YOUR EQUATION'}</span><div class="constructed-formula equation-formula" aria-label="Constructed equation">${tex(constructed)}</div>${differs?`<div class="equation-reduction">${icon('arrow',16)}<span>${result.relation?.solvedLatex?'Solved for '+tex('h'):'Simplified'}</span></div>`:''}<div class="final-formula equation-formula${solution?' relation-solution':''}" aria-label="${result.relation?.solvedLatex?'Solutions for height':'Simplified equation'}"${differs?'':' hidden'}>${differs?solution||tex(simplified):''}</div>`;
+}
+// Keep the target positions fixed so reflection can reverse the signed gap.
+// These are heights in an equation, not a separately introduced function h(x).
+export const heightAtFormula=(x:string)=>`\\left.h\\right|_{x=${rationalTex(x)}}`;
+export const heightGapFormula=(guide:NonNullable<Result['heightGuide']>)=>`${heightAtFormula(guide.toX)}-${heightAtFormula(guide.fromX)}`;
 export function functionView(state:State,result:Result,flight:Flight) {
   const puzzle=state.mode!=='remix';
   const guide=result.heightGuide;
-  const gap=guide?`<tfoot><tr class="gap-comparison" data-gap-match="${guide.hit}"><th scope="row"><span>Height gap</span><small>${tex(`h(${guide.toX})-h(${guide.fromX})`)}</small></th><td>${comparisonValue(guide.target)}</td><td>${comparisonValue(guide.actual)}</td><td><span class="gap-verdict" aria-label="${guide.hit?'Height gap matches':'Height gap does not match'}">${targetMark(guide.hit?'hit':'miss')}</span></td></tr></tfoot>`:'';
-  const rows=result.checkpoints.map((c,i)=>{const status=c.hit?'hit':'miss',confirmed=targetStatus(c,state,flight);return `<tr data-status="${puzzle?status:'sample'}"><td>${comparisonValue(c.x)}</td>${puzzle?`<td>${comparisonValue(c.target)}</td>`:''}<td>${comparisonValue(c.actual)}</td>${puzzle?`<td class="verdict-cell"><span class="equation-verdict" data-target="${i}" data-status="${confirmed}" aria-label="${targetDescription(c,i,confirmed)}">${targetMark(status)}</span></td>`:''}</tr>`;}).join('');
-  return `<div class="equation-layout"><section class="final-equation" aria-label="Final equation"><span class="scene-tag">YOUR FUNCTION</span><div class="final-formula">${tex(`h(x) = ${result.stages.at(-1)!.latex}`)}</div></section><div class="value-table"><table aria-label="${puzzle?'Compare your function with the targets':'Sample heights'}"><thead><tr><th>Position ${tex('x')}</th>${puzzle?'<th>Expected</th>':''}<th>${puzzle?'Actual':'Height'}</th>${puzzle?`<th><span class="sr-only">Matches target</span>${icon('target',16)}</th>`:''}</tr></thead><tbody>${rows}</tbody>${gap}</table></div></div>`;
+  const gap=guide?`<tfoot><tr class="gap-comparison" data-gap-match="${guide.hit}"><th scope="row"><span>Height gap</span><small title="Heights at the highest and lowest targets' positions" aria-label="Height at x=${guide.toX} minus height at x=${guide.fromX}, the positions of the highest and lowest targets">${tex(heightGapFormula(guide))}</small></th><td>${comparisonValue(guide.target)}</td><td>${comparisonValue(guide.actual,guide.actualLatex,guide.stages.at(-1)?.gapNumber)}</td><td><span class="gap-verdict" aria-label="${guide.hit?'Height gap matches':'Height gap does not match'}">${targetMark(guide.hit?'hit':'miss')}</span></td></tr></tfoot>`:'';
+  const rows=result.checkpoints.map((c,i)=>{const status=c.hit?'hit':'miss',confirmed=targetStatus(c,state,flight);return `<tr data-status="${puzzle?status:'sample'}"><td>${result.relation?tex(`(${rationalTex(c.x)},${rationalTex(c.target)})`):comparisonValue(c.x)}</td>${puzzle?`<td>${comparisonValue(result.relation?c.lhs!:c.target)}</td>`:''}<td>${comparisonValue(c.actual,c.actualLatex,c.actualNumber)}</td>${puzzle?`<td class="verdict-cell"><span class="equation-verdict" data-target="${i}" data-status="${confirmed}" aria-label="${targetDescription(c,i,confirmed)}">${targetMark(status)}</span></td>`:''}</tr>`;}).join('');
+  return `<div class="equation-layout"><section class="final-equation" aria-label="Final equation">${equationForms(result)}</section><div class="value-table"><table aria-label="${puzzle?'Compare your equation with the targets':'Sample heights'}"><thead><tr><th>${result.relation?'Target '+tex('(x,h)'):'Position '+tex('x')}</th>${puzzle?'<th>Expected '+(result.relation?tex('h^2'):'')+'</th>':''}<th>${result.relation?'Recipe '+tex('h^2'):puzzle?'Actual':'Height'}</th>${puzzle?`<th><span class="sr-only">Matches target</span>${icon('target',16)}</th>`:''}</tr></thead><tbody>${rows}</tbody>${gap}</table></div></div>`;
 }
 
 const flowScales=new WeakMap<Result,{min:number;max:number;start:number;end:number}>();
 function flowScale(result:Result) {
   let scale=flowScales.get(result);
   if(!scale) {
-    const heights=[...result.stages.flatMap(stage=>stage.points.map(point=>point[1])),...result.checkpoints.map(c=>fraction(c.target))];
+    const heights=[...result.stages.flatMap(stage=>stage.points.map(point=>point[1])),...result.checkpoints.map(c=>fraction(c.target)),...(result.relation?.playback.map(p=>p[1])??[])];
     const min=Math.min(0,...heights),max=Math.max(0,...heights),padding=Math.max(2,max-min)*.12;
     scale={min:min-padding,max:max+padding,start:result.points[0][0],end:result.points.at(-1)![0]};
     flowScales.set(result,scale);
@@ -125,15 +219,21 @@ function flowPoint(result:Result,[x,y]:[number,number]) {
   return [26+(x-s.start)/(s.end-s.start)*138,108-(y-s.min)/(s.max-s.min)*88];
 }
 const flowPath=(result:Result,points:[number,number][])=>points.map((p,i)=>`${i?'L':'M'}${flowPoint(result,p).map(n=>n.toFixed(2)).join(',')}`).join(' ');
+const stagePath=(result:Result,stage:Result['stages'][number])=>(stage.paths??[{points:stage.points}]).map(p=>flowPath(result,p.points)).join(' ');
+function relationCard(result:Result,targets:string) {
+  const relation=result.relation!,zero=flowPoint(result,[0,0])[1];
+  return `<span class="flow-connector" aria-hidden="true">${icon('arrow',18)}</span><article class="flow-machine relation-machine"><div class="machine-body"><div class="machine-meta"><span class="machine-kicker">BOTH HEIGHTS</span><span class="machine-icon">${tex('h^2 \\longrightarrow h')}</span><span class="machine-sample" data-relation-values></span><span class="relation-caption">Solve for both real heights.</span></div><svg class="flow-plot" viewBox="0 0 184 132" role="img" aria-label="Both real heights of the recipe equation"><path class="flow-zero-line" d="M26 ${zero}H164"/><path class="flow-curve" d="${relation.paths.map(p=>flowPath(result,p.points)).join(' ')}"/>${targets}<circle class="flow-point" data-relation-probe r="4"/><circle class="flow-point" data-relation-probe r="4"/></svg></div></article>`;
+}
 const sampleTex=(value:number)=>{
-  if(Math.abs(value)>=10000){const [n,e]=value.toExponential(2).split('e');return `${n}\\times 10^{${Number(e)}}`;}
+  if(Math.abs(value)>=10000)return decimalTex(value.toExponential(2));
   return (Math.abs(value)<.005?0:value).toFixed(2);
 };
 const positionText=(value:number)=>String(Number(value.toFixed(3)));
 export function flow(state:State,result:Result,selectedStage:string,probeIndex:number,flight:Flight) {
   const scale=flowScale(result),step=(scale.end-scale.start)/(result.points.length-1),x=result.points[probeIndex][0];
   const guide=result.heightGuide;
-  const gapGoal=guide?`<span class="flow-gap-goal" aria-label="Target height gap from x=${guide.fromX} to x=${guide.toX}">Target ${tex(`h(${rationalTex(guide.toX)})-h(${rationalTex(guide.fromX)})=${rationalTex(guide.target)}`)}</span>`:'';
+  const symbol=result.relation?'h^2':'h';
+  const gapGoal=guide?`<span class="flow-gap-goal" aria-label="Target height gap from x=${guide.fromX} to x=${guide.toX}">Target ${tex(`${heightGapFormula(guide)}=${rationalTex(guide.target)}`)}</span>`:'';
   const zero=flowPoint(result,[0,0])[1];
   const goals=state.mode==='remix'?[]:result.checkpoints;
   const targets=goals.map((c,i)=>{
@@ -144,21 +244,28 @@ export function flow(state:State,result:Result,selectedStage:string,probeIndex:n
   const cards=result.stages.map((stage,i)=>{
     const op=i?state.nodes[i-1].op:undefined,previous=i&&op!=='D'&&op!=='I'?result.stages[i-1]:undefined;
     const tangent=state.nodes[i]?.op==='D',area=state.nodes[i]?.op==='I';
-    const areaPath=area?flowPath(result,[...stage.points,[scale.end,0],[scale.start,0]])+'Z':'';
+    const areaPath=area?(stage.paths??[{points:stage.points}]).map(p=>flowPath(result,[...p.points,[p.points.at(-1)![0],0],[p.points[0][0],0]])+'Z').join(' '):'';
     const gap=guide?.stages[i];
-    const gapLabel=gap?`<span class="gap-sample"><span class="gap-swatch" aria-hidden="true"></span>Gap ${tex(`= ${rationalTex(gap.gap)}`)}</span>`:'';
+    const gapLabel=gap?`<span class="gap-sample"><span class="gap-swatch" aria-hidden="true"></span>Gap ${tex(`= ${/^-?\d+(?:\/\d+)?$/.test(gap.gap)?rationalTex(gap.gap):gap.gapLatex??rationalTex(gap.gap)}`)}</span>`:'';
     let gapPlot='';
     if(guide&&gap) {
-      const [x0,y0]=flowPoint(result,[fraction(guide.fromX),fraction(gap.from)]),[x1,y1]=flowPoint(result,[fraction(guide.toX),fraction(gap.to)]);
+      const [x0,y0]=flowPoint(result,[fraction(guide.fromX),gap.fromNumber??fraction(gap.from)]),[x1,y1]=flowPoint(result,[fraction(guide.toX),gap.toNumber??fraction(gap.to)]);
       const direction=Math.sign(y1-y0),size=Math.min(3,Math.abs(y1-y0)/4),middle=(y0+y1)/2;
       const arrow=size?`<path class="gap-direction" d="M${173-size} ${middle-direction*size}L173 ${middle+direction*size}L${173+size} ${middle-direction*size}Z"/>`:'';
       gapPlot=`<g class="flow-height-gap" data-flow-gap="${i}" data-gap-direction="${direction<0?'up':direction>0?'down':'flat'}" aria-label="Height gap from x=${guide.fromX} to x=${guide.toX}: ${gap.gap}"><path class="gap-guides" d="M${x0} ${y0}H173M${x1} ${y1}H173"/><path class="gap-bracket" d="M169 ${y0}H177M173 ${y0}V${y1}M169 ${y1}H177"/>${arrow}<circle data-gap-position="${guide.fromX}" cx="${x0}" cy="${y0}" r="2.5"/><circle data-gap-position="${guide.toX}" cx="${x1}" cy="${y1}" r="2.5"/></g>`;
     }
-    return `${i?`<span class="flow-connector" aria-hidden="true">${icon('arrow',18)}</span>`:''}<article class="flow-machine ${op?OPS[op].color:'source-machine'} ${stage.id===selectedStage?'inspected':''}" aria-label="${i?'Step '+i+': '+OPS[op!].name:'Starting curve'}"><div class="machine-body"><div class="machine-meta"><span class="machine-kicker">${i?'STEP '+i:'START'}</span><span class="machine-icon">${tex(op?OPS[op].formula:stage.latex)}</span><span class="machine-sample">${tex('h \\approx ')}<span data-flow-stage="${i}"></span></span>${gapLabel}${area?`<span class="area-sample">Area ${tex('\\approx')} <span data-flow-area-value="${i}"></span></span>`:''}${tangent?`<span class="tangent-sample">${tex('\\frac{\\mathrm{d}h}{\\mathrm{d}x} \\approx ')}<span data-flow-slope="${i}"></span></span>`:''}</div><svg class="flow-plot" viewBox="0 0 184 132" role="img" data-flow-plot="${i}"><defs><clipPath id="flow-clip-${i}"><rect x="22" y="15" width="148" height="100"/></clipPath>${area?`<clipPath id="flow-area-window-${i}"><rect data-flow-area-window="${i}" x="26" y="15" width="0" height="100"/></clipPath><clipPath id="flow-positive-${i}"><rect x="22" y="15" width="148" height="${Math.max(0,zero-15)}"/></clipPath><clipPath id="flow-negative-${i}"><rect x="22" y="${zero}" width="148" height="${Math.max(0,115-zero)}"/></clipPath><pattern id="area-hatch-${i}" patternUnits="userSpaceOnUse" width="5" height="5"><path d="M-1 1L1-1M0 5L5 0M4 6L6 4" stroke="#ac6755" stroke-width=".8"/></pattern>`:''}</defs><path class="flow-axis" d="M26 20V108"/><foreignObject x="2" y="${zero-8}" width="20" height="20"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-zero">${tex('0')}</div></foreignObject><g clip-path="url(#flow-clip-${i})">${area?`<g clip-path="url(#flow-area-window-${i})" class="flow-area" data-flow-area="${i}"><path class="area-positive" clip-path="url(#flow-positive-${i})" d="${areaPath}"/><g clip-path="url(#flow-negative-${i})"><path class="area-negative" d="${areaPath}"/><path fill="url(#area-hatch-${i})" d="${areaPath}"/></g></g>`:''}<path class="flow-zero-line" data-zero-line d="M26 ${zero}H164"/>${previous?`<path class="flow-before" d="${flowPath(result,previous.points)}"/>`:''}<path class="flow-curve" d="${flowPath(result,stage.points)}"/>${tangent?`<path class="flow-tangent" data-flow-tangent="${i}"/>`:''}<path class="flow-probe" data-flow-probe="${i}"/><path class="flow-change" data-flow-change="${i}"/>${previous?`<circle class="flow-before-point" data-flow-before="${i}" r="3.5"/>`:''}<circle class="flow-point" data-flow-point="${i}" r="4.5"/></g>${gapPlot}${i===result.stages.length-1?targets:''}</svg></div></article>`;
+    return `${i?`<span class="flow-connector" aria-hidden="true">${icon('arrow',18)}</span>`:''}<article class="flow-machine ${op==='D'||op==='I'||op==='S'?'calculus-machine':''} ${op?OPS[op].color:'source-machine'} ${stage.id===selectedStage?'inspected':''}" aria-label="${i?'Step '+i+': '+OPS[op!].name:'Starting curve'}">${stationScene(op,i,tex)}<div class="machine-body"><div class="machine-meta"><span class="machine-kicker">${i?'STEP '+i:'START'}</span><span class="machine-icon">${op?operationTex(op):tex(symbol+' = '+stage.latex)}</span><span class="machine-sample">${tex(symbol+' \\approx ')}<span data-flow-stage="${i}"></span></span>${gapLabel}${area?`<span class="area-sample">Area ${tex('\\approx')} <span data-flow-area-value="${i}"></span></span>`:''}${tangent?`<span class="tangent-sample">${tex('\\frac{\\mathrm{d}h}{\\mathrm{d}x} \\approx ')}<span data-flow-slope="${i}"></span></span>`:''}</div><svg class="flow-plot" viewBox="0 0 184 132" role="img" data-flow-plot="${i}"><defs><clipPath id="flow-clip-${i}"><rect x="22" y="15" width="148" height="100"/></clipPath>${area?`<clipPath id="flow-area-window-${i}"><rect data-flow-area-window="${i}" x="26" y="15" width="0" height="100"/></clipPath><clipPath id="flow-positive-${i}"><rect x="22" y="15" width="148" height="${Math.max(0,zero-15)}"/></clipPath><clipPath id="flow-negative-${i}"><rect x="22" y="${zero}" width="148" height="${Math.max(0,115-zero)}"/></clipPath><pattern id="area-hatch-${i}" patternUnits="userSpaceOnUse" width="5" height="5"><path d="M-1 1L1-1M0 5L5 0M4 6L6 4" stroke="#ac6755" stroke-width=".8"/></pattern>`:''}</defs><path class="flow-axis" d="M26 20V108"/><foreignObject x="2" y="${zero-8}" width="20" height="20"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-zero">${tex('0')}</div></foreignObject><g clip-path="url(#flow-clip-${i})">${area?`<g clip-path="url(#flow-area-window-${i})" class="flow-area" data-flow-area="${i}"><path class="area-positive" clip-path="url(#flow-positive-${i})" d="${areaPath}"/><g clip-path="url(#flow-negative-${i})"><path class="area-negative" d="${areaPath}"/><path fill="url(#area-hatch-${i})" d="${areaPath}"/></g></g>`:''}<path class="flow-zero-line" data-zero-line d="M26 ${zero}H164"/>${previous?`<path class="flow-before" d="${stagePath(result,previous)}"/>`:''}<path class="flow-curve" d="${stagePath(result,stage)}"/>${pathEnds(stage.paths,p=>flowPoint(result,p))}${tangent?`<path class="flow-tangent" data-flow-tangent="${i}"/>`:''}<path class="flow-probe" data-flow-probe="${i}"/><path class="flow-change" data-flow-change="${i}"/>${previous?`<circle class="flow-before-point" data-flow-before="${i}" r="3.5"/>`:''}<circle class="flow-point" data-flow-point="${i}" r="4.5"/></g>${gapPlot}${i===result.stages.length-1&&!result.relation?targets:''}</svg></div></article>`;
   }).join('');
-  return `<div class="flow-controls"><div class="flow-control-heading"><label for="flow-position">Explore at ${tex('x = ')}<output id="flow-position-value" for="flow-position">${tex(positionText(x))}</output></label>${gapGoal}${goals.length?`<div class="flow-goals" role="group" aria-label="Target coordinates and validation">${goalList}</div>`:''}</div><div class="flow-slider-row"><span>${tex(positionText(scale.start))}</span><input id="flow-position" type="range" min="${scale.start}" max="${scale.end}" step="${step}" value="${x}" aria-label="Position x" aria-valuetext="x = ${positionText(x)}"><span>${tex(positionText(scale.end))}</span><span class="flow-key"><span class="before-key"></span>Before <span class="after-key"></span>After</span></div><span class="sr-only">Every graph uses the same height scale. Move position to compare each operation. A tangent shows the incoming slope before a slope block. Before an area block, shading shows accumulated area: solid above zero adds, hatched below zero subtracts. Targets appear on the final graph. During a throw, position follows the flight, then returns to your inspected position.</span></div><div class="flow-line" role="group" aria-label="Transformation chain">${cards}</div>`;
+  return `<div class="flow-controls"><div class="flow-control-heading"><label for="flow-position">Explore at ${tex('x = ')}<output id="flow-position-value" for="flow-position">${tex(positionText(x))}</output></label>${gapGoal}${goals.length?`<div class="flow-goals" role="group" aria-label="Target coordinates and validation">${goalList}</div>`:''}</div><div class="flow-slider-row"><span>${tex(positionText(scale.start))}</span><input id="flow-position" type="range" min="${scale.start}" max="${scale.end}" step="any" value="${x}" aria-label="Position x" aria-valuetext="x = ${positionText(x)}"><span>${tex(positionText(scale.end))}</span><span class="flow-key"><span class="before-key"></span>Before <span class="after-key"></span>After</span></div><span class="sr-only">Every graph uses the same height scale. Move position to compare each operation. A tangent shows the incoming slope before a slope block. Before an area block, shading shows accumulated area: solid above zero adds, hatched below zero subtracts. Targets appear on the final graph. During a throw, position follows the flight, then returns to your inspected position.</span></div><div class="flow-line" role="group" aria-label="Transformation chain">${cards}${result.relation?relationCard(result,targets):''}</div>`;
 }
 export function updateFlowProbe(root:HTMLElement,state:State,result:Result,index:number) {
+  index=Math.max(0,Math.min(result.points.length-1,index));
+  updateStationScene(root,state,result,index,tex);
+  if(result.relation){
+    const values=heightsAt(result.relation.paths,result.points[index][0]);
+    root.querySelectorAll<SVGCircleElement>('[data-relation-probe]').forEach((point,i)=>{const value=values[i];point.style.display=value?'':'none';if(value){const [x,y]=flowPoint(result,value);point.setAttribute('cx',String(x));point.setAttribute('cy',String(y));}});
+    const label=root.querySelector('[data-relation-values]');if(label)label.innerHTML=tex(values.length?'h \\approx '+values.map(v=>sampleTex(v[1])).join(',\\;'):'\\nexists h\\in\\mathbb{R}');
+  }
   const scale=flowScale(result),x=result.points[index][0],zero=flowPoint(result,[x,0])[1];
   const slider=root.querySelector<HTMLInputElement>('#flow-position');
   if(slider){slider.dataset.probeIndex=String(index);slider.value=String(x);slider.setAttribute('aria-valuetext',`x = ${positionText(x)}`);slider.style.setProperty('--position',`${100*(x-scale.start)/(scale.end-scale.start)}%`);}
@@ -174,7 +281,7 @@ export function updateFlowProbe(root:HTMLElement,state:State,result:Result,index
     const sample=root.querySelector(`[data-flow-stage="${i}"]`);if(sample)sample.innerHTML=tex(sampleTex(value));
     const guide=result.heightGuide,gap=guide?.stages[i];
     const gapDescription=guide&&gap?` The height gap from x=${guide.fromX} to x=${guide.toX} is ${gap.gap}.`:'';
-    root.querySelector(`[data-flow-plot="${i}"]`)?.setAttribute('aria-label',`At position ${positionText(x)}, height is approximately ${Number(value.toPrecision(4))}.${gapDescription}`);
+    root.querySelector(`[data-flow-plot="${i}"]`)?.setAttribute('aria-label',`At position ${positionText(x)}, ${result.relation?'squared height':'height'} is approximately ${Number(value.toPrecision(4))}.${gapDescription}`);
     if(state.nodes[i]?.op==='I') {
       const accumulated=result.stages[i+1].points[index][1];
       root.querySelector('[data-flow-area-window="'+i+'"]')?.setAttribute('width',String(Math.max(0,px-26)));

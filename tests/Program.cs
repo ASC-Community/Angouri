@@ -1,6 +1,8 @@
 using System.Text.Json.Nodes;
 using System.Numerics;
 using Angouri.Kernel;
+using AngouriMath;
+using AngouriMath.Core;
 
 static class ContractTests
 {
@@ -35,10 +37,33 @@ static class ContractTests
         [25] = new() { ["H"] = 5, ["A"] = 6 },
         [26] = new() { ["H"] = 4, ["A"] = 4, ["N"] = 2 },
         [27] = new() { ["A"] = 1, ["Q"] = 1, ["N"] = 1 },
-        [28] = new() { ["H"] = 3, ["A"] = 3, ["N"] = 2, ["Q"] = 1 }
+        [28] = new() { ["H"] = 3, ["A"] = 3, ["N"] = 2, ["Q"] = 1 },
+        [29] = new() { ["Q"] = 1, ["H"] = 1 },
+        [30] = new() { ["Q"] = 1, ["N"] = 1, ["A"] = 1, ["H"] = 1 },
+        [31] = new() { ["H"] = 2, ["A"] = 2, ["N"] = 1, ["Q"] = 2 },
+        [32] = new() { ["A"] = 1, ["N"] = 1 },
+        [33] = new() { ["Q"] = 1 },
+        [34] = new() { ["A"] = 1, ["Q"] = 1 },
+        [35] = new() { ["Q"] = 1 },
+        [36] = new() { ["H"] = 2, ["A"] = 2, ["N"] = 1, ["Q"] = 1 },
+        [37] = new() { ["A"] = 1 },
+        [38] = new() { ["A"] = 1 },
+        [39] = new() { ["N"] = 1, ["A"] = 1 },
+        [40] = new() { ["H"] = 1, ["A"] = 1 },
+        [41] = new() { ["D"] = 1, ["A"] = 1 },
+        [42] = new() { ["H"] = 2, ["A"] = 2, ["N"] = 2 }
     };
 
-    private static readonly int[] Limits = [1, 1, 2, 5, 3, 1, 1, 2, 3, 2, 8, 1, 3, 1, 5, 1, 2, 4, 1, 2, 2, 9, 8, 4, 10, 8, 2, 8];
+    private static readonly int[] Limits = [1, 1, 2, 5, 3, 1, 1, 2, 3, 2, 8, 1, 3, 1, 5, 1, 2, 4, 1, 2, 2, 9, 8, 4, 10, 8, 2, 8,
+        1, 3, 7, 3, 3, 4, 3, 8, 3, 3, 4, 4, 3, 8];
+
+    private static readonly Dictionary<int, (string Op, int Before, int After)> Stations = new()
+    {
+        [32] = ("D", 1, 1), [33] = ("D", 1, 1), [34] = ("D", 2, 1),
+        [35] = ("D", 1, 1), [36] = ("D", 5, 2), [37] = ("I", 1, 1),
+        [38] = ("I", 1, 1), [39] = ("I", 2, 1), [40] = ("I", 1, 2),
+        [41] = ("I", 1, 1), [42] = ("I", 5, 2)
+    };
 
     private static readonly Dictionary<string, int> LegacyRemixInventory = new()
     {
@@ -58,6 +83,13 @@ static class ContractTests
         ["0", "2", "4"], ["0", "2", "4"], ["0", "2", "4"],
         ["0", "1", "2", "3", "4"], ["0", "1", "2", "3", "4"],
         ["0", "2", "4"], ["0", "2", "4"], ["0", "1", "2", "3", "4"],
+        ["0", "1", "2", "3", "4"], ["0", "1", "2", "3", "4"],
+        ["0", "1", "2", "3", "4"], ["0", "1", "2", "3", "4"],
+        ["0", "1", "2", "3", "4"], ["0", "1", "2", "3", "4"],
+        ["0", "1", "2", "3", "4"], ["0", "1", "2", "3", "4"],
+        ["0", "1", "2", "3", "4"], ["0", "1", "2", "3", "4"],
+        ["0", "1", "2", "3", "4"], ["0", "1", "2", "3", "4"],
+        ["0", "1", "2", "3", "4"], ["0", "1", "2", "3", "4"],
         ["0", "1", "2", "3", "4"], ["0", "1", "2", "3", "4"]
     ];
 
@@ -75,7 +107,21 @@ static class ContractTests
         ["0", "255/256", "1", "255/256", "0"], ["0", "63/64", "1", "63/64", "0"],
         ["3/4", "7/4", "3/4"], ["13/8", "17/8", "13/8"],
         ["1/4", "5/8", "3/4", "5/8", "1/4"], ["1", "0", "1", "4", "9"],
-        ["3/8", "1/2", "3/8", "0", "-5/8"]
+        ["3/8", "1/2", "3/8", "0", "-5/8"],
+        ["1", "1/64", "0", "1/64", "1"],
+        ["0", "63/64", "1", "63/64", "0"],
+        ["0", "255/256", "1", "255/256", "0"],
+        ["0", "1/2", "1", "3/2", "2"],
+        ["-4", "-2", "0", "2", "4"],
+        ["-2", "0", "2", "4", "6"],
+        ["0", "3/4", "0", "-3/4", "0"],
+        ["1", "7/4", "1", "1/4", "1"],
+        ["0", "2", "4", "6", "8"],
+        ["0", "5/2", "4", "9/2", "4"],
+        ["0", "-4/3", "-2/3", "0", "-4/3"],
+        ["1", "7/4", "2", "7/4", "1"],
+        ["0", "3/2", "2", "3/2", "0"],
+        ["1", "7/4", "1", "1/4", "1"]
     ];
 
     public static int Main()
@@ -90,6 +136,13 @@ static class ContractTests
             EarlierChapterExtensionsContract();
             LaterChapterCapstonesContract();
             CapstoneContract();
+            FixedStationChapterContract();
+            ConstructedEquationContract();
+            ExtendedPuzzleContract();
+            PiecewisePresentationContract();
+            ExactEqualityContract();
+            HeightSquaredRelationContract();
+            CircleContract();
             CommandAndIdentityContract();
             InvalidInputContract();
             ReusableRemixContract();
@@ -186,9 +239,15 @@ static class ContractTests
             [22] = ["D", "H", "H", "Q", "Q", "N", "A"],
             [23] = ["I", "N", "A", "Q", "N", "A"], [24] = ["A", "H", "A", "H"],
             [25] = ["A", "H", "H", "A", "H", "A"], [26] = ["A", "H", "H", "H", "N", "A"],
-            [27] = ["A", "Q"], [28] = ["A", "H", "Q", "N", "A", "H"]
+            [27] = ["A", "Q"], [28] = ["A", "H", "Q", "N", "A", "H"],
+            [29] = ["Q"], [30] = ["Q", "N", "A"], [31] = ["H", "H", "Q", "Q", "N", "A"],
+            [32] = ["D", "A"], [33] = ["Q", "D"], [34] = ["A", "Q", "D"],
+            [35] = ["Q", "D"], [36] = ["H", "H", "N", "A", "Q", "D", "A"],
+            [37] = ["A", "I"], [38] = ["A", "I"], [39] = ["N", "A", "I"],
+            [40] = ["H", "I", "A"], [41] = ["D", "I"],
+            [42] = ["H", "H", "N", "A", "I", "N", "A"]
         };
-        Equal(26, guideSolutions.Count, "height guide covers every authored puzzle after the introductions");
+        Equal(40, guideSolutions.Count, "height guide covers every authored puzzle after the introductions");
         foreach (var (level, ops) in guideSolutions)
         {
             True(IsIndependentSolution(level, ops), $"level {level} height-guide recipe solves independently");
@@ -957,6 +1016,73 @@ static class ContractTests
         }
     }
 
+    private static BoundedOracleAnalysis AnalyzeFixedStation(int level)
+    {
+        var station = Stations[level];
+        var analysis = new BoundedOracleAnalysis
+        {
+            RawByLength = new int[Limits[level - 1] + 1],
+            PlayableByLength = new int[Limits[level - 1] + 1]
+        };
+
+        foreach (var movable in Enumerate(Inventories[level], station.Before + station.After))
+        {
+            for (int stationIndex = 0; stationIndex <= movable.Count; stationIndex++)
+            {
+                if (stationIndex > station.Before || movable.Count - stationIndex > station.After) continue;
+                string[] recipe = [.. movable.Take(stationIndex), station.Op, .. movable.Skip(stationIndex)];
+                Analyze(recipe);
+            }
+        }
+        return analysis;
+
+        void Analyze(string[] recipe)
+        {
+            analysis.RawCount++;
+            analysis.RawByLength[recipe.Length]++;
+            Fraction[] polynomial = BuildPolynomial(level, []);
+            bool guarded = true;
+            Measure(polynomial);
+            foreach (string op in recipe)
+            {
+                polynomial = ApplyPolynomial(polynomial, op);
+                Measure(polynomial);
+            }
+
+            string text = string.Concat(recipe);
+            bool exactSolution = GoalXs[level - 1]
+                .Select((x, index) => EvaluatePolynomial(polynomial, Fraction.Parse(x)))
+                .SequenceEqual(GoalYs[level - 1].Select(Fraction.Parse));
+            if (exactSolution) analysis.RawSolutions.Add(text);
+            if (guarded)
+            {
+                analysis.PlayableCount++;
+                analysis.PlayableByLength[recipe.Length]++;
+                if (exactSolution) analysis.PlayableSolutions.Add(text);
+            }
+
+            void Measure(Fraction[] stage)
+            {
+                int degree = stage.Length - 1;
+                analysis.MaxDegree = Math.Max(analysis.MaxDegree, degree);
+                double startSlope = stage.Length > 1 ? Math.Abs(stage[1].ToDouble()) : 0.0;
+                if (double.IsFinite(startSlope))
+                    analysis.MaxStartSlopeMagnitude = Math.Max(analysis.MaxStartSlopeMagnitude, startSlope);
+                else guarded = false;
+                if (degree > 32) guarded = false;
+                for (int sampleIndex = 0; sampleIndex <= 80; sampleIndex++)
+                {
+                    double x = sampleIndex / 20.0;
+                    double value = EvaluatePolynomial(stage, new Fraction(sampleIndex, 20)).ToDouble();
+                    double magnitude = Math.Abs(value);
+                    if (double.IsFinite(magnitude))
+                        analysis.MaxPreviewMagnitude = Math.Max(analysis.MaxPreviewMagnitude, magnitude);
+                    if (!double.IsFinite(magnitude) || magnitude > 10_000_000.0) guarded = false;
+                }
+            }
+        }
+    }
+
     private static void EarlierChapterExtensionsContract()
     {
         var level24 = AnalyzeBoundedCapstone(24);
@@ -1316,8 +1442,1497 @@ static class ContractTests
             $"maximum guarded sample |h(x)|={maximumSampleMagnitude:R} ({maximumRecipe} at x={maximumSampleIndex}/20)");
     }
 
+    private static void FixedStationChapterContract()
+    {
+        Equal(42, GoalXs.Length, "authoritative checkpoint-position catalogue size");
+        Equal(42, GoalYs.Length, "authoritative checkpoint-height catalogue size");
+        Equal(42, Inventories.Count, "authoritative inventory catalogue size");
+        Equal(42, Limits.Length, "authoritative part-limit catalogue size");
+        True(!Level(1)["state"]!.AsObject().ContainsKey("station"),
+            "original authored state shape has no station field");
+        True(!Level(31)["state"]!.AsObject().ContainsKey("station"),
+            "new ordinary puzzle state has no station field");
+
+        var intended = new Dictionary<int, string[]>
+        {
+            [29] = ["Q"], [30] = ["Q", "N", "A"], [31] = ["H", "H", "Q", "Q", "N", "A"],
+            [32] = ["D", "A"], [33] = ["Q", "D"], [34] = ["A", "Q", "D"],
+            [35] = ["Q", "D"], [36] = ["H", "H", "N", "A", "Q", "D", "A"],
+            [37] = ["A", "I"], [38] = ["A", "I"], [39] = ["N", "A", "I"],
+            [40] = ["H", "I", "A"], [41] = ["D", "I"],
+            [42] = ["H", "H", "N", "A", "I", "N", "A"]
+        };
+
+        foreach ((int level, string[] recipe) in intended)
+        {
+            True(IsIndependentSolution(level, recipe), $"level {level} intended recipe solves in independent oracle");
+            var played = PlayPuzzle(level, recipe);
+            CheckResultShape(level, played["result"]!.AsObject(), recipe);
+            CheckHeightGuide(level, played["result"]!.AsObject(), recipe);
+            Equal(true, played["result"]!["solved"]!.GetValue<bool>(), $"level {level} intended recipe solves in kernel");
+        }
+
+        var ordinaryAnalyses = new Dictionary<int, BoundedOracleAnalysis>
+        {
+            [29] = AnalyzeBoundedCapstone(29),
+            [30] = AnalyzeBoundedCapstone(30),
+            [31] = AnalyzeBoundedCapstone(31)
+        };
+        CheckAuthoredOracle(ordinaryAnalyses[29], 3, 1, 6, 1, "Q", "flatter-top power discovery");
+        CheckAuthoredOracle(ordinaryAnalyses[30], 41, 1, 6, 3, "QNA", "flatter-top power reflection");
+        CheckAuthoredOracle(ordinaryAnalyses[31], 1841, 1, 8, 6, "HHQQNA", "flatter-top power capstone");
+
+        var stationAnalyses = Stations.Keys.ToDictionary(level => level, AnalyzeFixedStation);
+        CheckAuthoredOracle(stationAnalyses[32], 7, 1, 2, 2, "DA", "fixed derivative discovery");
+        CheckAuthoredOracle(stationAnalyses[33], 3, 1, 2, 2, "QD", "fixed derivative input square");
+        CheckAuthoredOracle(stationAnalyses[34], 9, 1, 2, 3, "AQD", "fixed derivative input lift");
+        CheckAuthoredOracle(stationAnalyses[35], 3, 1, 4, 2, "QD", "fixed derivative flat spots");
+        CheckAuthoredOracle(stationAnalyses[36], 1383, 3, 4, 7,
+            "HHNAQDA,HNHAQDA,NHHAQDA", "fixed derivative capstone");
+        CheckAuthoredOracle(stationAnalyses[37], 3, 1, 1, 2, "AI", "fixed integral scaling");
+        CheckAuthoredOracle(stationAnalyses[38], 3, 1, 2, 2, "AI", "fixed integral peak shift");
+        CheckAuthoredOracle(stationAnalyses[39], 9, 1, 3, 3, "NAI", "fixed integral input shape");
+        CheckAuthoredOracle(stationAnalyses[40], 9, 2, 2, 3, "HIA,IHA", "fixed integral scale relation");
+        CheckAuthoredOracle(stationAnalyses[41], 7, 1, 3, 2, "DI", "fixed integral rebuild");
+        CheckAuthoredOracle(stationAnalyses[42], 718, 6, 3, 7,
+            "HHNAINA,HHNANIA,HNHAINA,HNHANIA,NHHAINA,NHHANIA", "fixed integral capstone");
+        Equal(2154, stationAnalyses.Values.Sum(analysis => analysis.RawCount),
+            "complete fixed-station legal recipe enumeration count");
+        Equal(19, stationAnalyses.Values.Sum(analysis => analysis.RawSolutions.Count),
+            "complete fixed-station exact solution count");
+
+        foreach (int level in new[] { 33, 34, 35, 36, 37, 38, 39, 42 })
+        {
+            string stationOp = Stations[level].Op;
+            True(stationAnalyses[level].PlayableSolutions.All(recipe => recipe[0].ToString() != stationOp),
+                $"level {level} has no all-output fixed-station solution");
+        }
+
+        foreach ((int level, var specification) in Stations.OrderBy(pair => pair.Key))
+        {
+            var initial = Level(level);
+            var state = initial["state"]!.AsObject();
+            var station = state["station"]!.AsObject();
+            Equal("station", station["id"]!.GetValue<string>(), $"level {level} canonical station identity");
+            Equal(specification.Op, station["op"]!.GetValue<string>(), $"level {level} fixed station operation");
+            Equal(specification.Before, station["before"]!.GetValue<int>(), $"level {level} input slot capacity");
+            Equal(specification.After, station["after"]!.GetValue<int>(), $"level {level} output slot capacity");
+            Equal(specification.Before + specification.After + 1, state["limit"]!.GetValue<int>(),
+                $"level {level} part limit includes the fixed station");
+            Equal(1, state["nodes"]!.AsArray().Count, $"level {level} starts with one fixed node");
+            Equal("station", state["nodes"]![0]!["id"]!.GetValue<string>(),
+                $"level {level} starts with canonical station node identity");
+            Equal(specification.Op, state["nodes"]![0]!["op"]!.GetValue<string>(),
+                $"level {level} starts with canonical station node operation");
+            True(!state["inventory"]!.AsObject().ContainsKey(specification.Op),
+                $"level {level} inventory excludes its fixed operation");
+            Equal(2, initial["result"]!["stages"]!.AsArray().Count,
+                $"level {level} initial evaluation includes the fixed station stage");
+            Equal("station", initial["result"]!["stages"]![1]!["id"]!.GetValue<string>(),
+                $"level {level} fixed station has a canonical stage identity");
+        }
+
+        var level32State = Level(32)["state"]!;
+        var legacyStationState = Clone(level32State).AsObject();
+        legacyStationState.Remove("station");
+        var derivedStation = Act(legacyStationState, new JsonObject { ["type"] = "evaluate" });
+        Equal("D", derivedStation["state"]!["station"]!["op"]!.GetValue<string>(),
+            "missing authored station metadata is derived from source configuration");
+
+        foreach ((string field, JsonNode value) in new (string, JsonNode)[]
+        {
+            ("id", JsonValue.Create("other")!), ("op", JsonValue.Create("I")!),
+            ("before", JsonValue.Create(2)!), ("after", JsonValue.Create(0)!)
+        })
+        {
+            var tampered = Clone(level32State).AsObject();
+            tampered["station"]![field] = value;
+            InvalidContains(new JsonObject
+            {
+                ["state"] = tampered, ["action"] = new JsonObject { ["type"] = "evaluate" }
+            }, "station", $"tampered fixed-station {field} rejection");
+        }
+        var nullStation = Clone(level32State).AsObject();
+        nullStation["station"] = null;
+        InvalidContains(new JsonObject
+        {
+            ["state"] = nullStation, ["action"] = new JsonObject { ["type"] = "evaluate" }
+        }, "station", "null fixed-station metadata rejection");
+        var unexpectedStation = Clone(Level(31)["state"]!).AsObject();
+        unexpectedStation["station"] = new JsonObject
+        {
+            ["id"] = "station", ["op"] = "D", ["before"] = 1, ["after"] = 1
+        };
+        InvalidContains(new JsonObject
+        {
+            ["state"] = unexpectedStation, ["action"] = new JsonObject { ["type"] = "evaluate" }
+        }, "station", "station metadata on an ordinary puzzle rejection");
+
+        var missingStationNode = Clone(level32State).AsObject();
+        missingStationNode["nodes"] = new JsonArray();
+        InvalidContains(new JsonObject
+        {
+            ["state"] = missingStationNode, ["action"] = new JsonObject { ["type"] = "evaluate" }
+        }, "station", "missing fixed station node rejection");
+        var wrongStationOperation = Clone(level32State).AsObject();
+        wrongStationOperation["nodes"]![0]!["op"] = "I";
+        InvalidContains(new JsonObject
+        {
+            ["state"] = wrongStationOperation, ["action"] = new JsonObject { ["type"] = "evaluate" }
+        }, "station", "wrong fixed station node operation rejection");
+        var duplicateStationNode = Clone(level32State).AsObject();
+        duplicateStationNode["nodes"]!.AsArray().Add(new JsonObject { ["id"] = "station", ["op"] = "D" });
+        Invalid(new JsonObject
+        {
+            ["state"] = duplicateStationNode, ["action"] = new JsonObject { ["type"] = "evaluate" }
+        }, "duplicate fixed station node rejection");
+
+        var inputOverflow = Clone(level32State).AsObject();
+        inputOverflow["nodes"] = new JsonArray
+        {
+            new JsonObject { ["id"] = "input-a", ["op"] = "A" },
+            new JsonObject { ["id"] = "input-n", ["op"] = "N" },
+            new JsonObject { ["id"] = "station", ["op"] = "D" }
+        };
+        InvalidContains(new JsonObject
+        {
+            ["state"] = inputOverflow, ["action"] = new JsonObject { ["type"] = "evaluate" }
+        }, "slot capacity", "fixed station input capacity rejection");
+        var outputOverflow = Clone(level32State).AsObject();
+        outputOverflow["nodes"] = new JsonArray
+        {
+            new JsonObject { ["id"] = "station", ["op"] = "D" },
+            new JsonObject { ["id"] = "output-a", ["op"] = "A" },
+            new JsonObject { ["id"] = "output-n", ["op"] = "N" }
+        };
+        InvalidContains(new JsonObject
+        {
+            ["state"] = outputOverflow, ["action"] = new JsonObject { ["type"] = "evaluate" }
+        }, "slot capacity", "fixed station output capacity rejection");
+
+        InvalidContains(new JsonObject
+        {
+            ["state"] = Clone(level32State),
+            ["action"] = new JsonObject { ["type"] = "remove", ["id"] = "station" }
+        }, "cannot be removed", "fixed station remove rejection");
+        InvalidContains(new JsonObject
+        {
+            ["state"] = Clone(level32State),
+            ["action"] = new JsonObject { ["type"] = "move", ["id"] = "station", ["index"] = 0 }
+        }, "cannot be moved", "fixed station move rejection");
+        InvalidContains(new JsonObject
+        {
+            ["state"] = Clone(level32State),
+            ["action"] = new JsonObject { ["type"] = "insert", ["id"] = "regular-d", ["op"] = "D", ["index"] = 0 }
+        }, "not available", "fixed operation is excluded from movable inventory");
+
+        var crossing = Act(Level(34)["state"]!, new JsonObject
+        {
+            ["type"] = "insert", ["id"] = "crossing-a", ["op"] = "A", ["index"] = 0
+        });
+        crossing = Act(crossing["state"]!, new JsonObject
+        {
+            ["type"] = "move", ["id"] = "crossing-a", ["index"] = 1
+        });
+        Equal("station", crossing["state"]!["nodes"]![0]!["id"]!.GetValue<string>(),
+            "ordinary node can move from input to output side");
+        crossing = Act(crossing["state"]!, new JsonObject
+        {
+            ["type"] = "move", ["id"] = "crossing-a", ["index"] = 0
+        });
+        Equal("station", crossing["state"]!["nodes"]![1]!["id"]!.GetValue<string>(),
+            "ordinary node can move back across the fixed station");
+        var fullOutput = Act(Level(34)["state"]!, new JsonObject
+        {
+            ["type"] = "insert", ["id"] = "output-a", ["op"] = "A", ["index"] = 1
+        });
+        InvalidContains(new JsonObject
+        {
+            ["state"] = Clone(fullOutput["state"]!),
+            ["action"] = new JsonObject { ["type"] = "insert", ["id"] = "output-q", ["op"] = "Q", ["index"] = 2 }
+        }, "slot capacity", "fixed station edit cannot overflow one side");
+
+        var built34 = PlayPuzzle(34, intended[34]);
+        var roundTrip34 = Act(built34["state"]!, new JsonObject { ["type"] = "evaluate" });
+        Equal("played-0", roundTrip34["state"]!["nodes"]![0]!["id"]!.GetValue<string>(),
+            "state round-trip preserves first input identity");
+        Equal("played-1", roundTrip34["state"]!["nodes"]![1]!["id"]!.GetValue<string>(),
+            "state round-trip preserves second input identity");
+        Equal("station", roundTrip34["state"]!["nodes"]![2]!["id"]!.GetValue<string>(),
+            "state round-trip preserves authored station position");
+        var reset34 = Act(roundTrip34["state"]!, new JsonObject { ["type"] = "reset" });
+        Equal(1, reset34["state"]!["nodes"]!.AsArray().Count, "reset clears movable nodes only");
+        Equal("station", reset34["state"]!["nodes"]![0]!["id"]!.GetValue<string>(),
+            "reset retains the fixed station");
+        Equal("D", reset34["state"]!["station"]!["op"]!.GetValue<string>(),
+            "reset retains fixed station metadata");
+
+        var built36 = PlayPuzzle(36, intended[36]);
+        Equal("station", built36["result"]!["stages"]![6]!["id"]!.GetValue<string>(),
+            "derivative station participates in ordered expression stages");
+        Equal(8, built36["result"]!["heightGuide"]!["stages"]!.AsArray().Count,
+            "derivative station participates in height-guide stages");
+        var built42 = PlayPuzzle(42, intended[42]);
+        Equal("station", built42["result"]!["stages"]![5]!["id"]!.GetValue<string>(),
+            "integral station participates in ordered expression stages");
+        Equal(8, built42["result"]!["heightGuide"]!["stages"]!.AsArray().Count,
+            "integral station participates in height-guide stages");
+
+        var level40Alternative = PlayPuzzle(40, ["I", "H", "A"]);
+        Equal(true, level40Alternative["result"]!["solved"]!.GetValue<bool>(),
+            "integration and halving legitimately commute in level 40");
+
+        var built33 = PlayPuzzle(33, intended[33]);
+        var remixed33 = Act(built33["state"]!, new JsonObject { ["type"] = "remix" });
+        True(!remixed33["state"]!.AsObject().ContainsKey("station"),
+            "remix removes fixed-station semantics");
+        Equal(0, remixed33["state"]!["inventory"]!.AsObject().Count,
+            "remixed station construction uses reusable inventory");
+        Equal(0, remixed33["state"]!["limit"]!.GetValue<int>(),
+            "remixed station construction uses unlimited limit sentinel");
+        var movedRemixedStation = Act(remixed33["state"]!, new JsonObject
+        {
+            ["type"] = "move", ["id"] = "station", ["index"] = 0
+        });
+        var removedRemixedStation = Act(movedRemixedStation["state"]!, new JsonObject
+        {
+            ["type"] = "remove", ["id"] = "station"
+        });
+        Equal(1, removedRemixedStation["state"]!["nodes"]!.AsArray().Count,
+            "remixed fixed node is an ordinary removable operation");
+        var directRemix = Remix(32);
+        True(!directRemix["state"]!.AsObject().ContainsKey("station"),
+            "creation on a station source has no fixed station");
+        Equal(0, directRemix["state"]!["nodes"]!.AsArray().Count,
+            "creation on a station source starts without a fixed node");
+
+        var creationExport = Act(built33["state"]!, new JsonObject
+        {
+            ["type"] = "export", ["kind"] = "creation", ["view"] = "flow"
+        });
+        True(!creationExport["artifact"]!.AsObject().ContainsKey("station"),
+            "creation artifact regularizes the fixed station");
+        Equal(2, creationExport["artifact"]!["nodes"]!.AsArray().Count,
+            "creation artifact preserves every operation including the former station");
+        var creationImport = Ok(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = Clone(creationExport["artifact"]!) }
+        });
+        True(!creationImport["state"]!.AsObject().ContainsKey("station"),
+            "imported creation keeps the former station movable");
+        var movedCreationStation = Act(creationImport["state"]!, new JsonObject
+        {
+            ["type"] = "move", ["id"] = "station", ["index"] = 0
+        });
+        Equal("station", movedCreationStation["state"]!["nodes"]![0]!["id"]!.GetValue<string>(),
+            "former station moves normally in an imported creation");
+
+        var derivativeChallengeExport = Act(built33["state"]!, new JsonObject
+        {
+            ["type"] = "export", ["kind"] = "challenge", ["view"] = "function"
+        });
+        var derivativeChallenge = derivativeChallengeExport["artifact"]!.AsObject();
+        Equal(2, derivativeChallenge["limit"]!.GetValue<int>(),
+            "fixed derivative challenge counts every witness node");
+        Equal(1, derivativeChallenge["inventory"]!["D"]!.GetValue<int>(),
+            "fixed derivative exports as regular challenge inventory");
+        Equal(1, derivativeChallenge["inventory"]!["Q"]!.GetValue<int>(),
+            "fixed derivative challenge preserves movable witness stock");
+        var derivativeChallengeImport = Ok(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = Clone(derivativeChallenge) }
+        });
+        True(!derivativeChallengeImport["state"]!.AsObject().ContainsKey("station"),
+            "shared derivative challenge has no fixed station");
+        var derivativeChallengeSolved = derivativeChallengeImport;
+        foreach ((string op, int index) in new[] { "Q", "D" }.Select((op, index) => (op, index)))
+            derivativeChallengeSolved = Act(derivativeChallengeSolved["state"]!, new JsonObject
+            {
+                ["type"] = "insert", ["id"] = $"shared-derivative-{index}", ["op"] = op, ["index"] = index
+            });
+        Equal(true, derivativeChallengeSolved["result"]!["solved"]!.GetValue<bool>(),
+            "shared derivative challenge admits its regularized witness");
+
+        var integralChallengeExport = Act(built42["state"]!, new JsonObject
+        {
+            ["type"] = "export", ["kind"] = "challenge", ["view"] = "flight"
+        });
+        var integralChallenge = integralChallengeExport["artifact"]!.AsObject();
+        Equal(7, integralChallenge["limit"]!.GetValue<int>(),
+            "fixed integral challenge counts every witness node");
+        Equal(1, integralChallenge["inventory"]!["I"]!.GetValue<int>(),
+            "fixed integral exports as regular challenge inventory");
+        Equal(2, integralChallenge["inventory"]!["H"]!.GetValue<int>(),
+            "fixed integral challenge preserves all half blocks");
+        Equal(2, integralChallenge["inventory"]!["A"]!.GetValue<int>(),
+            "fixed integral challenge preserves all lift blocks");
+        Equal(2, integralChallenge["inventory"]!["N"]!.GetValue<int>(),
+            "fixed integral challenge preserves all reflect blocks");
+        var integralChallengeImport = Ok(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = Clone(integralChallenge) }
+        });
+        True(!integralChallengeImport["state"]!.AsObject().ContainsKey("station"),
+            "shared integral challenge has no fixed station");
+        var integralChallengeSolved = integralChallengeImport;
+        for (int index = 0; index < intended[42].Length; index++)
+            integralChallengeSolved = Act(integralChallengeSolved["state"]!, new JsonObject
+            {
+                ["type"] = "insert", ["id"] = $"shared-integral-{index}",
+                ["op"] = intended[42][index], ["index"] = index
+            });
+        Equal(true, integralChallengeSolved["result"]!["solved"]!.GetValue<bool>(),
+            "shared integral challenge admits its regularized witness");
+
+        foreach ((int level, BoundedOracleAnalysis analysis) in ordinaryAnalyses.Concat(stationAnalyses).OrderBy(pair => pair.Key))
+            PrintBoundedOracle(level, analysis);
+    }
+
+    private static void CircleContract()
+    {
+        var specifications = new Dictionary<int, (
+            string InitialX, string InitialY, string InitialRadius,
+            string SolutionX, string SolutionY, string SolutionRadius,
+            string[] Editable, (string X, string Y)[] Goals)>
+        {
+            [43] = ("2", "0", "1/2", "2", "0", "1", ["radius"],
+                [("3", "0"), ("2", "1"), ("1", "0"), ("2", "-1")]),
+            [44] = ("2", "0", "1", "3/2", "1/2", "1", ["x", "y"],
+                [("5/2", "1/2"), ("3/2", "3/2"), ("1/2", "1/2"), ("3/2", "-1/2")]),
+            [45] = ("2", "0", "1", "2", "1/2", "5/4", ["y", "radius"],
+                [("11/4", "3/2"), ("5/4", "-1/2"), ("13/4", "1/2")]),
+            [46] = ("2", "0", "1", "9/4", "1/4", "5/4", ["x", "y", "radius"],
+                [("3", "5/4"), ("5/4", "1"), ("3", "-3/4")]),
+            [47] = ("2", "0", "1", "5/4", "-1/2", "5/2", ["x", "y", "radius"],
+                [("11/4", "3/2"), ("-3/4", "1"), ("5/4", "-3")])
+        };
+
+        static Fraction DistanceSquared(string centreX, string centreY, (string X, string Y) goal)
+        {
+            Fraction dx = Fraction.Parse(goal.X) - Fraction.Parse(centreX);
+            Fraction dy = Fraction.Parse(goal.Y) - Fraction.Parse(centreY);
+            return dx * dx + dy * dy;
+        }
+
+        void CheckCircleResult(int level, JsonObject response, string centreX, string centreY,
+            string radiusText, IReadOnlyList<(string X, string Y)> goals)
+        {
+            var result = response["result"]!.AsObject();
+            True(!string.IsNullOrWhiteSpace(result["constructedLatex"]!.GetValue<string>()),
+                $"circle {level} constructed equation is nonempty");
+            var circle = result["circle"]!.AsObject();
+            Fraction radius = Fraction.Parse(radiusText);
+            Fraction radiusSquared = radius * radius;
+            Equal(radiusSquared.ToString(), circle["radiusSquared"]!.GetValue<string>(),
+                $"circle {level} exact radius squared");
+            Equal(Fraction.Parse(centreX).ToDouble(), circle["centre"]![0]!.GetValue<double>(),
+                $"circle {level} numeric centre x");
+            Equal(Fraction.Parse(centreY).ToDouble(), circle["centre"]![1]!.GetValue<double>(),
+                $"circle {level} numeric centre y");
+            Equal(radius.ToDouble(), circle["radius"]!.GetValue<double>(),
+                $"circle {level} numeric radius");
+            Equal(0.0, circle["tangent"]![0]!.GetValue<double>(), $"circle {level} initial tangent x");
+            Equal(1.0, circle["tangent"]![1]!.GetValue<double>(), $"circle {level} initial tangent y");
+            Equal(0.0, result["startSlope"]!.GetValue<double>(), $"circle {level} compatibility start slope");
+            True(!result.ContainsKey("heightGuide"), $"circle {level} omits polynomial height guide");
+            Contains(circle["equationLatex"]!.GetValue<string>(), "h", $"circle {level} full equation uses h");
+
+            var stages = result["stages"]!.AsArray();
+            Equal(1, stages.Count, $"circle {level} has one geometry source stage");
+            Equal("source", stages[0]!["id"]!.GetValue<string>(), $"circle {level} source stage identity");
+            Equal(circle["equationLatex"]!.GetValue<string>(), stages[0]!["latex"]!.GetValue<string>(),
+                $"circle {level} stage repeats the exact equation");
+            True(!string.IsNullOrWhiteSpace(stages[0]!["expression"]!.GetValue<string>()),
+                $"circle {level} source stage expression");
+
+            var points = result["points"]!.AsArray();
+            Equal(161, points.Count, $"circle {level} uniform closed-loop sample count");
+            Equal(161, stages[0]!["points"]!.AsArray().Count,
+                $"circle {level} source stage uses the circle path");
+            double cx = Fraction.Parse(centreX).ToDouble();
+            double cy = Fraction.Parse(centreY).ToDouble();
+            double r = radius.ToDouble();
+            Equal(cx + r, points[0]![0]!.GetValue<double>(), $"circle {level} starts at rightmost x");
+            Equal(cy, points[0]![1]!.GetValue<double>(), $"circle {level} starts at rightmost y");
+            Equal(points[0]![0]!.GetValue<double>(), points[^1]![0]!.GetValue<double>(),
+                $"circle {level} loop closes exactly in x");
+            Equal(points[0]![1]!.GetValue<double>(), points[^1]![1]!.GetValue<double>(),
+                $"circle {level} loop closes exactly in y");
+            True(points[1]![1]!.GetValue<double>() > cy,
+                $"circle {level} traversal leaves the rightmost point counterclockwise");
+            foreach (var pointNode in points)
+            {
+                double dx = pointNode![0]!.GetValue<double>() - cx;
+                double dy = pointNode[1]!.GetValue<double>() - cy;
+                True(Math.Abs(dx * dx + dy * dy - r * r) <= 1e-10 * Math.Max(1.0, r * r),
+                    $"circle {level} numeric geometry sample stays on circle");
+            }
+
+            var checkpoints = result["checkpoints"]!.AsArray();
+            Equal(goals.Count, checkpoints.Count, $"circle {level} checkpoint count");
+            Equal(goals.Count, stages[0]!["values"]!.AsArray().Count,
+                $"circle {level} source-stage exact values");
+            foreach (var checkpointNode in checkpoints)
+            {
+                var checkpoint = checkpointNode!.AsObject();
+                string targetX = checkpoint["x"]!.GetValue<string>();
+                string targetY = checkpoint["target"]!.GetValue<string>();
+                var goal = goals.Single(candidate => candidate.X == targetX && candidate.Y == targetY);
+                Fraction dx = Fraction.Parse(goal.X) - Fraction.Parse(centreX);
+                Fraction dy = Fraction.Parse(goal.Y) - Fraction.Parse(centreY);
+                Fraction dxSquared = dx * dx;
+                Fraction dySquared = dy * dy;
+                Fraction lhs = dxSquared + dySquared;
+                Equal(dx.ToString(), checkpoint["dx"]!.GetValue<string>(),
+                    $"circle {level} checkpoint exact signed dx");
+                Equal(dy.ToString(), checkpoint["dy"]!.GetValue<string>(),
+                    $"circle {level} checkpoint exact signed dy");
+                Equal(dxSquared.ToString(), checkpoint["dxSquared"]!.GetValue<string>(),
+                    $"circle {level} checkpoint exact dx squared");
+                Equal(dySquared.ToString(), checkpoint["dySquared"]!.GetValue<string>(),
+                    $"circle {level} checkpoint exact dy squared");
+                Equal(lhs.ToString(), checkpoint["lhs"]!.GetValue<string>(),
+                    $"circle {level} checkpoint exact distance squared");
+                Equal(lhs.ToString(), checkpoint["actual"]!.GetValue<string>(),
+                    $"circle {level} compatibility actual is exact distance squared");
+                Equal(radiusSquared.ToString(), checkpoint["rhs"]!.GetValue<string>(),
+                    $"circle {level} checkpoint exact radius squared");
+                Equal(lhs == radiusSquared, checkpoint["hit"]!.GetValue<bool>(),
+                    $"circle {level} independent exact membership");
+                Equal(Fraction.Parse(goal.Y).ToDouble(), checkpoint["y"]!.GetValue<double>(),
+                    $"circle {level} compatibility y is target ordinate");
+                double phase = checkpoint["phase"]!.GetValue<double>();
+                True(phase >= 0.0 && phase < 1.0, $"circle {level} phase is normalized");
+                double expectedAngle = dx == Fraction.Zero && dy == Fraction.Zero
+                    ? 0.0 : Math.Atan2(dy.ToDouble(), dx.ToDouble());
+                if (expectedAngle < 0.0) expectedAngle += 2.0 * Math.PI;
+                double expectedPhase = expectedAngle / (2.0 * Math.PI);
+                True(Math.Abs(phase - expectedPhase) < 1e-12,
+                    $"circle {level} checkpoint phase is its counterclockwise passage timestamp");
+            }
+
+            var bounds = circle["bounds"]!.AsObject();
+            double minX = bounds["minX"]!.GetValue<double>();
+            double maxX = bounds["maxX"]!.GetValue<double>();
+            double minY = bounds["minY"]!.GetValue<double>();
+            double maxY = bounds["maxY"]!.GetValue<double>();
+            True(minX < Math.Min(0.0, cx - r) && maxX > Math.Max(0.0, cx + r),
+                $"circle {level} horizontal bounds include zero and padded circle");
+            True(minY < Math.Min(0.0, cy - r) && maxY > Math.Max(0.0, cy + r),
+                $"circle {level} vertical bounds include zero and padded circle");
+            foreach (var goal in goals)
+                True(Fraction.Parse(goal.X).ToDouble() >= minX && Fraction.Parse(goal.X).ToDouble() <= maxX &&
+                     Fraction.Parse(goal.Y).ToDouble() >= minY && Fraction.Parse(goal.Y).ToDouble() <= maxY,
+                    $"circle {level} bounds include every target");
+        }
+
+        foreach ((int level, var specification) in specifications)
+        {
+            var initial = Level(level);
+            var state = initial["state"]!.AsObject();
+            Equal(0, state["nodes"]!.AsArray().Count, $"circle {level} has no operation nodes");
+            Equal(0, state["inventory"]!.AsObject().Count, $"circle {level} has empty inventory");
+            Equal(0, state["limit"]!.GetValue<int>(), $"circle {level} has zero operation limit");
+            True(!state.ContainsKey("station"), $"circle {level} has no fixed station");
+            Equal(specification.InitialX, state["circle"]!["x"]!.GetValue<string>(),
+                $"circle {level} authored initial centre x");
+            Equal(specification.InitialY, state["circle"]!["y"]!.GetValue<string>(),
+                $"circle {level} authored initial centre y");
+            Equal(specification.InitialRadius, state["circle"]!["radius"]!.GetValue<string>(),
+                $"circle {level} authored initial radius");
+            True(specification.Editable.SequenceEqual(initial["result"]!["circle"]!["editable"]!.AsArray()
+                    .Select(value => value!.GetValue<string>())),
+                $"circle {level} exposes only its authored editable parameters");
+            Equal(specification.InitialX, initial["result"]!["circle"]!["initial"]!["x"]!.GetValue<string>(),
+                $"circle {level} result initial x metadata");
+            Equal(specification.InitialY, initial["result"]!["circle"]!["initial"]!["y"]!.GetValue<string>(),
+                $"circle {level} result initial y metadata");
+            Equal(specification.InitialRadius, initial["result"]!["circle"]!["initial"]!["radius"]!.GetValue<string>(),
+                $"circle {level} result initial radius metadata");
+            CheckCircleResult(level, initial, specification.InitialX, specification.InitialY,
+                specification.InitialRadius, specification.Goals);
+            Equal(false, initial["result"]!["solved"]!.GetValue<bool>(),
+                $"circle {level} authored default remains a puzzle to solve");
+
+            var solved = SetCircle(state, specification.SolutionX, specification.SolutionY, specification.SolutionRadius);
+            CheckCircleResult(level, solved, specification.SolutionX, specification.SolutionY,
+                specification.SolutionRadius, specification.Goals);
+            Equal(true, solved["result"]!["solved"]!.GetValue<bool>(),
+                $"circle {level} intended exact geometry solves");
+            True(solved["result"]!["checkpoints"]!.AsArray().All(checkpoint => checkpoint!["hit"]!.GetValue<bool>()),
+                $"circle {level} intended geometry hits every target exactly");
+        }
+
+        Fraction[] centreGrid = Enumerable.Range(-16, 49).Select(n => new Fraction(n, 4)).ToArray();
+        Fraction[] radiusGrid = Enumerable.Range(1, 24).Select(n => new Fraction(n, 4)).ToArray();
+        long totalCandidates = 0;
+        foreach ((int level, var specification) in specifications)
+        {
+            Fraction[] xs = specification.Editable.Contains("x") ? centreGrid : [Fraction.Parse(specification.InitialX)];
+            Fraction[] ys = specification.Editable.Contains("y") ? centreGrid : [Fraction.Parse(specification.InitialY)];
+            Fraction[] radii = specification.Editable.Contains("radius") ? radiusGrid : [Fraction.Parse(specification.InitialRadius)];
+            long candidates = 0;
+            var solutions = new List<(Fraction X, Fraction Y, Fraction Radius)>();
+            foreach (Fraction cx in xs)
+            foreach (Fraction cy in ys)
+            foreach (Fraction radius in radii)
+            {
+                candidates++;
+                Fraction rhs = radius * radius;
+                if (specification.Goals.All(goal =>
+                    DistanceSquared(cx.ToString(), cy.ToString(), goal) == rhs))
+                    solutions.Add((cx, cy, radius));
+            }
+            long expectedCandidates = level switch
+            {
+                43 => 24,
+                44 => 2401,
+                45 => 1176,
+                46 or 47 => 57624,
+                _ => throw new InvalidOperationException("unexpected circle source")
+            };
+            Equal(expectedCandidates, candidates, $"circle {level} bounded exact parameter count");
+            Equal(1, solutions.Count, $"circle {level} bounded oracle unique exact fit");
+            Equal(Fraction.Parse(specification.SolutionX), solutions[0].X,
+                $"circle {level} bounded oracle solution x");
+            Equal(Fraction.Parse(specification.SolutionY), solutions[0].Y,
+                $"circle {level} bounded oracle solution y");
+            Equal(Fraction.Parse(specification.SolutionRadius), solutions[0].Radius,
+                $"circle {level} bounded oracle solution radius");
+            totalCandidates += candidates;
+        }
+        Equal(118849L, totalCandidates, "complete bounded exact circle parameter audit count");
+
+        var radiusMiss = SetCircle(Level(43)["state"]!, "2", "0", "5/4");
+        Equal(false, radiusMiss["result"]!["solved"]!.GetValue<bool>(), "moved circle radius misses exact targets");
+        var centreMiss = SetCircle(Level(44)["state"]!, "7/4", "1/2", "1");
+        Equal(false, centreMiss["result"]!["solved"]!.GetValue<bool>(), "moved circle centre misses exact targets");
+        var verticalMiss = SetCircle(Level(45)["state"]!, "2", "3/4", "5/4");
+        Equal(false, verticalMiss["result"]!["solved"]!.GetValue<bool>(), "moved vertical centre misses exact targets");
+        var chordMiss = SetCircle(Level(46)["state"]!, "5/2", "1/4", "5/4");
+        Equal(false, chordMiss["result"]!["solved"]!.GetValue<bool>(), "moved chord centre misses exact targets");
+        var transferMiss = SetCircle(Level(47)["state"]!, "5/4", "-1/2", "11/4");
+        Equal(false, transferMiss["result"]!["solved"]!.GetValue<bool>(), "moved transfer radius misses exact targets");
+
+        var solved43 = SetCircle(Level(43)["state"]!, "2", "0", "1");
+        var verticalPair43 = solved43["result"]!["checkpoints"]!.AsArray()
+            .Where(checkpoint => checkpoint!["x"]!.GetValue<string>() == "2").ToArray();
+        Equal(2, verticalPair43.Length, "circle traversal retains two target heights at one x coordinate");
+        True(verticalPair43.Select(checkpoint => checkpoint!["target"]!.GetValue<string>()).ToHashSet()
+                .SetEquals(["1", "-1"]),
+            "circle traversal distinguishes upper and lower target at one x coordinate");
+        var phases43 = solved43["result"]!["checkpoints"]!.AsArray()
+            .Select(checkpoint => checkpoint!["phase"]!.GetValue<double>()).ToArray();
+        True(phases43.SequenceEqual(new[] { 0.0, 0.25, 0.5, 0.75 }),
+            "cardinal circle targets follow right-up-left-down counterclockwise phases");
+        var level46TargetOrder = Level(46)["result"]!["checkpoints"]!.AsArray()
+            .Select(checkpoint => (checkpoint!["x"]!.GetValue<string>(), checkpoint["target"]!.GetValue<string>())).ToArray();
+        var moved46TargetOrder = chordMiss["result"]!["checkpoints"]!.AsArray()
+            .Select(checkpoint => (checkpoint!["x"]!.GetValue<string>(), checkpoint["target"]!.GetValue<string>())).ToArray();
+        True(level46TargetOrder.SequenceEqual(moved46TargetOrder),
+            "circle target identities and order stay stable when the centre moves");
+        True(!Level(46)["result"]!["checkpoints"]!.AsArray()
+                .Select(checkpoint => checkpoint!["phase"]!.GetValue<double>())
+                .SequenceEqual(chordMiss["result"]!["checkpoints"]!.AsArray()
+                    .Select(checkpoint => checkpoint!["phase"]!.GetValue<double>())),
+            "circle passage timestamps update while stable targets move around the centre");
+        var solved45 = SetCircle(Level(45)["state"]!, "2", "1/2", "5/4");
+        var antipodal = solved45["result"]!["checkpoints"]!.AsArray()
+            .Where(checkpoint => checkpoint!["x"]!.GetValue<string>() != "13/4")
+            .Select(checkpoint => checkpoint!["phase"]!.GetValue<double>()).OrderBy(value => value).ToArray();
+        True(Math.Abs((antipodal[1] - antipodal[0]) - 0.5) < 1e-12,
+            "circle midpoint lesson exposes an exact antipodal half-turn");
+        var solved47 = SetCircle(Level(47)["state"]!, "5/4", "-1/2", "5/2");
+        string transferEquation = solved47["result"]!["circle"]!["equationLatex"]!.GetValue<string>();
+        Contains(transferEquation, "h +", "negative vertical centre simplifies to addition in equation");
+        True(!transferEquation.Contains("- -", StringComparison.Ordinal),
+            "circle equation never prints a double negative");
+        string originEquation = solved43["result"]!["circle"]!["equationLatex"]!.GetValue<string>();
+        True(!originEquation.Contains("h - 0", StringComparison.Ordinal),
+            "zero vertical centre is simplified in equation");
+
+        Equal(@"\left(h + \frac{1}{2}\right)^{2} = \left(\frac{5}{2}\right)^{2} - \left(x - \frac{5}{4}\right)^{2}",
+            solved47["result"]!["constructedLatex"]!.GetValue<string>(),
+            "circle constructed equation preserves signed rational parameters and visibly squares the radius");
+        Equal(@"h^{2} = \left(1\right)^{2} - \left(x - 2\right)^{2}",
+            solved43["result"]!["constructedLatex"]!.GetValue<string>(),
+            "circle constructed equation groups zero centres without artificial subtraction");
+        var signedCreation = SetCircle(Remix(43)["state"]!, "-3/4", "1/2", "5/4");
+        Equal(@"\left(h - \frac{1}{2}\right)^{2} = \left(\frac{5}{4}\right)^{2} - \left(x + \frac{3}{4}\right)^{2}",
+            signedCreation["result"]!["constructedLatex"]!.GetValue<string>(),
+            "circle constructed equation normalizes positive and negative rational centres");
+
+        InvalidContains(CircleRequest(Level(43)["state"]!, "9/4", "0", "1"), "fixed",
+            "circle 43 horizontal centre lock");
+        InvalidContains(CircleRequest(Level(43)["state"]!, "2", "1/4", "1"), "fixed",
+            "circle 43 vertical centre lock");
+        InvalidContains(CircleRequest(Level(44)["state"]!, "3/2", "1/2", "5/4"), "fixed",
+            "circle 44 radius lock");
+        InvalidContains(CircleRequest(Level(45)["state"]!, "9/4", "1/2", "5/4"), "fixed",
+            "circle 45 horizontal centre lock");
+
+        var editable46 = Level(46)["state"]!;
+        InvalidContains(CircleRequest(editable46, "1/3", "0", "1"), "quarter",
+            "circle horizontal centre rejects non-quarter exact fraction");
+        InvalidContains(CircleRequest(editable46, "2", "1/3", "1"), "quarter",
+            "circle vertical centre rejects non-quarter exact fraction");
+        InvalidContains(CircleRequest(editable46, "2", "0", "1/3"), "quarter",
+            "circle radius rejects non-quarter exact fraction");
+        InvalidContains(CircleRequest(editable46, "-17/4", "0", "1"), "between -4 and 8",
+            "circle horizontal centre lower bound");
+        InvalidContains(CircleRequest(editable46, "2", "33/4", "1"), "between -4 and 8",
+            "circle vertical centre upper bound");
+        InvalidContains(CircleRequest(editable46, "2", "0", "0"), "between 1/4 and 6",
+            "circle radius positive lower bound");
+        InvalidContains(CircleRequest(editable46, "2", "0", "25/4"), "between 1/4 and 6",
+            "circle radius upper bound");
+        Invalid(CircleRequest(editable46, "2.25", "0", "1"),
+            "circle parameters reject decimal approximations");
+        var normalized = SetCircle(editable46, "8/4", "0", "4/4");
+        Equal("2", normalized["state"]!["circle"]!["x"]!.GetValue<string>(),
+            "circle exact parameter normalizes equivalent rational centre");
+        Equal("1", normalized["state"]!["circle"]!["radius"]!.GetValue<string>(),
+            "circle exact parameter normalizes equivalent rational radius");
+
+        var level43WithoutCircle = Clone(Level(43)["state"]!).AsObject();
+        level43WithoutCircle.Remove("circle");
+        var derivedCircle = Act(level43WithoutCircle, new JsonObject { ["type"] = "evaluate" });
+        Equal("1/2", derivedCircle["state"]!["circle"]!["radius"]!.GetValue<string>(),
+            "missing authored circle metadata derives the level default");
+        var polynomialWithCircle = Clone(Level(1)["state"]!).AsObject();
+        polynomialWithCircle["circle"] = new JsonObject { ["x"] = "2", ["y"] = "0", ["radius"] = "1" };
+        InvalidContains(new JsonObject
+        {
+            ["state"] = polynomialWithCircle, ["action"] = new JsonObject { ["type"] = "evaluate" }
+        }, "Polynomial", "polynomial state rejects forged circle parameters");
+        var forgedGoals = Clone(Level(43)["state"]!).AsObject();
+        forgedGoals["goals"]![0]!["x"] = "11/4";
+        InvalidContains(new JsonObject
+        {
+            ["state"] = forgedGoals, ["action"] = new JsonObject { ["type"] = "evaluate" }
+        }, "Authored", "authored circle goals cannot be forged");
+        var forgedNodes = Clone(Level(46)["state"]!).AsObject();
+        forgedNodes["nodes"]!.AsArray().Add(new JsonObject { ["id"] = "forged", ["op"] = "H" });
+        InvalidContains(new JsonObject
+        {
+            ["state"] = forgedNodes, ["action"] = new JsonObject { ["type"] = "evaluate" }
+        }, "Circle", "circle state rejects operation nodes");
+
+        var initial46State = Clone(Level(46)["state"]!);
+        var edited46 = SetCircle(initial46State, "9/4", "1/4", "5/4");
+        var reset46 = Act(edited46["state"]!, new JsonObject { ["type"] = "reset" });
+        Equal("2", reset46["state"]!["circle"]!["x"]!.GetValue<string>(),
+            "circle reset restores authored centre x");
+        Equal("0", reset46["state"]!["circle"]!["y"]!.GetValue<string>(),
+            "circle reset restores authored centre y");
+        Equal("1", reset46["state"]!["circle"]!["radius"]!.GetValue<string>(),
+            "circle reset restores authored radius");
+        var restoredUndoSnapshot = Act(initial46State, new JsonObject { ["type"] = "evaluate" });
+        Equal("2", restoredUndoSnapshot["state"]!["circle"]!["x"]!.GetValue<string>(),
+            "previous exact circle state remains a valid undo snapshot");
+        Equal(false, restoredUndoSnapshot["result"]!["solved"]!.GetValue<bool>(),
+            "undo snapshot evaluates independently of later circle edits");
+
+        var remixed47 = Act(solved47["state"]!, new JsonObject { ["type"] = "remix" });
+        Equal("remix", remixed47["state"]!["mode"]!.GetValue<string>(), "circle remix enters creation mode");
+        Equal("5/4", remixed47["state"]!["circle"]!["x"]!.GetValue<string>(),
+            "circle remix preserves centre x");
+        Equal("-1/2", remixed47["state"]!["circle"]!["y"]!.GetValue<string>(),
+            "circle remix preserves centre y");
+        Equal("5/2", remixed47["state"]!["circle"]!["radius"]!.GetValue<string>(),
+            "circle remix preserves radius");
+        Equal(0, remixed47["state"]!["goals"]!.AsArray().Count, "circle remix removes authored goals");
+        True(new[] { "x", "y", "radius" }.SequenceEqual(remixed47["result"]!["circle"]!["editable"]!.AsArray()
+                .Select(value => value!.GetValue<string>())),
+            "circle remix removes authored parameter locks");
+        Equal(false, remixed47["result"]!["solved"]!.GetValue<bool>(), "circle creation never reports solved");
+        Equal(3, remixed47["result"]!["checkpoints"]!.AsArray().Count,
+            "circle creation exposes three exact rational rim probes");
+        True(remixed47["result"]!["checkpoints"]!.AsArray().All(checkpoint => checkpoint!["hit"]!.GetValue<bool>()),
+            "circle creation probes lie exactly on its current circle");
+
+        var creationExport = Act(remixed47["state"]!,
+            new JsonObject { ["type"] = "export", ["kind"] = "creation", ["view"] = "flow" });
+        var creationArtifact = creationExport["artifact"]!.AsObject();
+        Equal("5/4", creationArtifact["circle"]!["x"]!.GetValue<string>(),
+            "circle creation artifact preserves centre x");
+        Equal("-1/2", creationArtifact["circle"]!["y"]!.GetValue<string>(),
+            "circle creation artifact preserves centre y");
+        Equal("5/2", creationArtifact["circle"]!["radius"]!.GetValue<string>(),
+            "circle creation artifact preserves radius");
+        Equal(0, creationArtifact["nodes"]!.AsArray().Count,
+            "circle creation artifact explicitly preserves empty operations");
+        var creationImport = Ok(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = Clone(creationArtifact) }
+        });
+        Equal("5/4", creationImport["state"]!["circle"]!["x"]!.GetValue<string>(),
+            "circle creation import preserves centre x");
+        Equal("-1/2", creationImport["state"]!["circle"]!["y"]!.GetValue<string>(),
+            "circle creation import preserves centre y");
+        Equal("5/2", creationImport["state"]!["circle"]!["radius"]!.GetValue<string>(),
+            "circle creation import preserves radius");
+        var missingCreationCircle = Clone(creationArtifact).AsObject();
+        missingCreationCircle.Remove("circle");
+        Invalid(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = missingCreationCircle }
+        }, "circle creation import requires its exact parameters");
+
+        var resetCreation = Act(creationImport["state"]!, new JsonObject { ["type"] = "reset" });
+        Equal("2", resetCreation["state"]!["circle"]!["x"]!.GetValue<string>(),
+            "circle creation reset restores generic default centre x");
+        Equal("0", resetCreation["state"]!["circle"]!["y"]!.GetValue<string>(),
+            "circle creation reset restores generic default centre y");
+        Equal("1", resetCreation["state"]!["circle"]!["radius"]!.GetValue<string>(),
+            "circle creation reset restores generic default radius");
+
+        var circleToPolynomial = Act(creationImport["state"]!,
+            new JsonObject { ["type"] = "source", ["sourceId"] = 1 });
+        True(!circleToPolynomial["state"]!.AsObject().ContainsKey("circle"),
+            "source change from circle to polynomial removes circle metadata");
+        Equal(0, circleToPolynomial["state"]!["nodes"]!.AsArray().Count,
+            "source change from circle starts polynomial with the empty construction");
+        var polynomialBuilt = Act(Remix(1)["state"]!,
+            new JsonObject { ["type"] = "insert", ["id"] = "half", ["op"] = "H", ["index"] = 0 });
+        InvalidContains(new JsonObject
+        {
+            ["state"] = Clone(polynomialBuilt["state"]!),
+            ["action"] = new JsonObject { ["type"] = "source", ["sourceId"] = 43 }
+        }, "empty operation", "polynomial-to-circle source change requires explicitly cleared state nodes");
+        InvalidContains(new JsonObject
+        {
+            ["state"] = Clone(polynomialBuilt["state"]!),
+            ["action"] = new JsonObject
+            {
+                ["type"] = "source", ["sourceId"] = 43,
+                ["nodes"] = new JsonArray { new JsonObject { ["id"] = "half", ["op"] = "H" } }
+            }
+        }, "empty operation", "polynomial-to-circle source change rejects operation nodes");
+        var clearedPolynomialState = Clone(polynomialBuilt["state"]!).AsObject();
+        clearedPolynomialState["nodes"] = new JsonArray();
+        var polynomialToCircle = Act(clearedPolynomialState,
+            new JsonObject { ["type"] = "source", ["sourceId"] = 43 });
+        Equal(43, polynomialToCircle["state"]!["sourceId"]!.GetValue<int>(),
+            "explicitly cleared source change selects circle representation");
+        Equal(0, polynomialToCircle["state"]!["nodes"]!.AsArray().Count,
+            "explicitly cleared source change drops polynomial operations");
+        Equal("1", polynomialToCircle["state"]!["circle"]!["radius"]!.GetValue<string>(),
+            "new circle creation uses the generic default circle");
+
+        var challengeExport = Act(creationImport["state"]!,
+            new JsonObject { ["type"] = "export", ["kind"] = "challenge", ["view"] = "flight" });
+        var challengeArtifact = challengeExport["artifact"]!.AsObject();
+        Equal(43, challengeArtifact["sourceId"]!.GetValue<int>(),
+            "circle challenge export uses the canonical circle source");
+        True(!challengeArtifact.ContainsKey("circle") && !challengeArtifact.ContainsKey("nodes") &&
+             !challengeArtifact.ContainsKey("result") && !challengeArtifact.ContainsKey("solution"),
+            "circle challenge artifact does not leak witness parameters or construction");
+        Equal(0, challengeArtifact["inventory"]!.AsObject().Count,
+            "circle challenge has no operation inventory");
+        Equal(0, challengeArtifact["limit"]!.GetValue<int>(),
+            "circle challenge has zero operation limit");
+        var expectedSharedGoals = new (string X, string Y)[]
+        {
+            ("11/4", "3/2"), ("-3/4", "1"), ("5/4", "-3")
+        };
+        var exportedGoals = challengeArtifact["goals"]!.AsArray()
+            .Select(goal => (goal!["x"]!.GetValue<string>(), goal["y"]!.GetValue<string>())).ToArray();
+        True(expectedSharedGoals.SequenceEqual(exportedGoals),
+            "circle challenge targets use the fixed exact rational unit-circle offsets");
+        True(expectedSharedGoals.All(goal => DistanceSquared("5/4", "-1/2", goal) == new Fraction(25, 4)),
+            "independent exact oracle validates exported circle witness targets");
+        var challengeImport = Ok(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = Clone(challengeArtifact) }
+        });
+        Equal("challenge", challengeImport["state"]!["mode"]!.GetValue<string>(),
+            "circle challenge imports in shared mode");
+        Equal("2", challengeImport["state"]!["circle"]!["x"]!.GetValue<string>(),
+            "circle challenge starts from generic centre x rather than witness");
+        Equal("0", challengeImport["state"]!["circle"]!["y"]!.GetValue<string>(),
+            "circle challenge starts from generic centre y rather than witness");
+        Equal("1", challengeImport["state"]!["circle"]!["radius"]!.GetValue<string>(),
+            "circle challenge starts from generic radius rather than witness");
+        Equal(false, challengeImport["result"]!["solved"]!.GetValue<bool>(),
+            "circle challenge initial default does not inherit witness completion");
+        var challengeSolved = SetCircle(challengeImport["state"]!, "5/4", "-1/2", "5/2");
+        Equal(true, challengeSolved["result"]!["solved"]!.GetValue<bool>(),
+            "circle challenge admits its hidden exact witness");
+        True(new[] { "x", "y", "radius" }.SequenceEqual(challengeSolved["result"]!["circle"]!["editable"]!.AsArray()
+                .Select(value => value!.GetValue<string>())),
+            "circle challenge has no authored parameter locks");
+
+        foreach ((string x, string y, string label) in new[]
+        {
+            ("-4", "-4", "minimum"), ("8", "8", "maximum")
+        })
+        {
+            var extremeCreation = SetCircle(Remix(43)["state"]!, x, y, "6");
+            var extremeExport = Act(extremeCreation["state"]!,
+                new JsonObject { ["type"] = "export", ["kind"] = "challenge", ["view"] = "flight" });
+            var extremeArtifact = extremeExport["artifact"]!.AsObject();
+            True(extremeArtifact["goals"]!.AsArray().All(goal =>
+                Fraction.Parse(goal!["x"]!.GetValue<string>()).ToDouble() >= -10 &&
+                Fraction.Parse(goal["x"]!.GetValue<string>()).ToDouble() <= 14 &&
+                Fraction.Parse(goal["y"]!.GetValue<string>()).ToDouble() >= -10 &&
+                Fraction.Parse(goal["y"]!.GetValue<string>()).ToDouble() <= 14),
+                $"{label} valid circle exports targets inside full geometry bounds");
+            var extremeImport = Ok(new JsonObject
+            {
+                ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = Clone(extremeArtifact) }
+            });
+            var extremeSolved = SetCircle(extremeImport["state"]!, x, y, "6");
+            Equal(true, extremeSolved["result"]!["solved"]!.GetValue<bool>(),
+                $"{label} centre and maximum radius challenge round-trip admits exact witness");
+        }
+
+        var arbitraryGoals = Clone(challengeArtifact).AsObject();
+        arbitraryGoals["goals"] = new JsonArray
+        {
+            new JsonObject { ["x"] = "2", ["y"] = "-1" },
+            new JsonObject { ["x"] = "1", ["y"] = "0" },
+            new JsonObject { ["x"] = "3", ["y"] = "0" },
+            new JsonObject { ["x"] = "2", ["y"] = "1" }
+        };
+        var arbitraryImport = Ok(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = arbitraryGoals }
+        });
+        var arbitraryPhases = arbitraryImport["result"]!["checkpoints"]!.AsArray()
+            .Select(checkpoint => checkpoint!["phase"]!.GetValue<double>()).ToArray();
+        True(arbitraryPhases.SequenceEqual(new[] { 0.75, 0.5, 0.0, 0.25 }),
+            "arbitrary challenge goal order stays stable while each target carries its traversal phase");
+        Equal(true, arbitraryImport["result"]!["solved"]!.GetValue<bool>(),
+            "arbitrary exact cardinal challenge validates against default circle");
+
+        var centreGoalArtifact = Clone(challengeArtifact).AsObject();
+        centreGoalArtifact["goals"] = new JsonArray
+        {
+            new JsonObject { ["x"] = "2", ["y"] = "0" },
+            new JsonObject { ["x"] = "3", ["y"] = "0" },
+            new JsonObject { ["x"] = "2", ["y"] = "1" }
+        };
+        var centreGoalImport = Ok(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = centreGoalArtifact }
+        });
+        var centreCheckpoint = centreGoalImport["result"]!["checkpoints"]!.AsArray()
+            .Single(checkpoint => checkpoint!["x"]!.GetValue<string>() == "2" &&
+                                  checkpoint["target"]!.GetValue<string>() == "0");
+        Equal(0.0, centreCheckpoint!["phase"]!.GetValue<double>(),
+            "target at current centre receives deterministic zero phase");
+        Equal("0", centreCheckpoint["lhs"]!.GetValue<string>(),
+            "target at current centre has exact zero distance squared");
+
+        var fractionalGoalArtifact = Clone(challengeArtifact).AsObject();
+        fractionalGoalArtifact["goals"]![0]!["x"] = "1/3";
+        var fractionalGoalImport = Ok(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = fractionalGoalArtifact }
+        });
+        Equal("1/3", fractionalGoalImport["state"]!["goals"]![0]!["x"]!.GetValue<string>(),
+            "circle challenges accept arbitrary bounded exact rational target coordinates");
+
+        var tooFewGoals = Clone(challengeArtifact).AsObject();
+        while (tooFewGoals["goals"]!.AsArray().Count > 2) tooFewGoals["goals"]!.AsArray().RemoveAt(2);
+        InvalidContains(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = tooFewGoals }
+        }, "three and eight", "circle challenge rejects fewer than three goals");
+        var tooManyGoals = Clone(challengeArtifact).AsObject();
+        while (tooManyGoals["goals"]!.AsArray().Count < 9)
+            tooManyGoals["goals"]!.AsArray().Add(new JsonObject { ["x"] = "3", ["y"] = "0" });
+        InvalidContains(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = tooManyGoals }
+        }, "three and eight", "circle challenge rejects more than eight goals");
+        var outOfRangeGoal = Clone(challengeArtifact).AsObject();
+        outOfRangeGoal["goals"]![0]!["x"] = "15";
+        InvalidContains(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = outOfRangeGoal }
+        }, "between -10 and 14", "circle challenge rejects out-of-range target coordinates");
+        var leakedChallengeCircle = Clone(challengeArtifact).AsObject();
+        leakedChallengeCircle["circle"] = new JsonObject { ["x"] = "5/4", ["y"] = "-1/2", ["radius"] = "5/2" };
+        Invalid(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = leakedChallengeCircle }
+        }, "circle challenge rejects a leaked witness field");
+
+        Console.WriteLine("CIRCLES: 118849 bounded exact parameter candidates across five authored puzzles; one fit each");
+    }
+
+    private static void ConstructedEquationContract()
+    {
+        var ordered = ImportCreation(16, ["H", "A", "N", "Q"]);
+        Equal(@"h = \left(-\left(\left(\frac{1}{2}\left(1\right)\right) + 1\right)\right)^{2}",
+            ordered["result"]!["constructedLatex"]!.GetValue<string>(),
+            "constructed equation retains ordered halve, lift, reflect and square grouping");
+
+        string derivativeThenIntegral = ImportCreation(5, ["D", "I"])
+            ["result"]!["constructedLatex"]!.GetValue<string>();
+        Contains(derivativeThenIntegral, @"\int_{0}^{x}",
+            "constructed integral uses the current variable as its upper bound");
+        Contains(derivativeThenIntegral, @"\frac{\mathrm{d}}{\mathrm{d}u_{2}}",
+            "constructed derivative uses upright d and the integral's bound variable");
+        Contains(derivativeThenIntegral, @"\,\mathrm{d}u_{2}",
+            "constructed integral closes its own dummy-variable scope");
+
+        string nestedCalculus = ImportCreation(5, ["I", "D", "I"])
+            ["result"]!["constructedLatex"]!.GetValue<string>();
+        Contains(nestedCalculus, @"\frac{\mathrm{d}}{\mathrm{d}u_{3}}",
+            "nested derivative binds to the surrounding integral variable");
+        Contains(nestedCalculus, @"\int_{0}^{u_{3}}",
+            "nested inner integral uses the surrounding variable as its upper bound");
+        Equal(2, CountOccurrences(nestedCalculus, "u_{1}"),
+            "nested inner integral dummy appears only in its source and differential");
+        Equal(3, CountOccurrences(nestedCalculus, "u_{3}"),
+            "nested outer dummy connects derivative, inner upper bound and outer differential");
+
+        string maximumRecipe = ImportCreation(16, Enumerable.Repeat("H", 64))
+            ["result"]!["constructedLatex"]!.GetValue<string>();
+        Equal(64, CountOccurrences(maximumRecipe, @"\frac{1}{2}"),
+            "constructed equation retains every node in a maximum-length recipe");
+        True(maximumRecipe.Length < 4096,
+            "maximum-length constructed equation grows linearly");
+
+        string roundingWave = ImportCreation(50, ["A", "H", "F", "C", "S", "Q", "N"])
+            ["result"]!["constructedLatex"]!.GetValue<string>();
+        Equal(1, CountOccurrences(roundingWave, @"\left\lfloor"),
+            "constructed equation keeps the floor node visible");
+        Equal(1, CountOccurrences(roundingWave, @"\left\lceil"),
+            "constructed equation keeps the ceiling node visible");
+        Equal(1, CountOccurrences(roundingWave, @"\sin"),
+            "constructed equation keeps the sine node visible");
+        True(roundingWave.IndexOf(@"\sin", StringComparison.Ordinal) <
+             roundingWave.IndexOf(@"\left\lceil", StringComparison.Ordinal) &&
+             roundingWave.IndexOf(@"\left\lceil", StringComparison.Ordinal) <
+             roundingWave.IndexOf(@"\left\lfloor", StringComparison.Ordinal),
+            "constructed equation nests sine around ceiling around floor in recipe order");
+        Equal(1, CountOccurrences(roundingWave, "x"),
+            "constructed equation retains one copy of its source through rounding wrappers");
+    }
+
+    private static void ExtendedPuzzleContract()
+    {
+        var witnesses = new Dictionary<int, string>
+        {
+            [48] = "QNA", [49] = "HAQNAAAA", [50] = "S", [51] = "AS", [52] = "HS",
+            [53] = "SQ", [54] = "SQHA", [55] = "ASQHHA", [56] = "F", [57] = "C",
+            [58] = "NF", [59] = "HF", [60] = "AHF", [61] = "FS", [62] = "FSI",
+            [63] = "AHFSIQNA", [64] = "DSQHA", [65] = "AHFSINAQNA",
+            [66] = "Q", [67] = "DAHFSINAQNAQ"
+        };
+        int[] relationSources = [48, 49, 66, 67];
+
+        foreach ((int source, string witness) in witnesses)
+        {
+            JsonObject played = PlayExtendedPuzzle(source, witness);
+            var state = played["state"]!.AsObject();
+            var result = played["result"]!.AsObject();
+            Equal(source, state["sourceId"]!.GetValue<int>(), $"extended source {source} retains stable id");
+            Equal(witness.Length, state["nodes"]!.AsArray().Count,
+                $"extended source {source} witness includes every fixed and movable operation");
+            Equal(true, result["solved"]!.GetValue<bool>(),
+                $"extended source {source} independently authored witness solves exactly");
+            True(!string.IsNullOrWhiteSpace(result["constructedLatex"]!.GetValue<string>()),
+                $"extended source {source} has a constructed equation");
+
+            var checkpoints = result["checkpoints"]!.AsArray();
+            Equal(state["goals"]!.AsArray().Count, checkpoints.Count,
+                $"extended source {source} checkpoint count");
+            foreach (var checkpointNode in checkpoints)
+            {
+                var checkpoint = checkpointNode!.AsObject();
+                True(!string.IsNullOrWhiteSpace(checkpoint["actualLatex"]!.GetValue<string>()),
+                    $"extended source {source} checkpoint has exact LaTeX");
+                True(double.IsFinite(checkpoint["actualNumber"]!.GetValue<double>()),
+                    $"extended source {source} checkpoint has a finite numeric reading");
+                Equal(true, checkpoint["hit"]!.GetValue<bool>(),
+                    $"extended source {source} witness hits each checkpoint");
+            }
+
+            var stages = result["stages"]!.AsArray();
+            Equal(witness.Length + 1, stages.Count, $"extended source {source} stage count");
+            var expectedXs = result["points"]!.AsArray()
+                .Select(point => point![0]!.GetValue<double>()).ToArray();
+            foreach (var stageNode in stages)
+            {
+                var stage = stageNode!.AsObject();
+                Equal(checkpoints.Count, stage["values"]!.AsArray().Count,
+                    $"extended source {source} exact stage value count");
+                Equal(checkpoints.Count, stage["valueLatex"]!.AsArray().Count,
+                    $"extended source {source} exact stage LaTeX count");
+                True(stage["valueLatex"]!.AsArray().All(value =>
+                        !string.IsNullOrWhiteSpace(value!.GetValue<string>())),
+                    $"extended source {source} exact stage LaTeX is nonempty");
+                True(expectedXs.SequenceEqual(stage["points"]!.AsArray()
+                        .Select(point => point![0]!.GetValue<double>())),
+                    $"extended source {source} stage samples stay aligned by x");
+                True(stage.ContainsKey("paths"),
+                    $"extended source {source} segmented stage supplies drawable paths");
+            }
+            True(result.ContainsKey("paths"), $"extended source {source} mirrors final segmented paths");
+
+            foreach (int index in Enumerable.Range(0, witness.Length).Where(index => witness[index] == 'S'))
+            {
+                var sineStage = stages[index + 1]!.AsObject();
+                Equal(sineStage["points"]!.AsArray().Count, sineStage["projection"]!.AsArray().Count,
+                    $"extended source {source} sine projection aligns with stage points");
+            }
+
+            if (relationSources.Contains(source))
+            {
+                True(result.ContainsKey("relation"), $"relation source {source} returns relation metadata");
+                True(!result.ContainsKey("heightGuide"), $"relation source {source} omits the explicit-height guide");
+                True(result["constructedLatex"]!.GetValue<string>().StartsWith("h^{2} =", StringComparison.Ordinal),
+                    $"relation source {source} constructed equation starts with squared height");
+            }
+            else
+            {
+                True(result.ContainsKey("heightGuide"), $"extended explicit source {source} keeps the height guide");
+                var guide = result["heightGuide"]!.AsObject();
+                True(!string.IsNullOrWhiteSpace(guide["actualLatex"]!.GetValue<string>()),
+                    $"extended source {source} height guide has exact LaTeX");
+                foreach (var stageNode in guide["stages"]!.AsArray())
+                {
+                    var stage = stageNode!.AsObject();
+                    foreach (string field in new[] { "fromLatex", "toLatex", "gapLatex" })
+                        True(!string.IsNullOrWhiteSpace(stage[field]!.GetValue<string>()),
+                            $"extended source {source} height-guide {field}");
+                    foreach (string field in new[] { "fromNumber", "toNumber", "gapNumber" })
+                        True(double.IsFinite(stage[field]!.GetValue<double>()),
+                            $"extended source {source} height-guide {field}");
+                }
+            }
+        }
+
+        Equal(10, Level(67)["state"]!["goals"]!.AsArray().Count,
+            "mixed finale retains all ten relation targets");
+        var legacy = Level(3)["result"]!.AsObject();
+        True(legacy["checkpoints"]!.AsArray().All(checkpoint =>
+                checkpoint!.AsObject().ContainsKey("actualLatex") && checkpoint.AsObject().ContainsKey("actualNumber")),
+            "legacy explicit results expose symbolic and numeric checkpoint readings");
+        True(legacy["stages"]!.AsArray().All(stage => stage!.AsObject().ContainsKey("valueLatex")),
+            "legacy explicit stages expose symbolic checkpoint readings");
+        var circle = Level(43)["result"]!.AsObject();
+        True(circle["checkpoints"]!.AsArray().All(checkpoint =>
+                checkpoint!.AsObject().ContainsKey("actualLatex") && checkpoint.AsObject().ContainsKey("actualNumber")),
+            "circle results expose symbolic and numeric checkpoint readings");
+        True(circle["stages"]![0]!.AsObject().ContainsKey("valueLatex"),
+            "circle stage exposes symbolic checkpoint readings");
+
+        var exactSine = Level(54)["result"]!["checkpoints"]![1]!.AsObject();
+        Equal("1/2 * sqrt(2)", exactSine["actual"]!.GetValue<string>(),
+            "sine substitution retains its exact radical rather than an evaluated decimal");
+        Entity.Variable displayX = "x";
+        string exactSineLatex = MathS.FromString("sin(pi*x/2)")
+            .Substitute(displayX, MathS.FromString("1/2")).InnerSimplified.Latexize();
+        Equal(exactSineLatex, exactSine["actualLatex"]!.GetValue<string>(),
+            "sine radical renders its already exact substituted entity without another full simplify pass");
+    }
+
+    private static void PiecewisePresentationContract()
+    {
+        var floor = PlayExtendedPuzzle(56, "F")["result"]!.AsObject();
+        var floorPaths = floor["paths"]!.AsArray();
+        Equal(5, floorPaths.Count, "floor has four half-open steps and its closed endpoint value");
+        for (int index = 0; index < 4; index++)
+        {
+            Equal(true, floorPaths[index]!["startClosed"]!.GetValue<bool>(), "floor step owns its left endpoint");
+            Equal(false, floorPaths[index]!["endClosed"]!.GetValue<bool>(), "floor step releases its right endpoint");
+        }
+        Equal(true, floorPaths[4]!["startClosed"]!.GetValue<bool>(), "floor domain endpoint is closed");
+        Equal(true, floorPaths[4]!["endClosed"]!.GetValue<bool>(), "floor endpoint singleton is closed");
+        foreach (int boundary in Enumerable.Range(0, 5))
+            Equal((double)boundary, PointY(floor["points"]!.AsArray(), boundary),
+                $"floor aligned sample owns exact boundary x={boundary}");
+
+        var ceiling = PlayExtendedPuzzle(57, "C")["result"]!.AsObject();
+        var ceilingPaths = ceiling["paths"]!.AsArray();
+        Equal(5, ceilingPaths.Count, "ceiling has its closed origin plus four left-open steps");
+        Equal(1, ceilingPaths[0]!["points"]!.AsArray().Count, "ceiling origin is an exact singleton path");
+        for (int index = 1; index < 5; index++)
+        {
+            Equal(false, ceilingPaths[index]!["startClosed"]!.GetValue<bool>(), "ceiling step releases its left endpoint");
+            Equal(true, ceilingPaths[index]!["endClosed"]!.GetValue<bool>(), "ceiling step owns its right endpoint");
+        }
+        foreach (int boundary in Enumerable.Range(0, 5))
+            Equal((double)boundary, PointY(ceiling["points"]!.AsArray(), boundary),
+                $"ceiling aligned sample owns exact boundary x={boundary}");
+
+        var reflectedFloor = PlayExtendedPuzzle(58, "NF")["result"]!.AsObject();
+        Equal("2", reflectedFloor["checkpoints"]![0]!["actual"]!.GetValue<string>(),
+            "negative affine floor owns the left domain endpoint exactly");
+        Equal("-2", reflectedFloor["checkpoints"]!.AsArray()[^1]!["actual"]!.GetValue<string>(),
+            "negative affine floor owns the right domain endpoint exactly");
+
+        var accumulated = PlayExtendedPuzzle(62, "FSI")["result"]!.AsObject();
+        string[] expectedAccumulated = ["0", "0", "1/2", "1", "1", "1", "1/2", "0"];
+        Equal(string.Join(',', expectedAccumulated),
+            string.Join(',', accumulated["stages"]!.AsArray()[^1]!["values"]!.AsArray().Select(value => value!.GetValue<string>())),
+            "piecewise integral accumulates exact signed widths from zero");
+        var accumulatedPaths = accumulated["paths"]!.AsArray();
+        for (int index = 0; index + 1 < accumulatedPaths.Count; index++)
+        {
+            var leftPoints = accumulatedPaths[index]!["points"]!.AsArray();
+            var rightPoints = accumulatedPaths[index + 1]!["points"]!.AsArray();
+            Equal(leftPoints[^1]![1]!.GetValue<double>(), rightPoints[0]![1]!.GetValue<double>(),
+                "piecewise accumulated offsets meet continuously at thresholds");
+        }
+
+        var rightSlope = ImportCreation(57, ["C", "I"])["result"]!.AsObject();
+        Equal(1.0, rightSlope["startSlope"]!.GetValue<double>(),
+            "start slope uses the interval immediately to the right of a discontinuous origin");
+
+        InvalidContains(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = CreationArtifact(50, ["F", "A", "D"]) }
+        }, "cannot follow Floor or Ceiling", "derivative after transformed rounding is rejected");
+        InvalidContains(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = CreationArtifact(50, ["F", "I", "D"]) }
+        }, "cannot follow Floor or Ceiling", "derivative after integrated rounding is rejected");
+        InvalidContains(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = CreationArtifact(50, ["S", "F"]) }
+        }, "straight-line input", "rounding rejects a nonlinear sine operand");
+        InvalidContains(new JsonObject
+        {
+            ["action"] = new JsonObject
+            {
+                ["type"] = "import",
+                ["artifact"] = CreationArtifact(50, ["Q", "D", "Q", "D", "Q", "D", "Q", "D", "F"])
+            }
+        }, "more than 128 exact segments", "rounding segment guard");
+    }
+
+    private static void ExactEqualityContract()
+    {
+        var piecewise = typeof(Game).Assembly.GetType("Angouri.Kernel.Piecewise", throwOnError: true)!;
+        var exactEqual = piecewise.GetMethod("exactEqual",
+            System.Reflection.BindingFlags.Static |
+            System.Reflection.BindingFlags.Public |
+            System.Reflection.BindingFlags.NonPublic)!;
+        bool EqualExactly(string left, string right) =>
+            (bool)exactEqual.Invoke(null, [MathS.FromString(left), MathS.FromString(right)])!;
+
+        True(EqualExactly("(sqrt(2)+1)^2", "3+2*sqrt(2)"),
+            "exact equality retains full symbolic cancellation for a squared radical identity");
+        True(EqualExactly("sqrt(8)/2", "sqrt(2)"),
+            "exact equality retains full symbolic cancellation across equivalent radicals");
+        True(!EqualExactly("sqrt(2)+1/100000000000000000000000000000000000000000", "sqrt(2)"),
+            "exact equality rejects a nonzero rational difference below floating precision");
+        True(!EqualExactly("1/100000000000000000000000000000000000000000", "0"),
+            "exact rational mismatch is decided without numeric rounding");
+    }
+
+    private static void HeightSquaredRelationContract()
+    {
+        using (MathS.Settings.Codomain.Set(Domain.Real))
+        {
+            Entity.Variable schemaH = "h";
+            Entity.Variable schemaRhs = "z_contract";
+            var schemaSet = (Entity.Set.FiniteSet)(schemaH.Pow(2) - schemaRhs).Simplify().SolveEquation(schemaH);
+            var schema = schemaSet.Elements
+                .Select(branch => branch.Simplify())
+                .Select(branch => (Branch: branch, Domain: branch.DomainConditionIn(Domain.Real).Simplify()))
+                .ToList();
+
+            List<(Entity Branch, Entity Domain)> InstantiateSchema(Entity rhs) => schema
+                .Select(item =>
+                {
+                    Entity branch = item.Branch.Substitute(schemaRhs, rhs).Simplify();
+                    Entity domain = item.Domain.Substitute(schemaRhs, rhs).Simplify();
+                    return (Branch: branch, Domain: domain);
+                })
+                .Where(item => item.Domain.ToString() != "False")
+                .DistinctBy(item => (item.Branch.ToString(), item.Domain.ToString()))
+                .ToList();
+
+            foreach (string rhsText in new[]
+                     {
+                         "4", "1/4", "x^2", "(x-1)^2", "sin(pi*x/2)+1",
+                         // Representative expressions from separate piecewise intervals.
+                         "x-1", "2-x"
+                     })
+            {
+                Entity rhs = MathS.FromString(rhsText);
+                var directSet = (Entity.Set.FiniteSet)(schemaH.Pow(2) - rhs).Simplify().SolveEquation(schemaH);
+                var direct = directSet.Elements
+                    .Select(branch => branch.Simplify())
+                    .Select(branch => (Branch: branch, Domain: branch.DomainConditionIn(Domain.Real).Simplify()))
+                    .DistinctBy(item => (item.Branch.ToString(), item.Domain.ToString()))
+                    .ToList();
+                var instantiated = InstantiateSchema(rhs);
+                Equal(direct.Count, instantiated.Count,
+                    $"generic squared-height schema keeps concrete SolveEquation branch count for {rhsText}");
+                foreach (var expected in direct)
+                    True(instantiated.Any(actual =>
+                            ((actual.Branch - expected.Branch).Simplify().ToString() == "0" ||
+                             ((actual.Branch.Pow(2) - expected.Branch.Pow(2)).Simplify().ToString() == "0" &&
+                              actual.Branch.ToString().StartsWith('-') == expected.Branch.ToString().StartsWith('-'))) &&
+                            (actual.Domain.ToString() == expected.Domain.ToString() ||
+                             actual.Domain.Solve("x").Simplify().Equals(expected.Domain.Solve("x").Simplify()))),
+                        $"generic squared-height schema matches concrete real branch and domain for {rhsText}");
+            }
+
+            var zeroBranches = InstantiateSchema(MathS.FromString("0"));
+            Equal(1, zeroBranches.Count, "generic squared-height schema deduplicates the zero branch");
+            Equal("0", zeroBranches[0].Branch.ToString(), "generic squared-height zero branch is exact");
+            var negativeDirect = (schemaH.Pow(2) + 1).Simplify().SolveEquation(schemaH);
+            Equal("{  }", negativeDirect.Intersect(MathS.Sets.R).Simplify().ToString(),
+                "concrete squared-height solutions have no real branch for a negative RHS");
+            Equal(0, InstantiateSchema(MathS.FromString("-1")).Count,
+                "generic squared-height schema filters branches whose real domain is false");
+        }
+
+        var shiftedSquare = PlayExtendedPuzzle(48, "AQ")["result"]!.AsObject();
+        string expectedShiftedSquare = MathS.FromString("((x - 2) + 1)^2").Simplify().Latexize();
+        Equal(expectedShiftedSquare, shiftedSquare["stages"]!.AsArray()[^1]!["latex"]!.GetValue<string>(),
+            "implicit AQ stage uses AngouriMath full simplification");
+        Equal($"h^{{2}} = {expectedShiftedSquare}", shiftedSquare["relation"]!["equationLatex"]!.GetValue<string>(),
+            "implicit AQ final equation reuses the fully simplified stage");
+        Equal("4,1,0,1", string.Join(',', shiftedSquare["checkpoints"]!.AsArray()
+                .Select(checkpoint => checkpoint!["actual"]!.GetValue<string>())),
+            "display simplification leaves AQ exact relation heights unchanged");
+        Contains(shiftedSquare["constructedLatex"]!.GetValue<string>(), @"\left(x-2\right) + 1",
+            "AQ constructed equation retains the unsimplified operation order");
+
+        var multiSegment = ImportCreation(56, ["F", "I", "A", "Q"])["result"]!.AsObject();
+        string multiSegmentLatex = multiSegment["stages"]!.AsArray()[^1]!["latex"]!.GetValue<string>();
+        foreach (string branch in new[]
+                 {
+                     "1", "x^2", "(2*x-3+1)^2", "(3*x-6+1)^2"
+                 }.Select(expression => MathS.FromString(expression).Simplify().Latexize()))
+            Contains(multiSegmentLatex, branch, "every piecewise branch uses AngouriMath full simplification");
+        True(!multiSegmentLatex.Contains("-1+1", StringComparison.Ordinal) &&
+             !multiSegmentLatex.Contains("-3+1", StringComparison.Ordinal) &&
+             !multiSegmentLatex.Contains("-6+1", StringComparison.Ordinal),
+            "piecewise display combines constants on every branch");
+
+        var loopResponse = PlayExtendedPuzzle(48, "QNA");
+        var loop = loopResponse["result"]!.AsObject();
+        var relation = loop["relation"]!.AsObject();
+        Equal("height-squared", relation["kind"]!.GetValue<string>(), "implicit relation kind");
+        True(relation["equationLatex"]!.GetValue<string>().StartsWith("h^{2} =", StringComparison.Ordinal),
+            "implicit simplified equation preserves the squared-height left side");
+        string solvedLatex = relation["solvedLatex"]!.GetValue<string>();
+        True(solvedLatex.StartsWith(@"\begin{cases}h =", StringComparison.Ordinal),
+            "implicit relation supplies explicit solved branches for h");
+        var solvedLines = relation["solvedLines"]!.AsArray();
+        True(solvedLines.Count >= 2 && solvedLines.All(line =>
+                !string.IsNullOrWhiteSpace(line!["heightLatex"]!.GetValue<string>()) &&
+                !string.IsNullOrWhiteSpace(line["conditionLatex"]!.GetValue<string>())),
+            "implicit relation supplies complete height and condition lines");
+        Equal(solvedLatex,
+            @"\begin{cases}" + string.Join(@" \\ ", solvedLines.Select(line =>
+                $"{line!["heightLatex"]!.GetValue<string>()} & {line["conditionLatex"]!.GetValue<string>()}")) + @"\end{cases}",
+            "structured solved lines and compatibility LaTeX share one solver-derived representation");
+        using (MathS.Settings.Codomain.Set(Domain.Real))
+        {
+            Entity.Variable expectedH = "h";
+            Entity.Variable expectedRhs = "w";
+            Entity rhs = MathS.FromString("1 - (x - 2)^2").Simplify();
+            var solverSchema = (Entity.Set.FiniteSet)(expectedH.Pow(2) - expectedRhs).Simplify().SolveEquation(expectedH);
+            foreach (Entity schemaBranch in solverSchema.Elements)
+            {
+                Entity simplifiedSchema = schemaBranch.Simplify();
+                Entity simplifiedBranch = simplifiedSchema.Substitute(expectedRhs, rhs).Simplify();
+                Contains(solvedLatex, simplifiedBranch.Latexize(),
+                    "solved relation instantiates an AngouriMath SolveEquation schema branch");
+                Entity realDomain = simplifiedSchema.DomainConditionIn(Domain.Real)
+                    .Substitute(expectedRhs, rhs).Simplify();
+                if (realDomain.ToString() != "True")
+                    Contains(solvedLatex, realDomain.Latexize(),
+                        "solved relation includes each solver-schema branch's real-domain condition");
+            }
+        }
+        Contains(solvedLatex, @"0 \le x \le 4", "solved relation includes the authored interval");
+        True(!solvedLatex.Contains("q =", StringComparison.Ordinal),
+            "solved relation does not introduce an undefined q variable");
+        Equal(1.0, PointY(loop["points"]!.AsArray(), 2.0),
+            "ordinary result points remain the squared-height right side");
+        True(relation["playback"]!.AsArray().Any(point =>
+                Math.Abs(point![0]!.GetValue<double>() - 2.0) < 1e-12 &&
+                Math.Abs(point[1]!.GetValue<double>() - 1.0) < 1e-12),
+            "implicit playback contains the upper square-root branch");
+        True(relation["playback"]!.AsArray().Any(point =>
+                Math.Abs(point![0]!.GetValue<double>() - 2.0) < 1e-12 &&
+                Math.Abs(point[1]!.GetValue<double>() + 1.0) < 1e-12),
+            "implicit playback contains the lower square-root branch");
+        True(relation["playback"]!.AsArray().Any(point =>
+                Math.Abs(point![0]!.GetValue<double>() - 1.0) < 1e-12 && Math.Abs(point[1]!.GetValue<double>()) < 1e-12) &&
+             relation["playback"]!.AsArray().Any(point =>
+                Math.Abs(point![0]!.GetValue<double>() - 3.0) < 1e-12 && Math.Abs(point[1]!.GetValue<double>()) < 1e-12),
+            "implicit quadratic paths include their exact zeroes");
+        Equal(0, relation["breaks"]!.AsArray().Count,
+            "a closed solved relation has no artificial playback break");
+        var loopPlayback = relation["playback"]!.AsArray();
+        Equal(3.0, loopPlayback[0]![0]!.GetValue<double>(),
+            "closed playback starts at the first authored target position");
+        Equal(0.0, loopPlayback[0]![1]!.GetValue<double>(),
+            "closed playback starts on the first authored target vertex");
+        Equal(loopPlayback[0]![0]!.GetValue<double>(), loopPlayback[^1]![0]!.GetValue<double>(),
+            "closed playback ends at its starting x coordinate");
+        Equal(loopPlayback[0]![1]!.GetValue<double>(), loopPlayback[^1]![1]!.GetValue<double>(),
+            "closed playback finishes its full loop");
+        var loopChords = PlaybackChordLengths(relation);
+        True(loopChords.All(distance => distance > 1e-9),
+            "closed playback removes duplicate interior seam samples");
+        True(loopChords.Max() < 0.06 && loopChords.Max() / loopChords.Min() < 1.02,
+            "closed playback is densely and uniformly paced by chord length");
+
+        var checkpoints = loop["checkpoints"]!.AsArray();
+        Equal("3,2,1,2", string.Join(',', checkpoints.Select(checkpoint => checkpoint!["x"]!.GetValue<string>())),
+            "implicit relation preserves authored target order and repeated x positions");
+        foreach (var checkpointNode in checkpoints)
+        {
+            var checkpoint = checkpointNode!.AsObject();
+            Equal(checkpoint["lhs"]!.GetValue<string>(), checkpoint["rhs"]!.GetValue<string>(),
+                "implicit checkpoint compares authored height squared with q(x)");
+            Equal(checkpoint["rhs"]!.GetValue<string>(), checkpoint["actual"]!.GetValue<string>(),
+                "implicit checkpoint actual is q(x)");
+        }
+        True(checkpoints[1]!["phase"]!.GetValue<double>() != checkpoints[3]!["phase"]!.GetValue<double>(),
+            "upper and lower targets at one x receive distinct nearest playback phases");
+
+        var shiftedRelation = shiftedSquare["relation"]!.AsObject();
+        Equal(0, shiftedRelation["breaks"]!.AsArray().Count,
+            "touching AQ branches stay in one continuous playback component");
+        var shiftedPlayback = shiftedRelation["playback"]!.AsArray();
+        Equal(3.0, shiftedPlayback[0]![0]!.GetValue<double>(),
+            "AQ playback starts at the first authored target x when that slice is real");
+        True(shiftedPlayback.Any(point =>
+                Math.Abs(point![0]!.GetValue<double>() - 1.0) < 1e-12 &&
+                Math.Abs(point[1]!.GetValue<double>()) < 1e-12),
+            "AQ playback joins both solved branches at the exact zero");
+        var shiftedChords = PlaybackChordLengths(shiftedRelation);
+        True(shiftedChords.All(distance => distance > 1e-9),
+            "AQ playback traverses its repeated arms without pausing at zero");
+        True(shiftedChords.Max() / shiftedChords.Min() < 1.02,
+            "AQ branched playback remains uniformly paced while retracing required arms");
+
+        var empty = PlayExtendedPuzzle(48, "QAN")["result"]!.AsObject();
+        Equal(0, empty["relation"]!["paths"]!.AsArray().Count,
+            "negative squared-height right side is a valid empty locus");
+        Equal(0, empty["relation"]!["playback"]!.AsArray().Count,
+            "empty locus has no relation playback");
+        var emptySolvedLines = empty["relation"]!["solvedLines"]!.AsArray();
+        True(emptySolvedLines.All(line =>
+                !line!["heightLatex"]!.GetValue<string>().Contains('i') &&
+                line["conditionLatex"]!.GetValue<string>().Contains(@"\geq")),
+            "negative-locus solved rows remain real branches guarded by exact domain conditions");
+        Equal(false, empty["solved"]!.GetValue<bool>(), "empty locus remains an editable unsolved state");
+
+        var zeroRelation = ImportCreation(48, ["D", "D"])["result"]!["relation"]!.AsObject();
+        var zeroSolvedLines = zeroRelation["solvedLines"]!.AsArray();
+        Equal(1, zeroSolvedLines.Count, "identically zero squared-height relation has one solved row");
+        Equal("h = 0", zeroSolvedLines[0]!["heightLatex"]!.GetValue<string>(),
+            "identically zero squared-height relation deduplicates its coincident branches");
+        var negativeConstantRelation = ImportCreation(48, ["D", "D", "A", "N"])["result"]!["relation"]!.AsObject();
+        var negativeConstantLines = negativeConstantRelation["solvedLines"]!.AsArray();
+        Equal(1, negativeConstantLines.Count, "negative constant squared-height relation has one empty real solution row");
+        Equal(@"h \in \varnothing", negativeConstantLines[0]!["heightLatex"]!.GetValue<string>(),
+            "negative constant squared-height relation never displays complex branches as real heights");
+
+        var mixed = PlayExtendedPuzzle(67, "DAHFSINAQNAQ")["result"]!.AsObject();
+        Equal(10, mixed["checkpoints"]!.AsArray().Count, "mixed implicit finale checks all ten targets");
+        True(mixed["relation"]!["paths"]!.AsArray().Count >= 2,
+            "mixed implicit finale retains separated real-locus paths");
+        Equal(0, mixed["relation"]!["breaks"]!.AsArray().Count,
+            "mixed implicit playback joins pieces that meet at exact zeroes");
+        string mixedSolvedLatex = mixed["relation"]!["solvedLatex"]!.GetValue<string>();
+        Contains(mixedSolvedLatex, @"0 \le x \le 1", "multi-segment solution includes its first exact interval");
+        Contains(mixedSolvedLatex, @"1 \le x \le 3", "multi-segment solution includes its central exact interval");
+        True(CountOccurrences(mixedSolvedLatex, "h =") >= 4,
+            "multi-segment solution exposes every solver branch");
+
+        var initialMixedRelation = Level(67)["result"]!["relation"]!.AsObject();
+        var initialMixedPlayback = initialMixedRelation["playback"]!.AsArray();
+        Equal(0.0, initialMixedPlayback[0]![0]!.GetValue<double>(),
+            "open implicit branches repeat edges as needed to start at the first authored x");
+        Equal(0.0, initialMixedPlayback[0]![1]!.GetValue<double>(),
+            "source 67 opens from its real origin vertex");
+
+        var disconnected = PlayExtendedPuzzle(49, "HQNAN")["result"]!["relation"]!.AsObject();
+        Equal(1, disconnected["breaks"]!.AsArray().Count,
+            "a genuinely disconnected real locus retains one playback break");
+        int breakIndex = disconnected["breaks"]![0]!.GetValue<int>();
+        var disconnectedPlayback = disconnected["playback"]!.AsArray();
+        Equal(3.0, disconnectedPlayback[0]![0]!.GetValue<double>(),
+            "disconnected playback begins in the component containing the first authored x");
+        True(Math.Abs(disconnectedPlayback[breakIndex]![0]!.GetValue<double>() -
+                      disconnectedPlayback[breakIndex - 1]![0]!.GetValue<double>()) > 1.0,
+            "disconnected playback does not draw across its negative-height-squared gap");
+
+        var loopExport = Act(loopResponse["state"]!, new JsonObject
+        {
+            ["type"] = "export", ["kind"] = "challenge", ["view"] = "function"
+        });
+        var exportedGoals = loopExport["artifact"]!["goals"]!.AsArray();
+        Equal("0,1,0,-1", string.Join(',', exportedGoals.Select(goal => goal!["y"]!.GetValue<string>())),
+            "implicit challenge export preserves authored upper and lower target signs");
+        var loopImport = Ok(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = Clone(loopExport["artifact"]!) }
+        });
+        JsonObject replayedLoop = loopImport;
+        for (int index = 0; index < 3; index++)
+            replayedLoop = Act(replayedLoop["state"]!, new JsonObject
+            {
+                ["type"] = "insert", ["id"] = $"relation-replay-{index}",
+                ["op"] = "QNA"[index].ToString(), ["index"] = index
+            });
+        Equal(true, replayedLoop["result"]!["solved"]!.GetValue<bool>(),
+            "implicit challenge export round-trips and accepts the original construction as a witness");
+
+        var mixedResponse = PlayExtendedPuzzle(67, "DAHFSINAQNAQ");
+        var mixedExport = Act(mixedResponse["state"]!, new JsonObject
+        {
+            ["type"] = "export", ["kind"] = "challenge", ["view"] = "flight"
+        });
+        Equal(10, mixedExport["artifact"]!["goals"]!.AsArray().Count,
+            "mixed implicit challenge export retains all ten authored heights");
+
+        JsonObject initialLoop = Level(48);
+        InvalidContains(new JsonObject
+        {
+            ["state"] = Clone(initialLoop["state"]!),
+            ["action"] = new JsonObject { ["type"] = "export", ["kind"] = "challenge", ["view"] = "flight" }
+        }, "rational real checkpoint heights", "implicit challenge rejects negative or irrational squared heights");
+        JsonObject radicalWave = Level(54);
+        InvalidContains(new JsonObject
+        {
+            ["state"] = Clone(radicalWave["state"]!),
+            ["action"] = new JsonObject { ["type"] = "export", ["kind"] = "challenge", ["view"] = "function" }
+        }, "rational checkpoint heights", "explicit challenge rejects radical targets until artifacts support them");
+    }
+
+    private static double PointY(JsonArray points, double x) =>
+        points.Single(point => Math.Abs(point![0]!.GetValue<double>() - x) < 1e-12)![1]!.GetValue<double>();
+
+    private static List<double> PlaybackChordLengths(JsonObject relation)
+    {
+        var playback = relation["playback"]!.AsArray();
+        var breaks = relation["breaks"]!.AsArray()
+            .Select(node => node!.GetValue<int>()).ToHashSet();
+        var distances = new List<double>();
+        for (int index = 1; index < playback.Count; index++)
+        {
+            if (breaks.Contains(index)) continue;
+            double dx = playback[index]![0]!.GetValue<double>() - playback[index - 1]![0]!.GetValue<double>();
+            double dy = playback[index]![1]!.GetValue<double>() - playback[index - 1]![1]!.GetValue<double>();
+            distances.Add(Math.Sqrt(dx * dx + dy * dy));
+        }
+        return distances;
+    }
+
     private static void CheckResultShape(int level, JsonObject result, IReadOnlyList<string> ops)
     {
+        True(!string.IsNullOrWhiteSpace(result["constructedLatex"]!.GetValue<string>()),
+            $"level {level} constructed equation is nonempty");
         var checkpoints = result["checkpoints"]!.AsArray();
         Equal(GoalXs[level - 1].Length, checkpoints.Count, $"level {level} checkpoint count");
         for (int checkpointIndex = 0; checkpointIndex < checkpoints.Count; checkpointIndex++)
@@ -1941,13 +3556,73 @@ static class ContractTests
     private static JsonObject PlayPuzzle(int sourceId, IReadOnlyList<string> ops)
     {
         JsonObject response = Level(sourceId);
-        for (int index = 0; index < ops.Count; index++)
-            response = Act(response["state"]!, new JsonObject
-            {
-                ["type"] = "insert", ["id"] = $"played-{index}", ["op"] = ops[index], ["index"] = index
-            });
+        if (Stations.TryGetValue(sourceId, out var station))
+        {
+            int stationIndex = -1;
+            for (int index = 0; index < ops.Count; index++)
+                if (ops[index] == station.Op)
+                {
+                    if (stationIndex >= 0) throw new InvalidOperationException($"ambiguous fixed station recipe for level {sourceId}");
+                    stationIndex = index;
+                }
+            if (stationIndex < 0) throw new InvalidOperationException($"fixed station recipe for level {sourceId} omits {station.Op}");
+            for (int index = 0; index < stationIndex; index++)
+                response = Act(response["state"]!, new JsonObject
+                {
+                    ["type"] = "insert", ["id"] = $"played-{index}", ["op"] = ops[index], ["index"] = index
+                });
+            for (int index = stationIndex + 1; index < ops.Count; index++)
+                response = Act(response["state"]!, new JsonObject
+                {
+                    ["type"] = "insert", ["id"] = $"played-{index}", ["op"] = ops[index],
+                    ["index"] = response["state"]!["nodes"]!.AsArray().Count
+                });
+        }
+        else
+        {
+            for (int index = 0; index < ops.Count; index++)
+                response = Act(response["state"]!, new JsonObject
+                {
+                    ["type"] = "insert", ["id"] = $"played-{index}", ["op"] = ops[index], ["index"] = index
+                });
+        }
         return response;
     }
+
+    private static JsonObject PlayExtendedPuzzle(int sourceId, string witness)
+    {
+        JsonObject response = Level(sourceId);
+        string? stationOp = response["state"]!["station"]?["op"]?.GetValue<string>();
+        bool stationPlaced = false;
+        for (int index = 0; index < witness.Length; index++)
+        {
+            string op = witness[index].ToString();
+            if (!stationPlaced && stationOp == op)
+            {
+                stationPlaced = true;
+                continue;
+            }
+            response = Act(response["state"]!, new JsonObject
+            {
+                ["type"] = "insert", ["id"] = $"extended-{sourceId}-{index}", ["op"] = op, ["index"] = index
+            });
+        }
+        if (stationOp is not null)
+            True(stationPlaced, $"extended source {sourceId} witness contains fixed {stationOp} station");
+        return response;
+    }
+
+    private static JsonObject CircleRequest(JsonNode state, string x, string y, string radius) => new()
+    {
+        ["state"] = Clone(state),
+        ["action"] = new JsonObject
+        {
+            ["type"] = "circle", ["x"] = x, ["y"] = y, ["radius"] = radius
+        }
+    };
+
+    private static JsonObject SetCircle(JsonNode state, string x, string y, string radius) =>
+        Ok(CircleRequest(state, x, y, radius));
 
     private static JsonObject Act(JsonNode state, JsonObject action) => Ok(new JsonObject
     {
@@ -1987,6 +3662,15 @@ static class ContractTests
 
     private static void Contains(string value, string fragment, string label) =>
         True(value.Contains(fragment, StringComparison.OrdinalIgnoreCase), $"{label}: expected '{fragment}' in '{value}'");
+
+    private static int CountOccurrences(string value, string fragment)
+    {
+        int count = 0;
+        for (int index = 0; (index = value.IndexOf(fragment, index, StringComparison.Ordinal)) >= 0;
+             index += fragment.Length)
+            count++;
+        return count;
+    }
 
     private static JsonNode Clone(JsonNode node) => JsonNode.Parse(node.ToJsonString())!;
 
@@ -2039,6 +3723,15 @@ static class ContractTests
             21 => [1, 2, new Fraction(-1, 2)],
             23 => [new Fraction(3, 2), new Fraction(-3, 2), new Fraction(3, 8)],
             26 => [5, -4, 1],
+            29 or 30 => [-1, new Fraction(3, 2), new Fraction(-3, 4), new Fraction(1, 8)],
+            31 or 36 or 39 => [4, -4, 1],
+            32 => [1, -1, new Fraction(1, 4)],
+            33 or 34 => [-2, 1],
+            35 => [0, 1, new Fraction(-1, 4)],
+            37 => [1],
+            38 or 40 => [2, -1],
+            41 => [1, 2, new Fraction(-1, 2)],
+            42 => [12, -12, 3],
             _ => throw new ArgumentOutOfRangeException(nameof(level))
         };
         foreach (string op in ops)
@@ -2120,6 +3813,7 @@ static class ContractTests
         public static implicit operator Fraction(int value) => new(value, 1);
         public static Fraction operator +(Fraction a, Fraction b) => new(a.Numerator * b.Denominator + b.Numerator * a.Denominator, a.Denominator * b.Denominator);
         public static Fraction operator -(Fraction a) => new(-a.Numerator, a.Denominator);
+        public static Fraction operator -(Fraction a, Fraction b) => a + -b;
         public static Fraction operator *(Fraction a, Fraction b) => new(a.Numerator * b.Numerator, a.Denominator * b.Denominator);
         public static Fraction operator /(Fraction a, int b) => new(a.Numerator, a.Denominator * b);
         public double ToDouble() => (double)Numerator / (double)Denominator;

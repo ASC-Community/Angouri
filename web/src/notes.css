@@ -1,9 +1,26 @@
 .puzzle-guidance { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 3px 12px; }
 #level-hint { font-size: 11px; line-height: 1.5; color: #728060; margin: 0; }
-.ideas-button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #cad7b9; border-radius: 7px; background: #fffefa; padding: 3px 7px; font-size: 10px; color: #506e3e; white-space: nowrap; min-height: 27px; }
-.ideas-button svg { width: 14px; height: 14px; }.ideas-button:hover { border-color: #78995a; background: #edf4e0; }
-.ideas-button.notes-cue { color: #3d5929; background: #eaf2d5; border-color: #879e54; box-shadow: 0 0 0 3px #b8ce8855; animation: notes-invite 2.8s ease-in-out infinite; }
-@keyframes notes-invite { 0%, 100% { box-shadow: 0 0 0 6px #b8ce8830; background: #dcebbb; } 50% { box-shadow: 0 0 0 3px #b8ce8855; background: #eaf2d5; } }
+.reference-actions { display: inline-flex; gap: 6px; }
+.ideas-button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #d6dfc8; border-radius: 7px; background: #fffefa; padding: 3px 7px; font-size: 10px; color: #61754d; white-space: nowrap; min-height: 27px; }
+.ideas-button svg { width: 14px; height: 14px; }.ideas-button:hover { border-color: #9fb38b; background: #f2f6e9; }
+.hints-button { border-color: #d9d3ae; color: #72623b; }.hints-button svg { color: #a17a24; }.hints-button:hover { border-color: #b8a25d; background: #fff7db; }
+.hints-button.hint-cue { color: #70521b; background: #fff3c7; border-color: #b29442; box-shadow: 0 0 0 3px #edc85555; animation: hint-invite 2.8s ease-in-out infinite; }
+.hints-button.hint-cue svg { color: #946b0e; }
+@keyframes hint-invite { 0%, 100% { box-shadow: 0 0 0 6px #edc85540; background: #ffeaa1; } 50% { box-shadow: 0 0 0 3px #edc85566; background: #fff3c7; } }
+#hints-dialog { width: min(470px,calc(100% - 32px)); }
+#hints-dialog:has(#hint-sketch:not([hidden])) { width: min(780px,calc(100% - 32px)); }
+#hints-title { display: flex; align-items: center; gap: 9px; }#hints-title svg { color: #a17a24; }
+.hint-level { font-size: 11px; color: #788767; margin: 0 0 16px; }
+.hint-clue { font-size: 16px; line-height: 1.6; color: #405d32; }
+.hint-more { margin-top: 20px; border-top: 1px solid #e3dfc8; padding-top: 14px; }
+.hint-more-button { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 7px 11px; border: 1px solid #cbbb86; border-radius: 8px; background: #fff9e6; color: #78591d; font-size: 12px; box-shadow: 0 2px 2px #7e631512; }
+.hint-more-button:hover { border-color: #a98b40; background: #fff0be; }
+.hint-more-button[aria-expanded=true]>svg { transform: rotate(90deg); }
+.hint-more p { font-size: 13px; line-height: 1.7; color: #637754; }
+#hint-sketch { margin-top: 18px; padding-top: 14px; border-top: 1px solid #e3dfc8; }
+#hint-sketch h3 { font: 23px Georgia,serif; color: #344e36; margin: 0 0 12px; }
+.hint-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+.hint-reading { padding: 12px; border-radius: 8px; background: #f4f6e9; text-align: center; font-size: 16px; }.hint-reading>span { display: block; margin-top: 7px; font-size: 10px; color: #758268; }
 .chapter-group { border: 1px solid #dce4cf; border-radius: 13px; padding: 0; margin: 0; overflow: clip; }
 .chapter-group>summary { display: flex; align-items: center; gap: 12px; padding: 11px 12px; list-style: none; }
 .chapter-group>summary::-webkit-details-marker { display: none; }
@@ -43,8 +60,8 @@
 @keyframes chapter-arrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .ending-progress { margin: 14px 0 22px; font-size: 11px!important; }.ending-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; }
 .ending-credit { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px; margin: 25px 0 0; font-size: 11px!important; }.ending-credit a { display: inline-flex; align-items: center; gap: 6px; color: #486d3d; }.ending-credit img { object-fit: contain; }.ending-credit svg { width: 12px; height: 12px; }
-.notes-index { display: flex; gap: 7px; }
-.notes-index button { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 7px; border: 1px solid #dce4d0; border-radius: 10px; font-size: 11px; }
+.notes-index { display: flex; flex-wrap: wrap; gap: 7px; }
+.notes-index button { flex: 1 1 112px; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 7px; border: 1px solid #dce4d0; border-radius: 10px; font-size: 11px; }
 .notes-index button:hover { background: #f4f7eb; }
 .notes-index [aria-pressed=true] { border-color: #72964f; background: #eff5e4; box-shadow: inset 0 -2px #72964f; }
 .note-tab-art { display: grid; place-items: center; flex: none; width: 33px; height: 33px; border-radius: 7px; color: #637d4c; }.note-tab-art>svg { width: 27px; height: 27px; }
@@ -56,12 +73,15 @@
 .note-strip { display: flex; align-items: center; gap: 7px; margin: 17px 0 8px; }
 .note-stage { flex: 1; min-width: 0; margin: 0; padding: 9px 5px 11px; background: #f4f7ee; border: 1px solid #dfe6d5; border-radius: 11px; text-align: center; }
 .note-stage figcaption { font-size: 11px; font-weight: 600; color: #5c734b; }
-.note-plot { display: block; width: 100%; max-height: 135px; margin: 5px auto; }
+.note-plot-frame { position: relative; width: 100%; max-width: 205px; aspect-ratio: 176/116; margin: 5px auto; }
+.note-plot { display: block; width: 100%; height: 100%; }
 .note-axis { fill: none; stroke: #b7c6a6; stroke-width: .8; }
 .note-zero-line { fill: none; stroke: #788d65; stroke-width: 1.1; vector-effect: non-scaling-stroke; }
-.note-zero { font-size: 10px; line-height: 1.5; color: #61764f; text-align: center; }
+.note-zero { position: absolute; left: 4%; transform: translate(-50%,-50%); font-size: 10px; line-height: 1.5; color: #61764f; text-align: center; pointer-events: none; }
 .note-curve { fill: none; stroke: #5b8242; stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round; }
 .note-point { fill: #5b8242; stroke: #fafff3; stroke-width: 1.2; }
+.note-step-end { stroke: #5b8242; stroke-width: 1.5; vector-effect: non-scaling-stroke; }.note-step-end.closed { fill: #5b8242; }.note-step-end.open { fill: #f4f7ee; }.note-step-end.previous { stroke: #929e85; }.note-step-end.previous.closed { fill: #929e85; }
+.note-required { fill: #fffdf3; stroke: #6c8da4; stroke-width: 1.6; }
 .note-formula { font-size: 12px; line-height: 1.8; min-height: 2.4em; padding: 4px 2px; }
 .note-link { flex: 0 0 38px; display: flex; flex-direction: column; align-items: center; gap: 7px; color: #6a8854; text-align: center; }
 .note-link>span { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 5px; }
@@ -70,8 +90,32 @@
 .note-connection .note-link { flex-basis: 82px; }.note-link strong { font-size: 11px; font-weight: 500; }.note-link small { font-size: 9px; color: #7f8f6f; }
 .shared-shape { background: #eaf3db; border-color: #a3bd82; }
 .note-takeaway { padding: 12px 14px; border-left: 3px solid #a9c08b; background: #f3f6eb; border-radius: 0 8px 8px 0; }
-.note-question { border-top: 1px solid #dde6d0; padding-top: 16px; margin-top: 20px; }.note-question strong { font-size: 10px; font-weight: 400; color: #849570; }.note-question p { margin: 4px 0 0; color: #466938; }
-.notes-content details { margin-bottom: 0; }.notes-content details>summary { color: #4f703c; }.notes-content details[open]>summary { margin-bottom: 12px; }
+.note-question { border-bottom: 1px solid #dde6d0; padding-bottom: 12px; margin: 0 0 18px; }.note-question strong { font-size: 11px; font-weight: 600; color: #698156; }.note-question p { margin: 4px 0 0; color: #466938; }
+.note-recall { margin-top: 24px; padding-top: 19px; border-top: 1px solid #dde6d0; }
+.note-recall-heading { display: flex; align-items: baseline; gap: 8px; margin: 0 0 14px; color: #4f703c; font-size: 14px; font-weight: 600; line-height: 1.5; }
+.note-recall-heading .note-lesson-numbers { flex: none; margin: 0; }
+.note-lesson-numbers { display: inline; color: #798b67; font-size: 10px; margin-right: 8px; }
+.note-comparison { padding: 13px; margin: 16px 0; border: 1px solid #d8e2cd; border-radius: 12px; background: #f4f7ee; }
+.note-comparison>strong { display: block; color: #516c41; font-size: 12px; margin-bottom: 10px; }
+.note-choices { display: flex; gap: 6px; flex-wrap: wrap; }
+.note-choices button { flex: 1; min-height: 36px; padding: 7px 9px; border: 1px solid #c6d4b8; border-radius: 7px; background: #fffefa; color: #526c42; font-size: 11px; }
+.note-choices button:hover { border-color: #78965d; background: #edf3e2; }
+.note-choices button[aria-pressed=true] { color: #34532b; border-color: #718f52; background: #e8f0da; box-shadow: inset 0 -2px #718f52; }
+.note-comparison figure { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); align-items: center; gap: 10px; margin: 10px 0 0; }
+.note-comparison [hidden] { display: none; }
+.note-comparison figcaption { min-width: 0; text-align: center; }
+.note-comparison .note-plot-frame { max-width: 273px; }
+.note-previous { fill: none; stroke: #929e85; stroke-width: 1.6; stroke-dasharray: 3 3; }
+.note-reading { color: #557443; font-size: 12px; margin: 9px 0; }
+.note-comparison-key { display: flex; justify-content: center; align-items: center; gap: 7px; margin-top: 7px; color: #7e8d6f; font-size: 10px; }
+.note-comparison-key i { width: 18px; border-top: 2px dashed #929e85; }.note-comparison-key i:nth-of-type(2) { border-top-style: solid; border-color: #5b8242; margin-left: 7px; }
+.circle-note-sketch.note-circle-diagram { aspect-ratio: 3/2; }.note-circle-diagram svg { overflow: hidden; }
+.note-chord { fill: none; stroke: #95a189; stroke-width: 1.5; }.note-bisector { fill: none; stroke: #719bbc; stroke-width: 1.7; }.note-bisector.second { stroke: #aa8bae; }
+.note-midpoint { fill: #6d92aa; stroke: #fffdf3; stroke-width: 1.4; }.note-radius { fill: none; stroke: #587f99; stroke-width: 1.4; }
+.note-leg-x { fill: none; stroke: #7897b2; stroke-width: 3; }.note-leg-h { fill: none; stroke: #bb9580; stroke-width: 3; }
+.note-distance-example { text-align: center; }
+.note-relation { margin: 16px 0; padding: 10px 12px; border: 1px solid #d8e2cd; border-radius: 12px; background: #f4f7ee; text-align: center; }.note-relation>figcaption { color: #516c41; font-size: 11px; font-weight: 600; }.note-relation .note-plot-frame { max-width: 340px; }
+.note-solutions { display: grid; gap: 14px; font-size: 15px; margin-top: 12px; }.note-solutions .solution-condition { font-size: 10px; }.note-solutions .solution-heights { padding-inline: 4px; }
 @media(max-width:600px) {
   .ending-chapters { grid-template-columns: repeat(3,minmax(0,1fr)); row-gap: 14px; }
   #ending-title { font-size: 28px; }.ending-chapters { gap: 7px; }.ending-chapter-art { width: 43px; height: 44px; }.ending-chapter-art>svg { width: 34px; height: 34px; }.ending-chapter { font-size: 9px; }.ending-actions .button { width: 100%; }
@@ -84,11 +128,13 @@
   .note-strip .note-stage { width: 100%; display: grid; grid-template-columns: 1fr 1.2fr; align-items: center; padding: 5px 8px; }
   .note-strip .note-stage figcaption { grid-column: 1; grid-row: 1; }
   .note-strip .note-formula { grid-column: 1 / -1; grid-row: 2; }
-  .note-strip .note-plot { grid-column: 2; grid-row: 1; max-height: 100px; margin: 0; }
+  .note-strip .note-plot-frame { grid-column: 2; grid-row: 1; max-width: 152px; margin: 0; }
   .note-strip .note-link { flex-basis: auto; flex-direction: row; gap: 10px; min-height: 25px; }
   .note-strip .note-link>svg { transform: rotate(90deg); }
   .note-strip .note-link>span { flex-direction: row; gap: 8px; }
   .note-connection .note-link small { max-width: 130px; text-align: left; }
   .note-formula { font-size: 11px; }.note-strip { gap: 5px; }.note-link { flex-basis: 30px; }
+  .note-comparison { padding: 10px; }.note-comparison figure { grid-template-columns: minmax(0,1fr); gap: 0; }.note-comparison .note-plot-frame { max-width: 228px; }
+  .note-reading { display: inline-block; margin: 5px 7px; font-size: 11px; }.note-choices button { min-width: 80px; }
 }
 @media(max-height:520px) and (min-width:601px) { #level-hint { display: none; }.notes-content { min-height: 0; } }

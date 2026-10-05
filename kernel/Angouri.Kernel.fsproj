@@ -6,7 +6,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="Piecewise.fs" />
     <Compile Include="Game.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\content\extended-puzzles.json" LogicalName="Angouri.Kernel.extended-puzzles.json" Condition="Exists('..\content\extended-puzzles.json')" />
   </ItemGroup>
 
   <ItemGroup>

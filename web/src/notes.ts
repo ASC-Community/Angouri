@@ -1,16 +1,10 @@
 import './notes.css';
 import { Kernel } from './engine';
-import { icon } from './icons';
-import { CHAPTERS, chapterIndex, escape, LEVELS, OPS, PUZZLE_ORDER, type Op, type Result, type Stage } from './types';
-import { tex } from './views';
-
-export const chapterArt=(index:number)=>{const chapter=CHAPTERS[index];return `<svg viewBox="0 0 36 36" width="36" height="36" fill="none" stroke="currentColor" stroke-linecap="round" aria-hidden="true"><path d="M2 ${chapter.zero}H34" opacity=".2"/><path class="chapter-before" d="${chapter.before}" stroke-width="1.4" stroke-dasharray="2.5 2.5" opacity=".5"/><path class="chapter-after" d="${chapter.after}" stroke-width="1.9"/></svg>`;};
-const lesson=(sourceId:number)=>{
-  const chapter=chapterIndex(sourceId);
-  return `${chapter<0?'Bonus':`${chapter+1}.${CHAPTERS[chapter].levels.indexOf(sourceId)+1}`} · ${LEVELS[sourceId-1].name}`;
-};
-const move=(op:Op)=>`<span class="note-operation ${OPS[op].color}" aria-label="${OPS[op].name}">${tex(OPS[op].formula)}</span>`;
-const viewButton=(view:'function'|'flow')=>{const label=view==='function'?'Function':'Flow';return `<button class="note-view-button" data-view="${view}" aria-label="Open ${label} view">${icon(view,16)}<span>${label}</span></button>`;};
+import { CHAPTERS, chapterIndex, EXTRA_PUZZLES, PUZZLE_ORDER, fraction, type Op, type Result } from './types';
+import { heightAtFormula, rationalTex, tex } from './views';
+import { chapterArt, lesson, move, viewButton, recall, strip, compare, circleSketch, diagramChoices, relationSketch } from './note-diagrams';
+import { renderReference } from './reference';
+export { chapterArt } from './note-diagrams';
 
 // These are reference examples evaluated by the same stateless kernel as play.
 // No note may accept a response into the player's state, history or progress.
@@ -29,9 +23,17 @@ export class ShapeNotes {
       const button=(event.target as Element).closest<HTMLElement>('[data-note]');
       if(button)void this.select(Number(button.dataset.note));
     });
-    this.content.addEventListener('click',event=>{
+    const referenceAction=(event:Event)=>{
       if((event.target as Element).closest('[data-retry-notes]'))void this.select(this.topic);
-    });
+      const choice=(event.target as Element).closest<HTMLButtonElement>('[data-note-choice]');
+      const comparison=choice?.closest<HTMLElement>('[data-note-comparison]');
+      if(choice&&comparison) {
+        comparison.querySelectorAll<HTMLButtonElement>('[data-note-choice]').forEach(button=>button.setAttribute('aria-pressed',String(button===choice)));
+        comparison.querySelectorAll<HTMLElement>('[data-note-panel]').forEach(panel=>panel.hidden=panel.dataset.notePanel!==choice.dataset.noteChoice);
+      }
+    };
+    this.content.addEventListener('click',referenceAction);
+    document.getElementById('hints-content')!.addEventListener('click',referenceAction);
     document.getElementById('ideas-dialog')!.addEventListener('close',()=>this.version++);
   }
 
@@ -39,20 +41,59 @@ export class ShapeNotes {
     this.source=source;
     // Scope references to this puzzle, including when replaying an early lesson.
     // Create has the whole book.
-    this.known=new Set(source===0?PUZZLE_ORDER:PUZZLE_ORDER.slice(0,PUZZLE_ORDER.indexOf(source)+1));
+    const at=PUZZLE_ORDER.indexOf(source);
+    this.known=new Set(source===0||EXTRA_PUZZLES.includes(source)?PUZZLE_ORDER:PUZZLE_ORDER.slice(0,at+1));
     this.topics=new Set(CHAPTERS.flatMap((chapter,i)=>this.known.has(chapter.levels[0])?[i]:[]));
     const choices=CHAPTERS.flatMap((chapter,i)=>this.topics.has(i)?[`<button data-note="${i}" aria-pressed="false"><span class="note-tab-art ${chapter.color}">${chapterArt(i)}</span><span>${chapter.name}</span></button>`]:[]);
     this.index.innerHTML=choices.join('');
     this.index.hidden=choices.length<2;
-    void this.select(Math.max(0,chapterIndex(source)));
+    void this.select(EXTRA_PUZZLES.includes(source)?EXTRA_PUZZLES.indexOf(source)<4?4:5:Math.max(0,chapterIndex(source)));
   }
 
-  private example(sourceId:number,ops:string) {
+  private async select(topic:number) {
+    if(!this.topics.has(topic))return;
+    const version=++this.version;this.topic=topic;
+    this.index.querySelectorAll<HTMLElement>('[data-note]').forEach(button=>button.setAttribute('aria-pressed',String(Number(button.dataset.note)===topic)));
+    this.content.setAttribute('aria-busy','true');
+    this.content.innerHTML='<p class="notes-loading">Opening the sketches…</p>';
+    try {
+      const sketches=new LessonSketches(this.kernel,this.source,this.known,this.examples);
+      const html=await renderReference(topic,this.known,{example:(source,ops)=>sketches.example(source,ops),circleExample:(x,y,radius,goals)=>sketches.circleExample(x,y,radius,goals)});
+      if(version!==this.version)return;
+      const prompt=this.source&&topic===chapterIndex(this.source)?`<aside class="note-question"><strong>${lesson(this.source)}</strong></aside>`:'';
+      this.content.innerHTML=prompt+html;
+    } catch {
+      if(version!==this.version)return;
+      this.content.innerHTML='<p>The sketches could not load.</p><button class="button" data-retry-notes>Try again</button>';
+    } finally {if(version===this.version)this.content.setAttribute('aria-busy','false');}
+  }
+
+  async hintSketch(source:number) {
+    const at=PUZZLE_ORDER.indexOf(source);
+    const known=new Set(at<0?PUZZLE_ORDER:PUZZLE_ORDER.slice(0,at+1));
+    const topic=EXTRA_PUZZLES.includes(source)?EXTRA_PUZZLES.indexOf(source)<4?4:5:Math.max(0,chapterIndex(source));
+    const sketches=new LessonSketches(this.kernel,source,known,this.examples);
+    if(EXTRA_PUZZLES.includes(source)) {
+      const op:Op=EXTRA_PUZZLES.indexOf(source)<4?'D':'I',reading=await sketches.example(source,op);
+      const name=op==='D'?'slope':'accumulated area';
+      return `<h3>Inspect the ${name} first.</h3><p>Follow this puzzle's starting curve through ${move(op)}. Compare the new shape with the required heights before deciding how to change it further.</p>${strip([reading.stages[0],reading.stages.at(-1)!],['Starting curve',op==='D'?'Slope output':'Accumulated output'],[move(op)],false,reading.checkpoints)}<p>${viewButton('flow')} shows the relationship at each position.</p>`;
+    }
+    const html=await sketches.render(topic);
+    const template=document.createElement('template');template.innerHTML=html;
+    template.content.querySelectorAll('.note-recall').forEach(el=>el.remove());
+    return template.innerHTML;
+  }
+}
+
+/** Targeted worked sketches belong to explicit hint disclosures. */
+class LessonSketches {
+  constructor(private kernel:Kernel,private source:number,private known:Set<number>,private examples:Map<string,Promise<Result>>) {}
+  example(sourceId:number,ops:string) {
     const key=`${sourceId}:${ops}`;
     let cached=this.examples.get(key);
     if(!cached) {
       cached=(async()=>{
-        const initial=await this.kernel.run(undefined,{type:'level',sourceId,mode:'puzzle'});
+        const initial=await this.kernel.run(undefined,{type:'level',sourceId,mode:'remix'});
         if(initial.status!=='ok'||!initial.state)throw new Error('Example unavailable');
         const state={...initial.state,nodes:[...ops].map((op,i)=>({id:`note-${i}`,op:op as Op}))};
         const reply=await this.kernel.run(state,{type:'evaluate'});
@@ -65,127 +106,317 @@ export class ShapeNotes {
     return cached;
   }
 
-  private async select(topic:number) {
-    if(!this.topics.has(topic))return;
-    const version=++this.version;this.topic=topic;
-    this.index.querySelectorAll<HTMLElement>('[data-note]').forEach(button=>button.setAttribute('aria-pressed',String(Number(button.dataset.note)===topic)));
-    this.content.setAttribute('aria-busy','true');
-    this.content.innerHTML='<p class="notes-loading">Opening the sketches…</p>';
-    try {
-      const html=await this.render(topic);
-      if(version!==this.version)return;
-      const prompt=this.source?`<aside class="note-question"><strong>For ${escape(LEVELS[this.source-1].name)}</strong><p>${escape(LEVELS[this.source-1].hint)}</p></aside>`:'';
-      this.content.innerHTML=html+prompt;
-    } catch {
-      if(version!==this.version)return;
-      this.content.innerHTML='<p>The sketches could not load.</p><button class="button" data-retry-notes>Try again</button>';
-    } finally {if(version===this.version)this.content.setAttribute('aria-busy','false');}
-  }
-
-  private async render(topic:number):Promise<string> {
+  async render(topic:number):Promise<string> {
     if(topic===0) {
       const [lower,lift,first,last]=await Promise.all([this.example(1,'H'),this.known.has(2)?this.example(2,'A'):undefined,this.known.has(3)?this.example(3,'AH'):undefined,this.known.has(3)?this.example(3,'HA'):undefined]);
       const basics=`<p>Halving keeps the zeros.${lift?' Raising moves every height equally.':''}</p>
         ${strip(lower.stages,['Start','Lower'],[move('H')])}<p class="note-reference">${lesson(1)}</p>
         ${lift?`${strip(lift.stages,['Start','Higher'],[move('A')])}<p class="note-reference">${lesson(2)}</p>`:''}
-        ${first&&last?`<details><summary>Why order matters</summary><p>Halving after a lift also halves the height you added.</p>${strip([first.stages.at(-1)!,last.stages.at(-1)!],['Lift, then halve','Halve, then lift'],[tex('\\ne')])}<p class="note-reference">${lesson(3)}</p></details>`:''}`;
+        ${first&&last?recall([3],'Why order matters',`<p>Halving after a lift also halves the height you added.</p>${strip([first.stages.at(-1)!,last.stages.at(-1)!],['Lift, then halve','Halve, then lift'],[tex('\\ne')])}`):''}`;
       if(!this.known.has(24))return `<h3>Keep the shape. Change the height.</h3>${first?`<p class="note-takeaway">In ${viewButton('function')}, compare the Height gap row and the height at ${tex('x=0')}. Two orders can fit the same gap but leave different starting heights.</p>`:''}${basics}`;
       const quarter=await this.example(24,'AHH');
       const pieces=`<p>A lift followed by one halve contributes ${tex('\\frac12')}. With two halves after it, it contributes ${tex('\\frac14')}. Lifts at different places can add different pieces.</p>${strip([first!.stages.at(-1)!,quarter.stages.at(-1)!],['Half a lift','Quarter of a lift'],[move('H')])}<p class="note-reference">${lesson(24)}</p>`;
       const guided=this.source>2;
       const follow=`<p class="note-takeaway">In ${viewButton('flow')}, inspect ${tex('x=0')} to follow the starting height through each block.${guided?' The blue gap brackets shrink with a halve and keep their size with a lift.':''}</p>`;
-      if(!this.known.has(25))return `<h3>Build a lift in pieces.</h3>${follow}${pieces}<details><summary>Scaling and order</summary>${basics}</details>`;
-      return `<h3>Fit the gap. Place the curve.</h3><p>A lift moves the ends and peak equally: their height gap stays the same. Halving shrinks that gap. ${guided?'Use the Height gap row':'Compare the peak and the ends'} in ${viewButton('function')} to decide how much to shrink it, then plan where the lifts belong.</p>${follow}${pieces}<p class="note-takeaway">Plan the gap first; the blocks can still interleave. Each halve affects every lift before it. Lifts after it keep their full height.</p><details><summary>Scaling and order</summary>${basics}</details>`;
+      if(!this.known.has(25))return `<h3>Build a lift in pieces.</h3>${follow}${pieces}${recall([1,2,3],'Scaling and order',basics)}`;
+      return `<h3>Fit the gap. Place the curve.</h3><p>A lift moves the ends and peak equally: their height gap stays the same. Halving shrinks that gap. ${guided?'Use the Height gap row':'Compare the peak and the ends'} in ${viewButton('function')} to decide how much to shrink it, then plan where the lifts belong.</p>${follow}${pieces}<p class="note-takeaway">Plan the gap first; the blocks can still interleave. Each halve affects every lift before it. Lifts after it keep their full height.</p>${recall([1,2,3],'Scaling and order',basics)}`;
     }
     if(topic===1) {
       const [roof,reflection]=await Promise.all([this.known.has(8)?this.example(8,'NA'):undefined,this.example(6,'N')]);
       const guided=this.source>2;
-      const sign=guided?`<p class="note-takeaway">Here, ${tex('h(2)-h(0)')} is negative when the middle is below the ends. ${viewButton('function')} keeps the gap signed; reflection reverses its sign.</p>`:'';
+      const sign=guided?`<p class="note-takeaway">Here, ${tex(`${heightAtFormula('2')}-${heightAtFormula('0')}`)} is negative when the middle is below the ends. ${viewButton('function')} keeps the gap signed; reflection reverses its sign.</p>`:'';
       const track=guided?`<p class="note-takeaway">In ${viewButton('flow')}, reflection reverses the gap arrow. Halving shrinks the bracket; lifting moves it without changing its size.</p>`:'';
       if(!roof)return `<h3>Turn it over.</h3><p>Zero stays where it is. Every other height changes sign.</p>${strip(reflection.stages,['Below zero','Above zero'],[move('N')])}<p class="note-reference">${lesson(6)}</p>${sign}`;
       const placing=`<p>A bowl becomes a roof. Turn it over first; then lift its middle.</p>
         ${strip(roof.stages,['Bowl','Turned','Raised'],[move('N'),move('A')])}<p class="note-reference">${lesson(8)}</p>
         <p class="note-takeaway">Think in two jobs: shape the curve, then place it.</p>${track}
-        <details><summary>What reflection keeps</summary><p>Zero stays where it is. Every other height changes sign.</p>${strip(reflection.stages,['Below zero','Above zero'],[move('N')])}<p class="note-reference">${lesson(6)}</p>${sign}</details>`;
-      if(!this.known.has(26))return `<h3>Turn, then place.</h3>${placing}`;
+        ${recall([6],'What reflection keeps',`<p>Zero stays where it is. Every other height changes sign.</p>${strip(reflection.stages,['Below zero','Above zero'],[move('N')])}${sign}`)}`;
+      if(!this.known.has(9))return `<h3>Turn, then place.</h3>${placing}`;
+      const scaled=await this.example(9,'HNA');
+      const fitting=`<p>Halving the bowl shrinks the depth. Turning and lifting afterward sets the peak without undoing that fit.</p>${strip([scaled.stages[0],scaled.stages[1],scaled.stages[3]],['Deep bowl','Fitted depth','Peak placed'],[move('H'),move('N')+move('A')])}<p class="note-reference">${lesson(9)}</p>${track}`;
+      if(!this.known.has(26))return `<h3>Fit the depth. Keep the peak.</h3>${fitting}${recall([8],'Turn and lift',placing)}`;
       const raised=await this.example(26,'N');
-      return `<h3>Account for the starting height.</h3><p>This bowl’s middle starts above zero. Reflecting carries it below zero too. Fit the depth and place the middle as separate jobs; the fractional lifts from Height still work.</p>${strip(raised.stages,['Raised bowl','Middle below zero'],[move('N')])}<p class="note-takeaway">${guided?'Fit the signed gap':'Compare the middle and ends'} in ${viewButton('function')}, then follow the middle at ${tex('x=2')} in ${viewButton('flow')}. A matching gap can still leave the middle too high or too low.</p><details><summary>A roof from a bowl</summary>${placing}</details>`;
+      return `<h3>Account for the starting height.</h3><p>This bowl’s middle starts above zero. Reflecting carries it below zero too. Fit the depth and place the middle as separate jobs; the fractional lifts from Height still work.</p>${strip(raised.stages,['Raised bowl','Middle below zero'],[move('N')])}<p class="note-takeaway">${guided?'Fit the signed gap':'Compare the middle and ends'} in ${viewButton('function')}, then follow the middle at ${tex('x=2')} in ${viewButton('flow')}. A matching gap can still leave the middle too high or too low.</p>${recall([9],'Fit the depth',fitting)}${recall([8],'A roof from a bowl',placing)}`;
     }
     if(topic===2) {
       const [bowl,roof,fold]=await Promise.all([this.known.has(10)?this.example(10,'HQ'):undefined,this.known.has(4)?this.example(8,'NA'):undefined,this.example(7,'Q')]);
       const folding=`<p>Opposite heights meet when squared: ${tex('(-a)^2=a^2')}.</p>${strip(fold.stages,['Line','Bowl'],[move('Q')])}<p class="note-reference">${lesson(7)}</p>`;
       if(!bowl)return `<h3>A line becomes a bowl.</h3>${folding}`;
-      if(!roof)return `<h3>Fit a bowl.</h3><p>Halving before squaring makes a shallower bowl than halving afterward.</p>${strip(bowl.stages,['Line','Half height','Fitted bowl'],[move('H'),move('Q')])}<p class="note-reference">${lesson(10)}</p><details><summary>How a line becomes a bowl</summary>${folding}</details>`;
+      const scaling=await this.squareOrder();
+      if(!roof)return `<h3>Fit a bowl.</h3>${scaling}${recall([7],'How a line becomes a bowl',folding)}`;
       const connection=`<p>One puzzle’s finish can be another puzzle’s start.</p>
         ${strip([bowl.stages[0],bowl.stages.at(-1)!,roof.stages.at(-1)!],['Line','Fitted bowl','Arch'],[`<strong>Fit a bowl</strong><small>${lesson(10)}</small>`,`<strong>Turn &amp; lift</strong><small>${lesson(8)}</small>`],true)}
         <p class="note-takeaway">Choose a useful intermediate shape. Build it, then reuse a familiar transformation.</p>
-        <details><summary>How a line becomes a bowl</summary>${folding}<p>Halving before squaring makes a shallower bowl than halving afterward.</p></details>`;
+        ${recall([10],'Fitting before squaring',scaling)}${recall([7],'How a line becomes a bowl',folding)}`;
       if(!this.known.has(27))return `<h3>An arch contains a bowl.</h3>${connection}`;
       const shifted=await this.example(27,'AQ');
       const moving=`<p>Squaring folds around the old curve’s zero. Lifting this line moves its zero from ${tex('x=2')} to ${tex('x=1')}; squaring afterward puts the bowl’s bottom there.</p>${strip(shifted.stages,['Original zero','Moved zero','Moved fold'],[move('A'),move('Q')])}<p class="note-reference">${lesson(27)}</p><p class="note-takeaway">These off-center targets have their lowest and highest heights at ${tex('x=1')} and ${tex('x=4')}. ${viewButton('function')} compares their height gap; ${viewButton('flow')} marks the same pair. The positions stay fixed while you edit.</p>`;
-      if(!this.known.has(28))return `<h3>Move the zero. Move the fold.</h3>${moving}<details><summary>Building an arch</summary>${connection}</details>`;
-      return `<h3>Move the fold. Then build the arch.</h3><p>Find where the target’s peak belongs. Make a bowl with its bottom at that position, then choose its depth and final height.</p>${moving}<details><summary>Building an arch</summary>${connection}</details>`;
+      if(!this.known.has(28))return `<h3>Move the zero. Move the fold.</h3>${moving}${recall([4],'Building an arch',connection)}`;
+      const shiftedRoof=await this.example(27,'AQNA');
+      return `<h3>Move the fold. Then build the arch.</h3><p>Find where the target’s peak belongs. Make a bowl with its bottom at that position, then choose its depth and final height.</p>${strip([shiftedRoof.stages[2],shiftedRoof.stages[4]],['Bottom moved','Peak at the same position'],[move('N')+move('A')])}<p class="note-takeaway">This sketch places the peak. Its depth and height still need fitting to your targets.</p>${recall([27],'Move the zero',moving)}${recall([4],'Building an arch',connection)}`;
     }
-    if(topic===3) {
-      const [flat,roof]=await Promise.all([this.example(12,'Q'),this.known.has(13)?this.example(13,'QNA'):undefined]);
-      const flattening=`<p>Squaring keeps ${tex('0')} and ${tex('1')}, and lowers heights between them.</p>`;
-      if(!roof)return `<h3>Flatten the middle.</h3>${flattening}${strip(flat.stages,['Bowl','Flatter middle'],[move('Q')])}<p class="note-reference">${lesson(12)}</p>`;
-      return `<h3>Reshape, then reuse.</h3>${flattening}
-        ${strip([flat.stages[0],flat.stages.at(-1)!,roof.stages.at(-1)!],['Bowl','Flatter middle','Round roof'],[`<strong>Square the bowl</strong><small>${lesson(12)}</small>`,`<strong>Turn &amp; lift</strong><small>${lesson(8)}</small>`],true)}
-        <p class="note-takeaway">The old turn-and-lift idea still works with a new bowl.</p><p class="note-reference">${lesson(13)}</p>
-        ${this.known.has(11)?'<p>For a different summit, decide its shape, depth and final height separately.</p>':''}`;
-    }
+    if(topic===3)return this.powerNotes();
+    if(topic===4)return this.slopeNotes();
     if(topic===5)return this.areaNotes();
-    const reading=await this.example(14,'D');
-    const introduction=`<p>Downhill becomes negative. Flat becomes zero. Uphill becomes positive.</p>${strip(reading.stages,['Bowl','Its slope'],[move('D')])}<p class="note-reference">${lesson(14)}</p>`;
-    if(!this.known.has(5))return `<h3>The slope becomes the height.</h3>${introduction}`;
-    const slope=await this.example(5,'DHA');
-    const fitting=`<p>A slope is another shape you can scale and move.</p>${strip([slope.stages[0],slope.stages[1],slope.stages.at(-1)!],['Curve','Its slope','Fitted height'],[move('D'),`${move('H')}${move('A')}`])}<p class="note-reference">${lesson(5)}</p>`;
-    if(!this.known.has(15)) {
-      const [before,after]=await Promise.all([this.example(5,'AD'),this.example(5,'DA')]);
-      return `<h3>Read change. Then place it.</h3>${fitting}<details><summary>What happens to a lift?</summary><p>Moving a curve upward does not change how steep it is. A lift before the slope block disappears.</p>${strip([before.stages.at(-1)!,after.stages.at(-1)!],['Lift, then slope','Slope, then lift'],[tex('\\ne')])}</details><details><summary>Reading a slope</summary>${introduction}</details>`;
-    }
-    const [hiddenBowl,arch]=await Promise.all([this.example(15,'D'),this.example(8,'NA')]);
-    const familiar=`<p>Recognize what the slope gives you. Then use the shapes you already know.</p>${strip([hiddenBowl.stages[0],hiddenBowl.stages[1],arch.stages.at(-1)!],['S curve','A bowl','An arch'],[`<strong>Read its slope</strong>${move('D')}`,`<strong>Fit, turn &amp; lift</strong><small>${lesson(5)}<br>${lesson(8)}</small>`],true)}<p class="note-takeaway">Read the change. Recognize the shape. Choose how to place it.</p><details><summary>Fit a slope</summary>${fitting}<p>A lift before the slope block disappears; lift the resulting shape instead.</p></details><details><summary>Reading a slope</summary>${introduction}</details>`;
-    if(!this.known.has(22))return `<h3>A familiar bowl, hidden in change.</h3>${familiar}`;
+    if(topic===6)return this.circleNotes();
+    if(topic===7)return this.relationNotes();
+    if(topic===8)return this.waveNotes();
+    if(topic===9)return this.stepNotes();
+    return this.togetherNotes();
+  }
+
+  private async squareOrder():Promise<string> {
+    const [before,after]=await Promise.all([this.example(10,'HQ'),this.example(10,'QH')]);
+    return '<p>Both orders use the same blocks. A halve before a square is squared too: '+tex('(u/2)^2=u^2/4')+', while halving afterward gives '+tex('u^2/2')+'.</p>'+compare('Which order makes the shallower bowl?',[
+      {label:'Halve, then square',stage:before.stages[2],before:before.stages[0]},
+      {label:'Square, then halve',stage:after.stages[2],before:after.stages[0]}
+    ],[{index:0,x:'0'},{index:1,x:'1'}]);
+  }
+
+  private async powerNotes():Promise<string> {
     const flat=await this.example(12,'Q');
-    return `<h3>Shape the change in stages.</h3><p>Read the slope first. Fit the bowl’s ends to ${tex('1')} and its middle to ${tex('0')}; those heights stay fixed when squared. Heights between them shrink, and squaring again makes them shrink further.</p>${strip([hiddenBowl.stages[1],flat.stages[0],flat.stages[1]],['Slope-built bowl','Fitted bowl','Flatter middle'],[`<strong>Fit the depth</strong>`,`<strong>Reshape</strong><small>${lesson(12)}</small>`],true)}<p class="note-takeaway">Choose the intermediate shape before deciding how to turn and place it.</p><details><summary>A bowl hidden in change</summary>${familiar}</details>`;
+    const basics=strip(flat.stages,['Bowl','Flatter middle'],[move('Q')]);
+    if(!this.known.has(13))return '<h3>Flatten the middle.</h3><p>Squaring keeps '+tex('0')+' and '+tex('1')+', and lowers heights between them.</p>'+basics;
+    const roof=await this.example(13,'QNA');
+    const familiar='<p>The turn-and-lift idea still works with a new bowl.</p>'+strip([flat.stages[0],flat.stages.at(-1)!,roof.stages.at(-1)!],['Bowl','Flatter middle','Round roof'],['<strong>Square</strong>','<strong>Turn &amp; lift</strong>'],true);
+    if(!this.known.has(29))return '<h3>Reshape, then reuse.</h3>'+familiar+recall([12],'What squaring keeps',basics);
+    const sixth=await this.example(29,'Q');
+    const powers='<p>A cubic input gives a sixth power when squared: '+tex('(u^3)^2=u^6')+'. A squared bowl gives '+tex('(u^2)^2=u^4')+'. The input matters as well as the block.</p>'+strip(sixth.stages,['Cubic input','Sixth-power bowl'],[move('Q')])+'<p class="note-takeaway">Between '+tex('-1')+' and '+tex('1')+', higher even powers sit closer to zero. Outside that interval they grow faster. Keep the endpoints fitted before flattening.</p>';
+    const comparison=compare('Same ends. Different middles.',[
+      {label:'Second power',stage:flat.stages[0],before:flat.stages[0]},
+      {label:'Fourth power',stage:flat.stages[1],before:flat.stages[0]},
+      {label:'Sixth power',stage:sixth.stages[1],before:flat.stages[0]}
+    ],[{index:0,x:'0'},{index:1,x:'1'}],['Second power','Chosen power']);
+    const earlier=recall([13],'Build a roof from a bowl',familiar);
+    if(!this.known.has(30))return '<h3>Flatter comes in more than one shape.</h3>'+powers+comparison+earlier;
+    const sixthRoof=await this.example(30,'QNA');
+    const broader='<p>The sixth-power bowl can use the same turn-and-lift finish as the earlier flatter roof.</p>'+strip([sixthRoof.stages[1],sixthRoof.stages[2],sixthRoof.stages[3]],['Sixth-power bowl','Turned','Broader roof'],[move('N'),move('A')]);
+    const sixthReference=recall([29],'Where the sixth power comes from',powers+comparison);
+    if(!this.known.has(31))return '<h3>Reuse the finish on a new bowl.</h3>'+broader+sixthReference+earlier;
+    const [eighth,fitted]=await Promise.all([this.example(12,'QQ'),this.example(31,'HH')]);
+    const repeated='<p>Squaring a fourth power gives an eighth: '+tex('(u^4)^2=u^8')+'. Once the bowl’s ends are at '+tex('1')+', each square keeps them there while lowering the middle further.</p>'+compare('What changes when you square again?',[
+      {label:'Fitted bowl',stage:eighth.stages[0],before:eighth.stages[0]},
+      {label:'Square once',stage:eighth.stages[1],before:eighth.stages[0]},
+      {label:'Square again',stage:eighth.stages[2],before:eighth.stages[1]}
+    ],[{index:0,x:'0'},{index:1,x:'1'}]);
+    const fit='<p>Fit the provided bowl before flattening. Heights above '+tex('1')+' grow when squared; an oversized end will not stay put.</p>'+strip([fitted.stages[0],fitted.stages[2]],['Ends above one','Ends fitted to one'],['<strong>Fit the bowl</strong>'])+repeated+'<p class="note-takeaway">The middle and ends do different jobs. Repeated squaring changes their gap; turning and lifting then place the summit.</p>';
+    const scaling=recall([10],'Why fitting before squaring matters',await this.squareOrder());
+    if(!this.known.has(11))return '<h3>Fit first. Then square again.</h3>'+fit+scaling+recall([30],'Turn and lift the new bowl',broader)+sixthReference;
+    const line=await this.example(7,'Q');
+    return '<h3>Build the bowl. Choose the finish.</h3><p>The previous puzzle supplied a bowl. Here, construct and fit the bowl from a line before flattening it. The required middle and end heights decide the power, depth and final height; the largest power is not automatically the right choice.</p>'+strip(line.stages,['Line provided','Bowl to work with'],[move('Q')])+'<p class="note-takeaway">Choose an intermediate shape, then reuse the familiar fitting and placement jobs. These sketches are subgoals, not the finished challenge.</p>'+recall([31],'Fit, then flatten again',fit)+scaling+recall([13,30],'Turn and lift',familiar+broader)+sixthReference;
+  }
+
+  private async slopeNotes():Promise<string> {
+    const reading=await this.example(32,'D');
+    const foundation='<p>The fixed station reads the input’s slope. Downhill gives a negative output, flat gives zero, and uphill gives positive.</p>'+strip(reading.stages,['Input curve','Slope output'],[move('D')])+'<p>In '+viewButton('flow')+', inspect the local tangent: its signed rise divided by its horizontal run is the slope. The spatial sketch comes before the station’s output plot. The slider chooses horizontal position, not time.</p>';
+    const [before,after]=await Promise.all([this.example(32,'AD'),this.example(32,'DA')]);
+    const lift='<p>A lift before the station does not change any slope. A lift after the station changes the output.</p>'+strip([before.stages.at(-1)!,after.stages.at(-1)!],['Lift the input','Lift the output'],[tex('\\ne')]);
+    if(!this.known.has(33))return '<h3>Two sides. Two jobs.</h3>'+foundation+lift;
+    const turning=await this.example(33,'QD');
+    const folded='<p>A straight line has a constant slope. Fold it into a bowl first and the slope can change sign.</p>'+strip(turning.stages,['Line','Bowl','Changing slope'],[move('Q'),move('D')]);
+    const reference=recall([32],'Lifting before or after',lift)+recall([32],'Reading change',foundation);
+    if(!this.known.has(34))return '<h3>Make a turning point.</h3>'+folded+reference;
+    const shifted=await this.example(34,'AQD');
+    const moving='<p>Reuse '+lesson(27)+': lifting a line moves its zero before it is squared. Follow that moved turning point through the station.</p>'+strip(shifted.stages.slice(1),['Zero moved','Turning point moved','Slope zero moved'],[move('Q'),move('D')])+compare('Where does the slope change sign?',[
+      {label:'Original fold',stage:turning.stages[2],before:turning.stages[2]},
+      {label:'Moved fold',stage:shifted.stages[3],before:turning.stages[2]}
+    ],[{index:1,x:'1'},{index:2,x:'2'}],['Original slope','New slope']);
+    if(!this.known.has(35))return '<h3>Move where the slope changes sign.</h3>'+moving+recall([33],'Make a changing slope',folded)+reference;
+    const still=await this.example(35,'QD');
+    const three='<p>Squaring this roof makes both zero-height ends flat as well as its middle. The station turns all three flat places into zero slopes.</p>'+strip(still.stages,['Roof','Three flat places','Three zero slopes'],[move('Q'),move('D')])+'<p class="note-takeaway">Use '+viewButton('flow')+' to find the flat places. A zero slope need not change sign: check each side.</p>';
+    if(!this.known.has(36))return '<h3>Build the places where change stops.</h3>'+three+recall([34],'Move a turning point',moving)+reference;
+    const starting=await this.example(36,'D');
+    return '<h3>Plan the input from the output.</h3><p>The bare station produces a straight rising output. The required heights rise, fall, then rise: where will the input need to flatten and turn?</p>'+strip([starting.stages[1]],['Starting output and required heights'],[],false,starting.checkpoints)+'<p class="note-takeaway">Build the input’s turning points first. Then use the output slots to fit its final height. A matching height gap does not yet place every target.</p>'+recall([35],'Three flat places become three zeros',three)+recall([8],'Build the roof that will be squared',strip((await this.example(8,'NA')).stages,['Bowl','Turned','Roof'],[move('N'),move('A')]))+recall([34],'Move a turning point',moving)+reference;
+  }
+
+  private async circleNotes():Promise<string> {
+    const [small,large]=await Promise.all([this.circleExample('2','0','1/2'),this.circleExample('2','0','3/2')]);
+    const both=`<h3>A path has two halves.</h3><p>${tex('h^2=r^2-(x-2)^2')} includes heights above <em>and</em> below zero: ${tex('r')} and ${tex('-r')} have the same square. Pull the slingshot to change the radius; the centre stays put.</p>${diagramChoices('One centre. Two different reaches.',[
+      {label:'Smaller radius',html:circleSketch([small],{centre:true,spoke:true})},
+      {label:'Larger radius',html:circleSketch([small,large],{centre:true,spoke:true})}
+    ])}<p>The cucumber starts on the right, travels counterclockwise, and returns to where it started. ${viewButton('flow')} follows a whole turn, including both heights at the same horizontal position.</p>`;
+    if(!this.known.has(44))return both;
+    const [original,translated]=await Promise.all([this.circleExample('2','0','1'),this.circleExample('5/2','1/2','1')]);
+    const centre=`<h3>Move the centre. Keep the distance.</h3><p>${tex('(a,b)')} is the centre and ${tex('r')} is the radius. Moving the centre carries the whole loop with it; its size stays the same.</p>${diagramChoices('Move the centre, or change the radius?',[
+      {label:'Original centre',html:circleSketch([original],{centre:true,spoke:true})},
+      {label:'Moved centre',html:circleSketch([original,translated],{centre:true,spoke:true})}
+    ])}<p>${tex('(x-a)^2+(h-b)^2=r^2')}</p><p>Every target needs the same distance from the centre. ${viewButton('function')} compares squared distances exactly. Drag the centre or use its arrow keys; exact values live in the recipe.</p>`;
+    if(!this.known.has(45))return centre+recall([43],'Why both halves belong',both);
+    const diagonal=await this.circleExample('2','0','5/4',[['11/4','1'],['5/4','-1'],['13/4','0']]);
+    const reading=diagonal.checkpoints[0];
+    const diameter=`<h3>Start with a useful pair.</h3><p>For opposite ends of a diameter, the centre is their midpoint and the radius is half their separation. A diagonal diameter works too.</p>${circleSketch([diagonal],{centre:true,triangle:true,targets:[[2.75,1],[1.25,-1]],diameter:true})}<p class="note-distance-example">${tex(`(${rationalTex(reading.dx!)})^2+(${rationalTex(reading.dy!)})^2=${rationalTex(reading.lhs!)}=r^2`)}</p><p>The coloured legs make a right triangle. Their squares add to the squared radius; ${viewButton('flow')} shows the same comparison for each of your targets.</p>`;
+    if(!this.known.has(46))return diameter+recall([44],'Centre and distance',centre);
+    const reference=await this.circleExample('2','0','5/4');
+    const targets:[number,number][]=[[2,1.25],[3.25,0],[2,-1.25]];
+    const intersection=diagramChoices('One pair narrows it down. Two pairs locate it.',[
+      {label:'One pair',html:circleSketch([reference],{targets,pairs:[[0,1]]})},
+      {label:'Two pairs',html:circleSketch([reference],{targets,pairs:[[0,1],[1,2]],centre:true})}
+    ]);
+    const chord=`<h3>Equal distances narrow the search.</h3><p>Two targets need not be opposite. Their midpoint alone is <em>not</em> the centre. All possible centres lie on the perpendicular line through that midpoint.</p>${intersection}<p>Choose a pair in ${viewButton('flow')}, then compare another pair. The lines meet at a centre equally far from all three targets. Choose the radius afterward.</p>`;
+    if(!this.known.has(47))return chord+recall([45],'Diameter and squared distance',diameter)+recall([44],'Move the centre',centre);
+    const final=await this.kernel.run(undefined,{type:'level',sourceId:47,mode:'puzzle'});
+    if(!final.result)throw new Error('Circle targets unavailable');
+    const finalTargets=final.result.checkpoints.map(point=>[fraction(point.x),fraction(point.target)] as [number,number]);
+    const locating='<h3>Find the second line.</h3><p>The target arrangement has changed. Here is one pair and its line of possible centres. Which other pair could narrow it to a single point?</p>'+circleSketch([],{targets:finalTargets,pairs:[[0,1]],bounds:[-2,4,-4,3]})+'<p class="note-takeaway">Compare another pair in '+viewButton('flow')+'. Locate the common centre, then fit the distance. The centre and radius are still yours to find.</p>';
+    return locating+recall([46],'How two pairs locate a centre',chord)+recall([45],'Diameter and squared distance',diameter)+recall([44],'Move the centre',centre);
+  }
+
+  private async relationNotes():Promise<string> {
+    const roof=await this.circleRoofLesson();
+    if(!this.known.has(66))return '<h3>Build an equation with two heights.</h3>'+roof+recall([43,44],'From centre and radius to a roof',await this.geometryEquationConnection());
+    const paired=await this.pairedRoofLesson();
+    if(!this.known.has(49))return '<h3>One roof. Matching heights above and below.</h3>'+paired+recall([48],'A roof becomes a loop',roof)+recall([43,44],'Geometry behind the equation',await this.geometryEquationConnection());
+    const final=await this.kernel.run(undefined,{type:'level',sourceId:49,mode:'puzzle'});
+    if(!final.result)throw new Error('Two-height targets unavailable');
+    const targets=final.result.checkpoints.map(point=>[fraction(point.x),fraction(point.target)] as [number,number]);
+    const geometry=circleSketch([],{targets,pairs:[[0,1]],bounds:[-2,4,-3,3]});
+    return '<h3>Infer the loop. Then build its equation.</h3><p>The geometric and block-building jobs now meet. Use target pairs to infer a centre and radius. In a squared-height equation, the horizontal edges become zeros of the roof and the centre height determines its maximum.</p>'+geometry+'<p class="note-takeaway">Find a second geometric constraint in '+viewButton('flow')+', then shape the matching nonnegative roof with familiar transformations. The second bisector, exact roof and completing block order remain yours to find.</p>'+recall([66],'A roof can make paired parabolas',paired)+recall([48],'How one roof supplies two heights',roof)+recall([46,47],'How target pairs locate a centre',await this.geometryPairRecall());
+  }
+
+  private async circleRoofLesson() {
+    const [made,wider]=await Promise.all([this.example(48,'QNA'),this.example(48,'QHNA')]);
+    if(!made.relation?.solvedLatex)throw new Error('Solved relation unavailable');
+    return `<p>A circle with centre ${tex('(2,0)')} and radius ${tex('1')} reaches zero at ${tex('x=1')} and ${tex('x=3')}. The matching roof has those zeros and reaches ${tex('1')} at the centre. The kernel writes the squared-height equation and both solved heights.</p>${compare('How does the roof control the loop?', [{label:'Wider roof',stage:wider.stages.at(-1)!},{label:'Unit roof',stage:made.stages.at(-1)!,before:wider.stages.at(-1)!}])}${relationSketch(made,'The same roof produces an upper and lower branch.')}<p class="note-takeaway">Geometry chooses the roof: its zeros mark the left and right edges, and its peak is the squared radius. Build that nonnegative roof first; the relation supplies both heights.</p>`;
+  }
+
+  private async pairedRoofLesson() {
+    const doubled=await this.example(66,'Q');
+    if(!doubled.relation?.solvedLatex)throw new Error('Solved relation unavailable');
+    return '<p>The supplied roof already has the desired parabolic shape. Squaring it on the right of the squared-height equation makes the solved heights equal to the positive and negative copies of that roof.</p>'+compare('Roof or squared roof?', [{label:'Provided roof',stage:doubled.stages[0]},{label:'Squared right-hand side',stage:doubled.stages.at(-1)!,before:doubled.stages[0]}])+relationSketch(doubled,'The kernel solves the equation into two parabolic heights.')+'<p class="note-takeaway">This is the algebraic version of equal distance above and below a centre line: one magnitude, two signs.</p>';
+  }
+
+  private async geometryEquationConnection() {
+    const example=await this.circleExample('2','0','1');
+    return circleSketch([example],{centre:true,spoke:true})+'<p>The centre fixes the roof’s horizontal midpoint. The radius fixes both how far its zeros lie from that midpoint and the roof’s maximum squared height.</p>';
+  }
+
+  private async geometryPairRecall() {
+    const reference=await this.circleExample('2','0','5/4');
+    const targets:[number,number][]=[[2,1.25],[3.25,0],[2,-1.25]];
+    return diagramChoices('One pair narrows it down. Two pairs locate it.',[
+      {label:'One pair',html:circleSketch([reference],{targets,pairs:[[0,1]]})},
+      {label:'Two pairs',html:circleSketch([reference],{targets,pairs:[[0,1],[1,2]],centre:true})}
+    ]);
+  }
+
+  private async waveNotes():Promise<string> {
+    const turn=await this.example(50,'S');
+    const quarter='<p>The sine block reads its input as turns around a circle: '+tex('S(u)=\\sin(\\frac{\\pi u}{2})')+'. Increasing '+tex('u')+' by one advances a quarter-turn, so the heights repeat '+tex('0,1,0,-1,0')+'.</p>'+compare('A line becomes a repeating height.',[
+      {label:'Input position',stage:turn.stages[0]},
+      {label:'Circle height',stage:turn.stages.at(-1)!,before:turn.stages[0]}
+    ])+'<p class="note-takeaway">Use '+viewButton('flow')+' to follow the input value into the circular projection. The block reads height as an angle; time still only controls playback.</p>';
+    if(!this.known.has(51))return '<h3>Unfold a circle into a wave.</h3>'+quarter;
+    const [phase,lift]=await Promise.all([this.example(51,'AS'),this.example(51,'SA')]);
+    const phaseLesson='<p>A lift before sine changes the angle, so peaks and zeros move sideways. A lift after sine raises every output height without moving them.</p>'+compare('Move the phase, or move the baseline?',[{label:'Lift the input',stage:phase.stages.at(-1)!,before:turn.stages.at(-1)!},{label:'Lift the output',stage:lift.stages.at(-1)!,before:turn.stages.at(-1)!}]);
+    if(!this.known.has(52))return '<h3>Input lift changes phase. Output lift changes height.</h3>'+phaseLesson+recall([50],'Quarter-turn input',quarter);
+    const [period,amplitude]=await Promise.all([this.example(52,'HS'),this.example(52,'SH')]);
+    const scaleLesson='<p>Halving before sine makes the angle advance half as fast, so the wave takes twice as much horizontal room. Halving after sine keeps the zeros and period but halves its amplitude.</p>'+compare('Stretch the period, or shrink the height?',[{label:'Halve the input',stage:period.stages.at(-1)!,before:turn.stages.at(-1)!},{label:'Halve the output',stage:amplitude.stages.at(-1)!,before:turn.stages.at(-1)!}]);
+    if(!this.known.has(53))return '<h3>Input scale changes period. Output scale changes amplitude.</h3>'+scaleLesson+recall([51],'Phase and baseline',phaseLesson)+recall([50],'Quarter-turn input',quarter);
+    const folded=await this.example(53,'SQ');
+    const foldLesson='<p>Squaring after sine folds every negative lobe above zero. Zeros stay fixed, while peaks of either sign meet at height one.</p>'+compare('Keep signed lobes, or fold them?',[
+      {label:'Signed wave',stage:folded.stages.at(-2)!},
+      {label:'Folded lobes',stage:folded.stages.at(-1)!,before:folded.stages.at(-2)!}
+    ]);
+    if(!this.known.has(54))return '<h3>Fold the lower lobes upward.</h3>'+foldLesson+recall([52],'Period and amplitude',scaleLesson)+recall([51],'Phase and baseline',phaseLesson);
+    const [base,small,raised]=await Promise.all([this.example(54,'S'),this.example(54,'SH'),this.example(54,'SA')]);
+    const fitting='<p>Amplitude and baseline answer different questions. Scale the output to fit peak-to-trough distance; lift the output to place the middle height.</p>'+compare('Which measurement are you changing?',[{label:'Unfitted wave',stage:base.stages.at(-1)!},{label:'Smaller amplitude',stage:small.stages.at(-1)!,before:base.stages.at(-1)!},{label:'Higher baseline',stage:raised.stages.at(-1)!,before:base.stages.at(-1)!}]);
+    if(!this.known.has(55))return '<h3>Fit the range. Then place its middle.</h3>'+fitting+recall([53],'Fold signed lobes',foldLesson)+recall([52],'Period and amplitude',scaleLesson);
+    const shiftedFold=await this.example(55,'ASQ');
+    return '<h3>Place the lobes before fitting them.</h3><p>First decide where the zeros and lobes belong. A change before sine moves that pattern; squaring afterward can fold selected lobes together. Scaling and lifting the output then fit and place the result.</p>'+strip([shiftedFold.stages[1],shiftedFold.stages[2],shiftedFold.stages[3]],['Input phase moved','Wave shifted','Lobes folded'],[move('S'),move('Q')])+'<p class="note-takeaway">This is a phase-and-fold subgoal, not the finished recipe. Use the targets to decide the phase, period, amplitude and baseline.</p>'+recall([54],'Fit amplitude and baseline',fitting)+recall([53],'Fold signed lobes',foldLesson)+recall([52,51],'Input versus output changes',scaleLesson+phaseLesson)+recall([50],'Quarter-turn input',quarter);
+  }
+
+  private async stepNotes():Promise<string> {
+    const floor=await this.example(56,'F');
+    const floorLesson='<p>Floor holds each integer height until the input reaches the next integer. At an exact whole input value, the new higher step is closed and the old lower step is open.</p>'+strip(floor.stages,['Rising input','Floor steps'],[move('F')]);
+    if(!this.known.has(57))return '<h3>Round down into steps.</h3>'+floorLesson;
+    const ceil=await this.example(57,'C');
+    const ceilLesson='<p>Ceiling rounds upward instead. Its jumps occur at the same integer boundaries, but the closed endpoint belongs to the lower side.</p>'+compare('Which way does the input round?',[{label:'Floor',stage:floor.stages.at(-1)!,before:floor.stages[0]},{label:'Ceiling',stage:ceil.stages.at(-1)!,before:ceil.stages[0]}]);
+    if(!this.known.has(58))return '<h3>Round up into steps.</h3>'+ceilLesson+recall([56],'How floor holds a value',floorLesson);
+    const [turnAfter,turnBefore]=await Promise.all([this.example(58,'FN'),this.example(58,'NF')]);
+    const direction='<p>Negating finished floor steps turns their heights over. Negating before floor also reverses which side of each jump owns the boundary. This is the floor/ceiling relation '+tex('\\lceil u\\rceil=-\\lfloor-u\\rfloor')+'.</p>'+compare('Turn the heights, or reverse the rounding?', [{label:'Floor, then negate',stage:turnAfter.stages.at(-1)!,before:turnAfter.stages[0]},{label:'Negate, then floor',stage:turnBefore.stages.at(-1)!,before:turnBefore.stages[0]}]);
+    if(!this.known.has(59))return '<h3>Negation changes rounding direction.</h3>'+direction+recall([57],'Floor and ceiling',ceilLesson)+recall([56],'Floor steps',floorLesson);
+    const [wide,short]=await Promise.all([this.example(59,'HF'),this.example(59,'FH')]);
+    const sizing='<p>Halving before floor takes twice as much input to reach each next integer, so steps become wider. Halving after floor keeps their boundaries and makes their heights smaller.</p>'+compare('Change step width, or step height?',[{label:'Halve before floor',stage:wide.stages.at(-1)!,before:wide.stages[0]},{label:'Halve after floor',stage:short.stages.at(-1)!,before:short.stages[0]}]);
+    if(!this.known.has(60))return '<h3>Input scale sets width. Output scale sets height.</h3>'+sizing+recall([58],'Rounding direction',direction);
+    const [baseline,shifted,raised]=await Promise.all([this.example(60,'HF'),this.example(60,'AHF'),this.example(60,'HFA')]);
+    const shifting='<p>A whole-unit shift directly before floor can equal a lift afterward: '+tex('\\lfloor u+1\\rfloor=\\lfloor u\\rfloor+1')+'. Here the lift is halved first, so floor receives a half-unit phase. The jumps move by half of their two-unit step width instead of merely rising.</p>'+compare('Move the jumps, or raise the steps?',[{label:'Half-step input phase',stage:shifted.stages.at(-1)!,before:baseline.stages.at(-1)!},{label:'Output lift',stage:raised.stages.at(-1)!,before:baseline.stages.at(-1)!}]);
+    if(!this.known.has(61))return '<h3>Input lift changes step phase.</h3>'+shifting+recall([59],'Step width and height',sizing)+recall([58],'Rounding direction',direction);
+    const projection=await this.example(61,'FS');
+    const projecting='<p>Floor supplies integer inputs. Sine reads those integers as quarter-turns, so successive steps project to '+tex('0,1,0,-1')+' and repeat.</p>'+strip(projection.stages,['Input','Integer steps','Circular height'],[move('F'),move('S')])+'<p class="note-takeaway">In '+viewButton('flow')+', separate the jump positions from the four-value circular pattern.</p>';
+    if(!this.known.has(62))return '<h3>Project steps around a circle.</h3>'+projecting+recall([60],'Move the jump positions',shifting)+recall([59],'Set step width',sizing);
+    const accumulated=await this.example(62,'FSI');
+    const area='<p>After the projection, each flat region contributes signed rectangular area. Positive steps make the total rise, zero steps hold it, and negative steps make it fall.</p>'+strip(accumulated.stages,['Input','Integer steps','Signed step heights','Accumulated area'],[move('F'),move('S'),move('I')])+'<p class="note-takeaway">Use '+viewButton('flow')+' to inspect one region at a time. A jump changes the incoming rate immediately; the accumulated curve stays continuous and changes slope.</p>';
+    if(!this.known.has(63))return '<h3>Build a continuous path from step area.</h3>'+area+recall([61],'The four-value projection',projecting)+recall([60,59],'Place and size the steps',shifting+sizing);
+    return '<h3>Shape what the step area builds.</h3><p>First plan the step regions and their signs. Accumulation turns those constant heights into straight rising, flat or falling pieces. Familiar square, turn and lift relationships can then reshape and place that continuous result.</p>'+strip([accumulated.stages[2],accumulated.stages[3]],['Signed step input','Continuous accumulated path'],[move('I')])+'<p class="note-takeaway">Choose the needed intermediate path before transforming it. The notes leave the final square, reflection and lift choices unresolved.</p>'+recall([62],'Signed step area',area)+recall([61],'Project integer steps',projecting)+recall([60,59,58],'Control the staircase',shifting+sizing+direction);
+  }
+
+  private async togetherNotes():Promise<string> {
+    const [direct,wave]=await Promise.all([this.example(64,'S'),this.example(64,'DS')]);
+    const shaped='<p>The cubic input winds around sine’s circle at an uneven rate. Its slope is a bowl, so differentiating first produces a quadratic phase whose heights still reach the circle at unequal horizontal intervals.</p>'+strip(wave.stages,['Cubic input','Slope hidden inside','Wave from that phase'],[move('D'),move('S')])+compare('Which input controls the peak spacing?',[{label:'Cubic phase directly',stage:direct.stages.at(-1)!},{label:'Slope phase',stage:wave.stages.at(-1)!}])+'<p class="note-takeaway">Use '+viewButton('flow')+' to connect each phase height with its place on the circle. Folding and fitting the resulting wave are later jobs.</p>';
+    if(!this.known.has(65))return '<h3>Shape the phase before making the wave.</h3>'+shaped+recall([53,54],'Fold and fit a wave',await this.waveRecall())+recall([66],'How one magnitude supplies two heights',await this.pairedRoofLesson());
+    const window=await this.example(65,'AHFSI');
+    const building='<p>A shifted and widened floor can isolate one middle region. Sine turns those integer levels into zero, positive, then zero heights; accumulation turns that window into a continuous change.</p>'+strip(window.stages.slice(-4),['Input phase and width','Phased steps','Positive window','Accumulated window'],[move('F'),move('S'),move('I')])+'<p class="note-takeaway">Look for the positive window before accumulating it. Centre and fold the accumulated shape only after that subgoal is visible.</p>';
+    if(!this.known.has(67))return '<h3>Build a window, then build from it.</h3>'+building+recall([64],'Shape a sine phase',shaped)+recall([61,62],'Steps, projection and signed area',await this.stepRecall())+recall([66],'A squared roof makes two branches',await this.pairedRoofLesson());
+    const start=await this.example(67,'');
+    return '<h3>Plan the hidden intermediate shapes.</h3><p>The outside regions must become zero while one inside window stays positive. Follow the accumulated total as its value goes from '+tex('0')+' to '+tex('2')+'. Its midpoint value '+tex('1')+' occurs at the symmetry position '+tex('x=2')+'; centre the accumulated values around '+tex('1')+', then fold them.</p>'+strip([start.stages[0]],['Starting curve and required heights'],[],false,start.checkpoints)+'<p class="note-takeaway">At the final relation, distinguish the built height from its square. The squared-height equation asks for both signs of the same magnitude. Work through the subgoals in '+viewButton('flow')+'; the complete block chain remains hidden.</p>'+recall([65],'Window, area, centre and fold',building)+recall([64],'Shape the sine phase',shaped)+recall([66],'A squared roof makes two branches',await this.pairedRoofLesson())+recall([61,62],'Steps and signed accumulation',await this.stepRecall());
+  }
+
+  private async waveRecall() {
+    const [wave,folded]=await Promise.all([this.example(53,'S'),this.example(53,'SQ')]);
+    return compare('Signed or folded lobes?',[{label:'Signed wave',stage:wave.stages.at(-1)!},{label:'Folded wave',stage:folded.stages.at(-1)!,before:wave.stages.at(-1)!}]);
+  }
+
+  private async stepRecall() {
+    const result=await this.example(62,'FSI');
+    return strip(result.stages.slice(-3),['Steps','Circular projection','Accumulated path'],[move('S'),move('I')]);
+  }
+
+  circleExample(x:string,y:string,radius:string,goals:string[][]=[]) {
+    const key=`circle:${x}:${y}:${radius}:${JSON.stringify(goals)}`;
+    let cached=this.examples.get(key);
+    if(!cached) {
+      cached=(async()=>{
+        const initial=await this.kernel.run(undefined,{type:'level',sourceId:43,mode:'remix'});
+        if(!initial.state)throw new Error('Circle example unavailable');
+        const state={...initial.state,circle:{x,y,radius},mode:goals.length?'challenge' as const:'remix' as const,goals:goals.map(([x,y])=>({x,y}))};
+        const reply=await this.kernel.run(state,{type:'evaluate'});
+        if(!reply.result?.circle)throw new Error('Circle example unavailable');
+        return reply.result;
+      })();
+      this.examples.set(key,cached);void cached.catch(()=>this.examples.delete(key));
+    }
+    return cached;
   }
 
   private async areaNotes():Promise<string> {
-    const ramp=await this.example(16,'I');
-    const building=`<p>Add the signed area from the start to your position: ${tex('F(x)=\\int_0^x h(u)\\,\\mathrm{d}u')}. The new height starts at zero.</p>${strip(ramp.stages,['Flat height','Growing area'],[move('I')])}<p>In ${viewButton('flow')}, move the slider to watch the shaded area grow. Its total becomes the next graph’s height.</p><p class="note-reference">${lesson(16)}</p>`;
-    if(!this.known.has(19))return `<h3>Area builds a new height.</h3>${building}`;
-    const cancellation=await this.example(19,'I');
-    const signed=`<p>Above zero adds area. Below zero takes it away. Equal positive and negative areas bring the new height back to zero.</p>${strip(cancellation.stages,['Positive, then negative','Rise, then fall'],[move('I')])}<p class="note-reference">${lesson(19)}</p>`;
-    const basics=`<details><summary>How area grows</summary>${building}</details>`;
-    if(!this.known.has(17))return `<h3>Adding and taking away.</h3>${signed}${basics}`;
-    const fitted=await this.example(17,'IH');
-    const fitting=`<p>Halving the old heights halves every bit of area. Halving the result gives the same shape.</p>${strip(fitted.stages,['Falling line','Area','Fitted area'],[move('I'),move('H')])}<p class="note-reference">${lesson(17)}</p>`;
-    const signedReference=`<details><summary>Positive and negative area</summary>${signed}</details>${basics}`;
-    if(!this.known.has(20))return `<h3>Fit the area.</h3>${fitting}${signedReference}`;
-    const placed=await this.example(20,'IA');
-    const placing=`<p>Accumulation always starts at zero. Lift afterward to choose a different starting height. Lifting before accumulation adds more area at every step instead.</p>${strip(placed.stages,['Flat height','From zero','From one'],[move('I'),move('A')])}<p class="note-reference">${lesson(20)}</p>`;
-    const fittingReference=`<details><summary>Scaling area</summary>${fitting}</details>${signedReference}`;
-    if(!this.known.has(21))return `<h3>Choose where to start.</h3>${placing}${fittingReference}`;
-    const rebuilt=await this.example(21,'DI');
-    const recovery=`<p>A slope records changes in height. Accumulating those changes rebuilds the shape, starting at zero. The original starting height is lost. In the other direction, the slope of accumulated area returns the original curve.</p>${strip(rebuilt.stages,['Raised arch','Its slope','Shape rebuilt'],[move('D'),move('I')])}<p class="note-reference">${lesson(21)}</p>`;
-    const placingReference=`<details><summary>Choose the starting height</summary>${placing}</details>${fittingReference}`;
-    if(!this.known.has(18))return `<h3>Build a curve from its slope.</h3>${recovery}${placingReference}`;
-    const [bowl,roof]=await Promise.all([this.example(18,'I'),this.example(13,'QNA')]);
-    const familiar=`<p>A new route can lead to a shape you already know how to use.</p>${strip([bowl.stages[0],bowl.stages[1],roof.stages.at(-1)!],['S curve','Area-built bowl','Rounded roof'],[`<strong>Build with area</strong>${move('I')}`,`<strong>Fit, turn &amp; place</strong><small>${lesson(13)}</small>`],true)}<p class="note-takeaway">Find the useful shape. Fit its depth. Choose its direction and height.</p><details><summary>Slopes and area</summary>${recovery}</details>${placingReference}`;
-    if(!this.known.has(23))return `<h3>Area reveals a familiar shape.</h3>${familiar}`;
-    const [sCurve,fold]=await Promise.all([this.example(23,'I'),this.example(7,'Q')]);
-    return `<h3>A bowl can build an S curve.</h3><p>The S curve’s slope was a bowl. Area takes you back to an S shape, with a flat middle.</p>${strip(sCurve.stages,['Bowl','Area-built S'],[move('I')])}<p>Before folding, place that middle on zero so opposite heights can meet. Then reuse a familiar finish.</p>${strip(fold.stages,['Opposite heights','Heights meet'],[move('Q')])}<p class="note-reference">${lesson(7)} · ${lesson(27)}</p><details><summary>Familiar shapes built with area</summary>${familiar}</details>`;
+    const ramp=await this.example(37,'I');
+    const [inputLift,outputLift]=await Promise.all([this.example(37,'AI'),this.example(37,'IA')]);
+    const lifts=compare('More incoming, or more at the start?',[
+      {label:'Lift the input',stage:inputLift.stages[2],before:ramp.stages[1]},
+      {label:'Lift the output',stage:outputLift.stages[2],before:ramp.stages[1]}
+    ],[{index:0,x:'0'},{index:2,x:'2'}],['Original amount','New amount']);
+    const basics='<p>The station accumulates signed area from zero: '+tex('F(x)=\\int_0^x h(u)\\,\\mathrm{d}u')+'. Its output starts at zero. Raising the input adds more at every step; raising the output changes where it starts.</p>'+strip(ramp.stages,['Input height','Signed area'],[move('I')])+lifts+'<p>Scrub '+viewButton('flow')+' to follow the input-height arrow and signed-area meter. Solid area adds; hatched area subtracts. The meter measures area from zero to the inspected horizontal position.</p>';
+    if(!this.known.has(38))return '<h3>Feed the accumulator.</h3>'+basics;
+    const [signed,moved]=await Promise.all([this.example(38,'I'),this.example(38,'AI')]);
+    const turning='<p>Positive input height adds area; negative input height subtracts it. The accumulated curve turns where the input crosses zero.</p>'+strip([moved.stages[0],moved.stages[1],moved.stages[2]],['Original crossing','Crossing moved','High point moved'],[move('A'),move('I')])+compare('Move the rate’s zero. Move the amount’s peak.',[
+      {label:'Original input',stage:signed.stages[1],before:signed.stages[1]},
+      {label:'Raised input',stage:moved.stages[2],before:signed.stages[1]}
+    ],[{index:2,x:'2'},{index:3,x:'3'}],['Original amount','New amount'])+'<p>Lifting the finished curve moves every height equally; it leaves the peak’s position unchanged.</p>';
+    const reference=recall([37],'How accumulation starts',basics);
+    if(!this.known.has(39))return '<h3>Choose where growth turns.</h3>'+turning+reference;
+    const shaping=await this.example(39,'NAI');
+    const signs='<p>A turned-and-raised bowl has two zero crossings. They divide the input into three regions: taking away, adding, then taking away again.</p>'+strip([shaping.stages[0],shaping.stages[2],shaping.stages[3]],['Bowl','Negative, positive, negative','Fall, rise, fall'],[move('N')+move('A'),move('I')])+'<p class="note-takeaway">Follow both zero crossings through the station: they become the amount’s low and high points. Plan these signs before fitting the final amount.</p>';
+    if(!this.known.has(40))return '<h3>Shape the input. Shape what builds up.</h3>'+signs+recall([38],'Why the amount turns',turning)+reference;
+    const [inputHalf,outputHalf]=await Promise.all([this.example(40,'HI'),this.example(40,'IH')]);
+    const fitting='<p>Halving the input halves every bit of area. Halving the output gives exactly the same accumulated change.</p>'+compare('Does this order change the amount?',[
+      {label:'Halve the input',stage:inputHalf.stages[2],before:signed.stages[1]},
+      {label:'Halve the output',stage:outputHalf.stages[2],before:signed.stages[1]}
+    ],[{index:0,x:'0'},{index:2,x:'2'}],['Original amount','Halved amount'])+'<p>A lift behaves differently: only a lift after the station chooses a nonzero starting amount.</p>'+lifts;
+    if(!this.known.has(41))return '<h3>Change and starting amount are separate.</h3>'+fitting+recall([39],'Plan the input signs',signs)+reference;
+    const recovery=await this.example(41,'DI');
+    const rebuilding='<p>A slope remembers change, not the original starting height. Accumulating that slope rebuilds the shape from zero.</p>'+strip(recovery.stages,['Raised curve','Its slope','Change recovered'],[move('D'),move('I')]);
+    if(!this.known.has(42))return '<h3>Recover what changed.</h3>'+rebuilding+recall([40],'Choose a starting amount',fitting)+reference;
+    const starting=await this.example(42,'I');
+    return '<h3>Design both sides of the machine.</h3><p>The starting bowl is never negative, so its accumulated amount keeps rising. The required heights rise, fall, then rise. Which input signs would create those changes?</p>'+strip([starting.stages[1]],['Starting amount and required heights'],[],false,starting.checkpoints)+'<p class="note-takeaway">First plan the input’s signs and zeros. Then fit how much accumulates, and place the output’s starting height.</p>'+recall([39],'Connect input signs to rises and falls',signs)+recall([40],'Scaling and starting amount',fitting)+recall([41],'Recover a curve from its slope',rebuilding)+reference;
   }
-}
-
-function strip(stages:Stage[],captions:string[],links:string[],connection=false) {
-  const heights=stages.flatMap(stage=>stage.points.map(point=>point[1]));
-  const low=Math.min(0,...heights),high=Math.max(0,...heights),pad=Math.max(1,high-low)*.12;
-  const min=low-pad,max=high+pad,start=stages[0].points[0][0],end=stages[0].points.at(-1)![0];
-  const xy=([x,h]:[number,number])=>[17+(x-start)/(end-start)*142,99-(h-min)/(max-min)*84];
-  const path=(points:Stage['points'])=>points.map((point,i)=>`${i?'L':'M'}${xy(point).map(n=>n.toFixed(2)).join(',')}`).join(' ');
-  const zero=xy([start,0])[1];
-  return `<div class="note-strip ${connection?'note-connection':''}" data-count="${stages.length}">${stages.map((stage,i)=>`${i?`<div class="note-link">${icon('arrow',20)}<span>${links[i-1]}</span></div>`:''}<figure class="note-stage ${connection&&i===1?'shared-shape':''}"><figcaption>${captions[i]}</figcaption><svg class="note-plot" viewBox="0 0 176 116" role="img" aria-label="${escape(captions[i]+': '+stage.expression)}"><path d="M17 10V103" class="note-axis"/><path d="M17 ${zero}H163" class="note-zero-line" data-zero-line/><foreignObject x="0" y="${zero-8}" width="14" height="18"><div xmlns="http://www.w3.org/1999/xhtml" class="note-zero">${tex('0')}</div></foreignObject><path d="${path(stage.points)}" class="note-curve"/>${stage.points.filter((_,j)=>j===0||j===Math.floor(stage.points.length/2)||j===stage.points.length-1).map(point=>{const [x,y]=xy(point);return `<circle cx="${x}" cy="${y}" r="2.8" class="note-point"/>`;}).join('')}</svg><div class="note-formula">${tex(stage.latex)}</div></figure>`).join('')}</div>`;
 }
