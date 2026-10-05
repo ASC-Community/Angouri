@@ -1,0 +1,106 @@
+name: Build and deploy Pages
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and test
+    if: >-
+      github.event_name != 'push' ||
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Install WebAssembly tools
+        run: dotnet workload install wasm-tools
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Refresh community snapshot
+        run: npm run sync:community
+
+      - name: Test community content
+        run: npm run test:content
+
+      - name: Test kernel
+        run: npm run test:kernel
+
+      - name: Build site
+        run: npm run build
+
+      - name: Verify Pages artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in \
+            dist/index.html \
+            dist/about/index.html \
+            dist/_framework/dotnet.js \
+            dist/.nojekyll \
+            dist/CNAME
+          do
+            test -f "$path"
+          done
+          test "$(tr -d '\r\n' < dist/CNAME)" = "angouri.org"
+          test -z "$(find dist -type l -print -quit)"
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Test site in Chromium
+        run: npx playwright test --project=chromium --workers=1
+
+      - name: Upload Pages artifact
+        if: >-
+          github.event_name != 'pull_request' &&
+          github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+  deploy:
+    name: Deploy Pages
+    if: >-
+      github.event_name != 'pull_request' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy Pages artifact
+        id: deployment
+        uses: actions/deploy-pages@v4

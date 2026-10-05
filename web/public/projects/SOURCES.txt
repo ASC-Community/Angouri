@@ -1,0 +1,20 @@
+Project artwork, copied unmodified from the projects' official repositories.
+
+angourimath.png
+https://github.com/ASC-Community/AngouriMath/blob/master/Sources/AngouriMath/icon.png
+Git blob: d84cd54535edc4c6f1edc376aebdd6092eb57347
+License: AngouriMath-LICENSE.txt (MIT)
+
+generictensor.png
+https://github.com/ASC-Community/GenericTensor/blob/master/ico1.png
+Git blob: 6d063a90e6cc64371892d3d575f4b6832d0ce67f
+License: GenericTensor-LICENSE.txt (MIT)
+
+monobind.png
+https://github.com/ASC-Community/monobind/blob/master/monobind-logo.png
+Git blob: 54fcc27c13e841f028a4e3fe723a8063390afcd4
+License: monobind-LICENSE.txt (MIT)
+
+honksharp.png
+https://github.com/ASC-Community/HonkSharp/blob/main/HonkSharp/logo256.png
+License: HonkSharp-LICENSE.txt (MIT)

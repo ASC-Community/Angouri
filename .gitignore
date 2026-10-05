@@ -1,0 +1,26 @@
+node_modules/
+dist/
+artifacts/
+**/bin/
+**/obj/
+web/public/_framework/
+playwright-report/
+test-results/
+.work/
+
+# Local legacy-layout preview from npm run build:pages
+/_framework/
+/assets/
+/about/
+/projects/
+/.nojekyll
+/bg_top.png
+/bg_top_full.png
+/cucumber.svg
+/engine-worker.js
+/favicon.ico
+/favicon.svg
+/index.html
+/logo.png
+/social.svg
+/styles.css

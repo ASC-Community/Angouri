@@ -1,0 +1,32 @@
+{
+  "name": "angouri-vine",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "kernel:build": "dotnet publish bridge/Angouri.Bridge.csproj -c Release",
+    "build": "npm run check && npm run kernel:build && node scripts/build.mjs",
+    "build:pages": "npm run check && npm run kernel:build && node scripts/build.mjs --stage",
+    "dev": "vite --config web/vite.config.ts --host 127.0.0.1",
+    "preview": "vite preview --config web/vite.config.ts --host 127.0.0.1",
+    "check": "tsc --noEmit",
+    "test:kernel": "dotnet run --project tests/Angouri.Tests.csproj -c Release",
+    "test:browser": "playwright test",
+    "sync:community": "node scripts/sync-community.mjs",
+    "test:content": "node --test tests/content.test.mjs",
+    "measure": "node scripts/measure.mjs",
+    "demo": "node scripts/capture-demo.mjs",
+    "export:brand": "node scripts/export-brand.mjs"
+  },
+  "dependencies": {
+    "katex": "^0.16.22"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "@types/katex": "^0.16.7",
+    "marked": "^18.0.14",
+    "opentype.js": "^2.0.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.7"
+  }
+}

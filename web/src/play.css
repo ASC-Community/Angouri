@@ -1,0 +1,272 @@
+/* Game controls: raised pieces move; sockets receive; flat, labeled sources stay put. */
+.button, .icon-button{
+  border: 1px solid #bac9ab;
+  border-bottom-width: 2px;
+  background: #fffef8;
+  box-shadow: 0 2px 0 #d1dcc3;
+  transition: background .14s, box-shadow .14s, transform .14s;
+}
+.button:hover:not(:disabled), .icon-button:hover:not(:disabled){ background: #edf3e2; border-color: #82986a; transform: translateY(-1px); }
+.button:active:not(:disabled), .icon-button:active:not(:disabled){ transform: translateY(2px); box-shadow: none; }
+.button:disabled, .icon-button:disabled{ opacity: 1; color: #a4ad98; background: #eff1e8; border-color: #d9dfcf; box-shadow: none; }
+.button.primary { background: #426940; border-color: #31552f; box-shadow: 0 3px 0 #2b4d2b; color: #fff; }
+.button.primary:hover:not(:disabled) { background: #365c34; border-color: #284c28; }
+.icon-button { width: 40px; height: 40px; }
+button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offset: 4px; }
+.menu-button { background: #fffef8; }
+/* The first two puzzles teach choices; ordering introduces the workspace at 1.3. */
+.intro #ideas-open, .intro .scene-toolbar, .intro #reset { display: none; }
+.landing .site-header { grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: center; }
+.landing .brand { grid-column: 2; grid-row: 1; justify-self: center; }
+.landing .menu-button { grid-column: 3; grid-row: 1; }
+.landing .puzzle-heading { display: none; }
+.landing #axis-labels, .landing .flight-grid, .landing .flight-height-axis { display: none; }
+.intro .recipe-heading h2, .intro .history-button:disabled { visibility: hidden; }
+.intro .recipe-heading { min-height: 30px; }
+.launch-button { min-width: 146px; margin-left: auto; min-height: 44px; font-weight: 600; }
+.launch-button:disabled { background: #e5ebda; color: #789165; border-color: #bdccab; box-shadow: none; }
+.launch-button.continue-ready { background: #3c6c37; border-color: #2a5727; box-shadow: 0 3px 0 #244923, 0 0 0 4px #b4cb8145; animation: continue-arrive .35s ease-out; }
+.launch-button.continue-ready svg { animation: next-arrow .45s ease-out; }
+@keyframes continue-arrive { from { opacity: .2; transform: translateY(8px) scale(.95); } to { opacity: 1; transform: none; } }
+@keyframes next-arrow { from { transform: translateX(-8px); } to { transform: none; } }
+.has-selection .insert-slot { border: 1px dashed #8fa975; background: #e7efd9; color: #618146; }
+.has-selection .insert-slot:hover { background: #d5e6bb; border-style: solid; }
+.playground:not([data-phase=flying]) .speed-lines { opacity: 0; }
+.speed-lines { stroke: #90ac5c; stroke-width: 2; stroke-linecap: round; fill: none; opacity: .7; }
+.slingshot-band { fill: none; stroke: #66784a; stroke-width: 2.5; stroke-linecap: round; }
+#slingshot-pouch { fill: none; stroke: #8e6748; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+#trajectory { stroke: #96af6d; stroke-width: 2.5; stroke-dasharray: 2 9; stroke-linecap: round; fill: none; }
+#flight-trail { stroke: #668c3b; stroke-width: 3.5; stroke-linejoin: round; stroke-linecap: round; fill: none; }
+.ring { --target-color: var(--hit); --target-fill: #e5eed155; --target-inner: #a0bb7b; }
+.ring[data-match=miss] { --target-color: var(--miss); --target-fill: #f7e4e250; --target-inner: #d5aba5; }
+.ring-outer { fill: var(--target-fill); stroke: var(--target-color); stroke-width: 2.5; }
+.ring-inner { fill: none; stroke: var(--target-inner); stroke-width: 1; }
+.target-height { color: var(--hit); }
+.target-height .katex { background: #f4f7e9ed; border-radius: 2px; box-shadow: 0 0 0 2px #f4f7e9ed; }
+.target-label[data-match=miss] .target-height { color: var(--miss-ink); }
+.ring[data-match=miss] .ring-outer { stroke-dasharray: 5 4; }
+.target-badge circle { fill: #fffef8; stroke: none; }
+.ring.hit .target-badge circle, .ring.miss .target-badge circle { fill: var(--target-color); stroke: #f4f7e9; stroke-width: 2; }
+.target-badge path { fill: none; stroke: var(--target-color); stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; }
+.ring.hit .target-badge path, .ring.miss .target-badge path { stroke: #fff; }
+.hit-mark, .miss-mark { display: none; }.ring[data-match=hit] .hit-mark, .ring[data-match=miss] .miss-mark { display: block; }
+.ring-burst { fill: none; stroke: #91b664; stroke-width: 2; }
+.just-hit .target-badge { animation: check-arrive .2s ease-out both; }
+.ring-burst { opacity: 0; transform-box: fill-box; transform-origin: center; }
+.just-hit .ring-burst { animation: ring-ripple .65s .18s ease-out both; }
+@keyframes ring-ripple { 0% { opacity: .8; transform: scale(.8); } 100% { opacity: 0; transform: scale(1.8); } }
+@keyframes check-arrive { from { opacity: 0; } to { opacity: 1; } }
+
+.play-dock { flex-shrink: 0; width: min(100%, 940px); margin: 0 auto; padding: 12px 22px 10px; background: #fffef9; border: 1px solid #d6dfc9; border-radius: 22px; box-shadow: 0 5px 0 #e4e9d9, 0 10px 30px #31492b06; }
+.recipe-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 5px; }
+.recipe-heading h2 { display: flex; align-items: center; gap: 12px; font-size: 11px; font-weight: 600; margin: 0; color: #647855; }
+.history-actions { display: flex; align-items: center; gap: 8px; }
+.history-button { padding: 6px 11px; min-height: 36px; font-size: 11px; gap: 7px; border-radius: 10px; }
+.restart-button { padding: 6px 9px; margin-left: 3px; }
+#undo.retry-cue { border-color: #7d965c; color: #385e32; background: #edf3df; }
+.construction { min-width: 0; margin-bottom: 12px; border-radius: 12px; background: #f2f4e9; box-shadow: inset 0 1px 3px #52673412; }
+.pipeline { display: flex; align-items: center; gap: 10px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; padding: 11px 12px 16px; height: 82px; overscroll-behavior-x: contain; }
+.pipeline, .palette { user-select: none; -webkit-user-select: none; }
+.source-part { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 66px; height: 49px; padding: 3px 8px; margin-right: 4px; border-right: 1px solid #c9d3bd; font-size: 12px; color: #657951; cursor: default; }
+.source-label { font: 9px/1.3 Arial,sans-serif; color: #82916f; }
+.source-part>.katex { display: block; padding: 4px 1px; overflow: clip; }
+.source-choice { display: flex; align-items: center; gap: 6px; min-height: 31px; padding: 3px 6px; border: 1px solid #b3c29e; border-bottom-width: 2px; border-radius: 7px; background: #fffef8; color: #456d39; cursor: pointer; }
+.source-choice:hover { background: #eef4df; border-color: #6e9154; }
+.source-part .source-choice { pointer-events: auto; }
+.insert-slot { position: relative; flex: 0 0 86px; height: 49px; display: flex; align-items: center; justify-content: center; border: 1px dashed #bac8a6; border-radius: 9px; padding: 0; color: #93a27d; background: #e9edde80; cursor: grab; touch-action: none; transition: background .12s, border-color .12s, box-shadow .12s; }
+.empty-slot .piece-grip { position: absolute; left: 6px; opacity: .45; }
+.insert-slot:hover, .insert-slot.selected, .insert-slot.suggested-slot { border-color: #6e8b4b; background: #e2ebd1; color: #486b35; box-shadow: inset 0 0 0 1px #8fa96d; }
+.is-dragging .insert-slot { border: 2px dashed #87a25f; color: #5b7f3e; background: #e6eed7; }
+.is-dragging .insert-slot.drop-target { border-style: solid; border-color: #3f713c; background: #cbdfa9; box-shadow: 0 0 0 3px #88a96540; }
+:where(.recipe-part, .ingredient-stack, .ingredient, .drag-ghost) { --piece-fill: var(--sage); --piece-edge: #a7bb8d; --piece-base: #a0b483; --piece-ink: #405d32; }
+.peach { --piece-fill: var(--peach); --piece-edge: #d3b391; --piece-base: #c9a37b; --piece-ink: #815331; }
+.blue { --piece-fill: var(--blue); --piece-edge: #a6bfcd; --piece-base: #90acbd; --piece-ink: #3d6377; }
+.lilac { --piece-fill: var(--lilac); --piece-edge: #bdacd1; --piece-base: #af99c5; --piece-ink: #705286; }
+.gold { --piece-fill: var(--gold); --piece-edge: #cbbb7d; --piece-base: #bcab63; --piece-ink: #786324; }
+.teal { --piece-fill: #dcede6; --piece-edge: #91b9a9; --piece-base: #7ca693; --piece-ink: #386652; }
+.recipe-part.teal .part-formula { font-size: 14px; overflow: visible; }
+.ingredient[data-op="I"] .op-formula { font-size: 18px; }
+.recipe-part, .ingredient-surface, .drag-ghost { position: relative; border: 1px solid var(--piece-edge); border-radius: 10px; background: var(--piece-fill); color: var(--piece-ink); box-shadow: 0 4px 0 var(--piece-base), inset 0 1px 0 #ffffffc9; user-select: none; -webkit-user-select: none; }
+.recipe-part::after, .ingredient:not(:disabled) .ingredient-surface::after, .drag-ghost::after { content: ''; position: absolute; right: -3px; top: calc(50% - 6px); width: 5px; height: 12px; border-radius: 0 3px 3px 0; background: var(--piece-base); pointer-events: none; }
+.recipe-part { flex: 0 0 86px; height: 49px; }
+.recipe-part.drop-target { outline: 3px solid #6b9450; outline-offset: 3px; }
+.recipe-part.receiving-cell { outline: 1px dashed #829c66; outline-offset: 3px; }
+.recipe-part.receiving-cell .part-body { cursor: pointer; }
+.part-body { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; height: 100%; padding: 7px 12px 7px 6px; cursor: grab; touch-action: none; }
+.part-formula { display: flex; align-items: center; height: 100%; overflow: clip; padding: 3px 1px; font-size: 17px; white-space: nowrap; }
+.piece-grip { display: inline-flex; align-items: center; color: var(--piece-ink); opacity: .6; flex-shrink: 0; }
+/* KaTeX uses invisible, tall positioning struts. Only the piece's actual button
+   should receive input, including when a disabled formula sits below the rail. */
+.ingredient *, .part-body *, .machine-body *, .source-part * { pointer-events: none; }
+.recipe-part:hover { border-color: var(--piece-ink); }
+.recipe-part.inspected { outline: 2px solid var(--piece-ink); outline-offset: 2px; }
+.recipe-part.inspected::before { content: ''; position: absolute; bottom: 3px; left: calc(50% - 6px); width: 12px; height: 2px; border-radius: 2px; background: var(--piece-ink); }
+.palette { --piece-height: 74px; --stack-step: 16px; display: flex; justify-content: center; align-items: end; gap: 12px; flex-wrap: wrap; padding: 10px 3px 5px; min-height: calc(var(--piece-height) + var(--stack-room,0) * var(--stack-step) + 15px); }
+.ingredient-stack { --stock-top: calc((var(--stack-capacity,0) - var(--stack-depth,0)) * var(--stack-step)); position: relative; flex: 1 1 135px; min-width: 0; max-width: 218px; height: calc(var(--piece-height) + var(--stack-capacity,0) * var(--stack-step)); background: transparent; isolation: isolate; }
+.ingredient { position: relative; top: var(--stock-top); z-index: 6; display: flex; width: 100%; min-width: 0; height: var(--piece-height); padding: 0; border-radius: 10px; text-align: left; cursor: grab; touch-action: none; background: transparent; color: var(--piece-ink); transition: transform .12s; }
+.ingredient-surface { z-index: 1; display: flex; flex: 1; height: var(--piece-height); align-items: center; gap: 9px; padding: 9px 13px 11px 7px; min-width: 0; }
+.stock-deck { position: absolute; inset: 0; pointer-events: none; }
+.stock-deck i { position: absolute; z-index: calc(5 - var(--layer)); top: calc(var(--stock-top) + var(--layer) * var(--stack-step)); left: calc((var(--layer) - var(--return-layer,0)) * 2px); width: 100%; height: var(--piece-height); border: 1px solid var(--piece-edge); border-radius: 10px; background: var(--piece-fill); box-shadow: 0 4px 0 var(--piece-base), inset 0 1px 0 #ffffffc9; }
+.stock-deck i::before { content: ''; position: absolute; right: -3px; bottom: 4px; width: 5px; height: 10px; border-radius: 0 3px 3px 0; background: var(--piece-base); }
+.stock-deck i::after { content: ''; position: absolute; bottom: 5px; left: 11px; width: 6px; height: 4px; border-top: 1px dotted var(--piece-ink); border-bottom: 1px dotted var(--piece-ink); opacity: .6; }
+.stock-total { position: absolute; z-index: 2; right: 6px; top: -8px; min-width: 24px; padding: 1px 5px; text-align: center; border: 1px solid var(--piece-edge); border-radius: 6px; background: #fffef8; font-size: 12px; }
+.reusable-mark { position: absolute; right: 5px; bottom: 5px; color: var(--piece-ink); opacity: .6; }
+.ingredient-face { display: flex; flex: 1; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.ingredient .op-formula { font-size: 21px; line-height: 1.3; white-space: nowrap; }
+.ingredient strong { font-size: 10px; line-height: 1.25; font-weight: 500; }
+.ingredient-cue { width: 33px; height: 36px; flex-shrink: 0; color: var(--piece-ink); opacity: .72; }
+.ingredient:hover:not(:disabled) { transform: translateY(-2px); }
+.ingredient:active:not(:disabled) { transform: translateY(2px); cursor: grabbing; }
+.ingredient:disabled { opacity: 1; color: #94a184; cursor: default; }
+.ingredient:disabled .ingredient-surface { background: #f4f4ec; border: 1px dashed #c9d1bc; box-shadow: inset 0 2px 3px #6478450b; color: #94a184; }
+.ingredient:disabled .ingredient-face { opacity: .6; }
+.ingredient:disabled .ingredient-cue { opacity: .3; }
+.ingredient:disabled .piece-grip { opacity: 1; color: #80966c; }
+.ingredient[data-availability=full] .piece-grip { color: #a0a68f; }
+.ingredient:disabled .op-formula { color: inherit; }
+.ingredient.return-ready { cursor: pointer; }
+.ingredient.return-ready .ingredient-surface, .ingredient.return-target .ingredient-surface { border: 2px dashed #6e9254; background: #e8f0da; box-shadow: 0 0 0 3px #91b16725; color: #486c34; }
+.ingredient.return-target .ingredient-surface { border-style: solid; box-shadow: 0 0 0 4px #91b16740; }
+.ingredient.return-target .ingredient-face { opacity: 1; }
+.dragging { opacity: .28; box-shadow: none; transform: none!important; }
+.drag-ghost { position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none; display: flex; align-items: center; justify-content: center; gap: 7px; width: 92px; height: 57px; transform: translate(-50%,-60%) rotate(-5deg); box-shadow: 0 5px 0 var(--piece-base), 0 13px 24px #26392130; }
+.drag-ghost.over-slot { transform: translate(-50%,-60%); outline: 2px solid #527c3c; outline-offset: 3px; }
+.drag-ghost.over-return { transform: translate(-50%,-60%) rotate(5deg) scale(.9); }
+.drag-ghost.settling { outline: none; }
+.drag-ghost.empty-ghost { background: #eff3e5; border: 2px dashed #98ad81; box-shadow: 0 6px 16px #26392120; color: #8a9e73; }
+.is-dragging, .is-dragging * { cursor: grabbing!important; }
+.just-placed { animation: place-piece .24s ease-out; }
+@keyframes place-piece { from { transform: translateY(-9px) scale(1.06); } to { transform: translateY(0) scale(1); } }
+.dock-footer { padding-top: 8px; min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dock-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.rethrow-button { width: 42px; height: 42px; }
+.feedback { display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 11px; color: #7d8e6c; text-align: center; line-height: 1.4; padding: 3px 4px; }
+.feedback.error { padding: 7px 10px; background: #f8e9e1; color: #94563c; border-radius: 7px; }
+.success { display: flex; align-items: center; gap: 16px; padding: 4px 0; }
+.success-medal { display: flex; align-items: center; gap: 9px; color: #4c703a; font-size: 12px; }
+.success-medal>svg { width: 31px; height: 31px; padding: 6px; border-radius: 50%; background: #e6efda; border: 1px solid #a7bc87; }
+.just-solved .success-medal { animation: place-piece .3s .15s ease-out both; }
+
+@media(max-width:1000px) {
+  .play-dock { padding: 10px 16px 8px; }
+  .ingredient-stack { flex-basis: 128px; }.ingredient-surface { padding-right: 9px; }
+  .ingredient-cue { display: none; }
+}
+@media(max-width:600px) {
+  .play-dock { padding: 9px 12px 7px; border-radius: 18px; }
+  .recipe-heading { margin-bottom: 6px; }
+  .recipe-heading h2 { font-size: 10px; gap: 8px; }
+  .history-button { min-height: 34px; padding: 5px 9px; font-size: 10px; }
+  .construction { margin-bottom: 9px; }
+  .pipeline { padding: 10px 7px 15px; height: 75px; }
+  .source-part { min-width: 60px; height: 44px; padding: 3px 6px; font-size: 11px; margin-right: 3px; }
+  .insert-slot { height: 44px; flex-basis: 73px; }
+  .recipe-part { flex-basis: 73px; height: 44px; }
+  .part-body { padding: 5px 9px 5px 4px; gap: 5px; }
+  .part-formula { font-size: 16px; }
+  .palette { --piece-height: 65px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px 2px 5px; }
+  .ingredient-stack { max-width: none; }.ingredient-surface { padding: 7px 9px 9px 5px; gap: 5px; }
+  .ingredient .op-formula { font-size: 19px; }
+  .ingredient strong { font-size: 9px; }
+  .ingredient-face { gap: 3px; }
+  .ingredient .piece-grip svg { width: 13px; }
+  .launch-button { min-width: 116px; min-height: 39px; font-size: 12px; padding: 7px 12px; }
+  .palette[data-count="3"] { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .palette[data-count="4"] { grid-template-columns: repeat(4,minmax(0,1fr)); }
+  .palette[data-count="5"] { grid-template-columns: repeat(5,minmax(0,1fr)); }
+  .palette[data-count="6"] { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .game-shell:has(.palette[data-count="6"]) { min-height: 740px; }
+  .palette[data-count="5"] [data-op="I"] .op-formula { font-size: 13px; }
+  .palette[data-count="3"], .palette[data-count="4"], .palette[data-count="5"] { --piece-height: 71px; }
+  .palette[data-count="3"] .ingredient-surface, .palette[data-count="4"] .ingredient-surface, .palette[data-count="5"] .ingredient-surface { padding: 8px 3px 10px; justify-content: center; }
+  .palette[data-count="3"] .ingredient-face, .palette[data-count="4"] .ingredient-face, .palette[data-count="5"] .ingredient-face { align-items: center; text-align: center; }
+  .palette[data-count="3"] .piece-grip, .palette[data-count="4"] .piece-grip, .palette[data-count="5"] .piece-grip { position: absolute; left: 2px; top: 2px; }
+  .palette[data-count="3"] .piece-grip svg, .palette[data-count="4"] .piece-grip svg, .palette[data-count="5"] .piece-grip svg { width: 9px; height: 9px; }
+  .palette[data-count="4"] .op-formula, .palette[data-count="5"] .op-formula { font-size: 16px; }
+  .palette[data-count="4"] strong, .palette[data-count="5"] strong { font-size: 8px; }
+  .dock-footer { min-height: 26px; padding-top: 5px; }
+  .dock-actions { gap: 8px; }.rethrow-button { width: 36px; height: 36px; }
+  .feedback { font-size: 10px; }
+  .success { gap: 7px; padding: 3px 0; }
+  .success-medal { font-size: 11px; gap: 5px; line-height: 1.3; }
+  .success-medal>svg { width: 25px; height: 25px; padding: 4px; }
+}
+@media(min-width:601px) and (max-width:1000px) and (min-height:521px) {
+  .palette[data-count="6"] { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .palette[data-count="6"] .ingredient-stack { max-width: none; }
+  .game-shell:has(.palette[data-count="6"]) { min-height: 740px; }
+}
+@media(max-height:700px) {
+  .play-dock { padding-top: 7px; padding-bottom: 6px; }
+  .palette[data-count] { --piece-height: 56px; }.ingredient-surface { padding-top: 5px; padding-bottom: 7px; }
+  .ingredient .op-formula { font-size: 17px; }
+  .pipeline { height: 73px; padding-top: 10px; padding-bottom: 14px; }
+  .construction { margin-bottom: 7px; }
+  .recipe-heading { margin-bottom: 5px; }
+  .dock-footer { padding-top: 3px; min-height: 23px; }
+}
+@media(max-height:520px) and (min-width:601px) {
+  .play-dock { width: 310px; max-width: 43%; max-height: 100%; overflow-y: auto; margin: auto 0; padding: 8px 10px; }
+  .palette { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }.palette[data-count] { --piece-height: 55px; }
+  .palette[data-count="6"] { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .palette[data-count="5"] [data-op="I"] .op-formula { font-size: 13px; }
+  .palette[data-count="3"] { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .palette[data-count="4"] { grid-template-columns: repeat(4,minmax(0,1fr)); }
+  .palette[data-count="5"] { grid-template-columns: repeat(5,minmax(0,1fr)); }
+  .palette[data-count="4"] .ingredient-surface, .palette[data-count="5"] .ingredient-surface { padding-left: 3px; padding-right: 3px; }
+  .palette[data-count="4"] .op-formula, .palette[data-count="5"] .op-formula { font-size: 15px; }
+  .palette[data-count="4"] strong, .palette[data-count="5"] strong { font-size: 8px; }
+  .palette .piece-grip { display: none; }
+  .palette .ingredient-face { align-items: center; text-align: center; }
+  .launch-button { min-width: 112px; min-height: 36px; font-size: 11px; padding: 7px 9px; }
+  .ingredient-stack { max-width: none; }.ingredient-surface { padding: 5px 8px 8px 4px; gap: 4px; }
+  .ingredient strong { font-size: 9px; }
+  .ingredient .op-formula { font-size: 17px; }
+  .ingredient-face { gap: 2px; }
+  .ingredient .piece-grip svg { width: 12px; }
+  .pipeline { padding: 10px 7px 14px; height: 72px; }
+  .source-part { min-width: 58px; height: 43px; }
+  .insert-slot { flex-basis: 76px; height: 43px; }
+  .recipe-part { flex-basis: 76px; height: 43px; }
+  .recipe-heading h2 { font-size: 10px; gap: 7px; }
+  .success { flex-direction: row; gap: 7px; }
+  .success-medal { font-size: 10px; }
+  .success-medal>svg { width: 25px; height: 25px; padding: 4px; }
+}
+@media(max-width:370px) { .palette { gap: 7px; } }
+@media(prefers-reduced-motion:reduce) { *, *::before, *::after { animation: none!important; transition: none!important; } }
+body.reduced-motion *, body.reduced-motion *::before, body.reduced-motion *::after { animation: none!important; transition: none!important; }
+
+/* One-slot introductions: choose, inspect, throw. */
+.intro .recipe-heading, .intro .construction { display: none; }
+.intro .play-dock { width: min(100%,540px); max-width: none; background: transparent; border: 0; box-shadow: none; padding: 8px 8px 14px; }
+.intro .play-dock:has(.palette[data-count="3"]) { width: min(100%,720px); }
+.intro .palette { --piece-height: 82px; justify-content: center; gap: 14px; }
+.intro .ingredient { cursor: pointer; touch-action: manipulation; }
+.intro .piece-grip { display: none; }
+.intro .ingredient-surface { padding: 10px 18px; }
+.intro .ingredient-face strong { font-size: 12px; }
+.intro .ingredient .op-formula { font-size: 25px; }
+.intro .ingredient[aria-pressed=true] .ingredient-surface { border-color: var(--piece-ink); box-shadow: inset 0 0 0 2px var(--piece-ink); }
+.intro .dock-footer { justify-content: center; min-height: 60px; }
+.intro .dock-actions { margin-left: 0; }
+.intro [data-choice=empty] .dock-actions { display: none; }
+.intro .success { display: none; }
+.landing .brand { transform: scale(1.25); transform-origin: center; }
+@media(max-width:600px) {
+  .intro.game-shell { min-height: 480px; }
+  .intro .palette { --piece-height: 78px; gap: 12px; }
+  .intro .ingredient-surface { padding: 10px; }
+  .intro .ingredient-face strong { font-size: 10px; }
+  .intro .ingredient-cue { display: block; width: 28px; }
+  .intro .ingredient .op-formula { font-size: 22px; }
+  .landing .brand { transform: scale(1.1); }
+  .intro .palette[data-count="3"] .ingredient-surface { padding: 8px 3px; }
+  .intro .palette[data-count="3"] .ingredient-cue { display: none; }
+  .intro .palette[data-count="3"] .ingredient .op-formula { font-size: 21px; }
+  .intro .palette[data-count="3"] .ingredient-face strong { font-size: 9px; }
+}
+@media(max-height:520px) and (min-width:601px) {
+  .intro .play-dock, .intro .play-dock:has(.palette[data-count="3"]) { width: 260px; max-width: 40%; }
+  .intro .palette { grid-template-columns: 1fr; --piece-height: 64px; gap: 13px; }
+}
