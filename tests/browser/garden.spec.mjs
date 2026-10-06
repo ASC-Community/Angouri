@@ -19,7 +19,7 @@ test('picture silhouettes link to actual construction without awarding progress'
   await page.locator('#picture-open').click();await expect(page.locator('[data-garden-piece]')).toHaveCount(6);
   await expect(page.locator('[data-garden-piece][data-complete="true"]')).toHaveCount(0);
   await expect(page.locator('.garden-status')).toContainText('0 of 6');
-  for(const id of [74,75,77]) {
+  for(const id of [72,73,74,75,76,77]) {
     expect(await page.locator(`[data-garden-piece="${id}"] .garden-area-hit`).evaluate(el=>{
       const b=el.getBoundingClientRect();return document.elementFromPoint(b.left+b.width/2,b.top+b.height/2)?.closest('[data-garden-piece]')===el.closest('[data-garden-piece]');
     })).toBe(true);
@@ -51,10 +51,15 @@ test('earned curves reveal the cucumber, preserve the recipe, and fit compact la
       })).toBe(true);
       const label=tile.locator('.garden-piece-label');
       expect(await label.evaluate(el=>{const b=el.getBoundingClientRect();return document.elementFromPoint(b.left+b.width/2,b.top+b.height/2)?.closest('[data-garden-piece]')===el.closest('[data-garden-piece]');})).toBe(true);
+      expect(await tile.evaluate(el=>{
+        const label=el.querySelector('.garden-piece-label').getBoundingClientRect();
+        // Firefox includes the wide invisible hit stroke in its bounds. Labels
+        // must clear the visible drawing; overlapping its hit area is useful.
+        return [...el.querySelectorAll('.garden-art-path')].every(path=>label.top>path.getBoundingClientRect().bottom);
+      })).toBe(true);
     }
     const labelBounds=await page.locator('[data-garden-piece] .garden-piece-label').evaluateAll(labels=>Object.fromEntries(labels.map(el=>[el.closest('[data-garden-piece]').dataset.gardenPiece,el.getBoundingClientRect().toJSON()])));
     expect(labelBounds[77].left-labelBounds[76].right).toBeGreaterThan(8);
-    expect(labelBounds[73].top).toBeGreaterThan(labelBounds[76].bottom);
   }
   await page.locator('[data-garden-done]').click();await expect(page.locator('#garden-dialog')).toBeHidden();
   expect(await snapshot(page)).toEqual(before);

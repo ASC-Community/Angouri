@@ -9,20 +9,19 @@
 .crop-bound input[type=text] { width: 38px; border: 1px solid #b9c6b0; border-radius: 4px; padding: 3px; text-align: center; background: #fffefa; color: #344c3b; font: 11px Arial,sans-serif; }
 .crop-add { flex: none; font-size: 11px; padding: 8px; }
 .palette[data-count="0"] { display: none; }
-.outline-target { fill: none; stroke: #c08b43; stroke-width: 7; opacity: .4; stroke-linecap: round; stroke-linejoin: round; }
-.outline-verdict { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 6px; color: #805b26; font-size: 11px; padding: 5px 10px; min-height: 28px; }
-.outline-verdict[data-outline-match=true] { color: #38623e; }
-.outline-verdict[data-outline-match=false] { color: var(--miss-ink); }
-.outline-key { display: inline-block; width: 19px; height: 5px; border-radius: 5px; background: #c08b4370; }
-.outline-verdict [data-outline-mark] { display: inline-flex; }
-.flight-diagram>.outline-verdict { position: absolute; top: 3px; left: 0; right: 0; pointer-events: none; }
-.crop-required { display: inline-flex; gap: 5px; align-items: center; margin-left: 8px; color: #866337; }
-.crop-required[data-crop-match=true] { color: #38623e; }
-.crop-required[data-crop-match=false] { color: var(--miss-ink); }
+.crop-verdict { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 7px; font-size: 11px; padding: 5px 10px; min-height: 28px; }
+[data-crop-match=true] { color: var(--hit); }
+[data-crop-match=false] { color: var(--miss-ink); }
+.crop-verdict [data-crop-mark],.crop-key { display: inline-flex; }
+.flight-diagram>.crop-verdict { position: absolute; top: 3px; left: 0; right: 0; pointer-events: none; }
+.crop-window { pointer-events: none; }
+.crop-discarded { fill: #839174; opacity: .1; }
+.crop-before { fill: none; stroke: #8d9b7d; stroke-width: 2; stroke-dasharray: 3 6; opacity: .5; }
+.crop-cuts { fill: none; stroke: #6c8460; stroke-width: 1.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.crop-goal-bracket { fill: none; stroke: currentColor; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .crop-machine .machine-icon { color: #4b7051; font-size: 15px; }
 .crop-machine .machine-sample { white-space: normal; }
 .crop-omitted { opacity: .3; }
-[data-crop-pending] .outline-verdict,[data-crop-pending] .target-badge path { opacity: .4; }
 .chapter-context { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 5px; }
 .chapter-context .eyebrow { margin: 0; }
 #picture-open { font-size: 10px; font-weight: 500; min-height: 25px; padding: 2px 6px; gap: 5px; }

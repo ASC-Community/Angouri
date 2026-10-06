@@ -1,9 +1,9 @@
 import katex from 'katex';
-import { decimalTex, fraction, isRelationSource, OPS, type Checkpoint, type CurvePath, type Point, type Op, type Result, type State } from './types';
+import { decimalTex, fraction, isRelationSource, targetHeight, OPS, type Checkpoint, type CurvePath, type Point, type Op, type Result, type State } from './types';
 import { icon } from './icons';
 import { drawnPaths, flightStrokes, heightsAt } from './geometry';
 import { stationScene, updateStationScene } from './station-scene';
-import { outlineVerdict, probePoints } from './crop';
+import { cropVerdict, cropWindow, updateCropWindow, probePoints } from './crop';
 export type Camera = { min: number; max: number; minX?:number; maxX?:number };
 export type Flight = { phase:'ready'|'releasing'|'flying'|'landed'; position:number; release?:number };
 /** Keep the loaded artwork and its interactive grip on the same projected tangent. */
@@ -29,6 +29,7 @@ export function operationTex(op?:Op) {
   const html=katex.renderToString(latex,{throwOnError:false,strict:'ignore',output:'htmlAndMathml',trust:context=>context.command==='\\htmlClass'});
   operationCache.set(formula,html);return html;
 }
+export const targetLatex=(checkpoint:Checkpoint)=>checkpoint.targetLatex??rationalTex(checkpoint.target);
 export const rationalTex=(value:string)=>{const [n,d]=value.split('/');return d?`${n.startsWith('-')?'-':''}\\frac{${n.replace(/^-/,'')}}{${d}}`:n;};
 // Fit one diagram uniformly. Resizing or browser zoom never stretches its axes.
 // Reserve space beyond both ends of the vertical plot for a steep pullback.
@@ -78,6 +79,26 @@ export function sizeFlightAnnotations(root:HTMLElement) {
     }
     root.querySelector('#target-leaders')?.setAttribute('d',leaders.join(' '));
   }
+  else if(root.querySelector('.crop-window')) {
+    // A crop can place several exact landmarks close together. Alternate their
+    // callouts only when needed, preserving readable math at compact scales.
+    const entries=[...overlay.querySelectorAll<HTMLElement>('.target-label')].map(parent=>{
+      const label=parent.querySelector<HTMLElement>('.flight-label')!,rect=label.querySelector('.katex-html')!.getBoundingClientRect();
+      return {label,rect,x:matrix.e+Number(parent.dataset.plotX)*scale,y:matrix.f+Number(parent.dataset.plotY)*matrix.d,radius:Number(parent.dataset.radius)*scale};
+    });
+    const overlaps=entries.some((a,i)=>entries.slice(i+1).some(b=>a.rect.left<b.rect.right+4&&a.rect.right+4>b.rect.left&&a.rect.top<b.rect.bottom+4&&a.rect.bottom+4>b.rect.top));
+    if(overlaps) {
+      const leaders:string[]=[];
+      [...entries].sort((a,b)=>a.x-b.x).forEach((entry,i)=>{
+        const y=entry.y+(i%2?-1:1)*(entry.radius+entry.rect.height/2+9);
+        const dy=y-(entry.rect.top+entry.rect.height/2);
+        entry.label.style.top=`${parseFloat(entry.label.style.top)+dy}px`;
+        const direction=Math.sign(y-entry.y),startY=entry.y+direction*(entry.radius+3),endY=y-direction*(entry.rect.height/2+2);
+        leaders.push(`M${(entry.x-matrix.e)/scale} ${(startY-matrix.f)/matrix.d}V${(endY-matrix.f)/matrix.d}`);
+      });
+      root.querySelector('#target-leaders')?.setAttribute('d',leaders.join(' '));
+    }
+  }
   // Keep the zero numeral left of the first target's full formula. Its text
   // keeps a CSS-pixel size even when the coordinate diagram becomes smaller.
   const zero=overlay.querySelector<HTMLElement>('.zero-label')?.closest<HTMLElement>('.flight-label');
@@ -124,19 +145,19 @@ export const targetMark=(status:string)=>status==='hit'?icon('check',13):status=
 export function flightView(state:State,result:Result,camera:Camera,flight:Flight) {
   const {width,height,top,bottom}=plotArea();
   const circular=!!state.circle||!!result.relation;
-  const coordinates=result.checkpoints.map(c=>transform(state,camera,[fraction(c.x),fraction(c.target)]));
+  const coordinates=result.checkpoints.map(c=>transform(state,camera,[fraction(c.x),targetHeight(c)]));
   const radii=coordinates.map(([x,y],i)=>result.relation?Math.min(20,...coordinates.flatMap(([a,b],j)=>j===i?[]:[Math.hypot(x-a,y-b)*.39])):20);
   const rings=(state.mode==='remix'?[]:result.checkpoints).map((c,i)=>{
-    const [x,y]=transform(state,camera,[fraction(c.x),fraction(c.target)]),status=targetStatus(c,state,flight);
+    const [x,y]=transform(state,camera,[fraction(c.x),targetHeight(c)]),status=targetStatus(c,state,flight);
     const radius=radii[i];
     return `<g class="ring ${status}" data-ring="${i}" data-target="${i}" data-match="${c.hit?'hit':'miss'}" data-status="${status}" aria-label="${targetDescription(c,i,status)}"><circle class="ring-burst" cx="${x}" cy="${y}" r="${radius*1.1}"/><circle class="ring-outer" cx="${x}" cy="${y}" r="${radius}"/><circle class="ring-inner" cx="${x}" cy="${y}" r="${radius*.65}"/><g class="target-badge" transform="translate(${x} ${y}) scale(${radius/20})"><circle r="12"/><path class="hit-mark" d="m-7 0 5 5 9-10"/><path class="miss-mark" d="m-5-5 10 10m0-10-10 10"/></g></g>`;
   }).join('');
   const targetLabels=(state.mode==='remix'?[]:result.checkpoints).map((c,i)=>{
-    const [x,y]=transform(state,camera,[fraction(c.x),fraction(c.target)]);
+    const [x,y]=transform(state,camera,[fraction(c.x),targetHeight(c)]);
     // Put labels toward the open middle of the plot, clear of the launcher and
     // axis ticks. Their gap includes CSS pixels because the text does not shrink.
     const direction=circular?(y<200?-1:1):y<(top+bottom)/2?1:-1;
-    return `<span class="target-label" data-match="${c.hit?'hit':'miss'}" data-plot-x="${x}" data-plot-y="${y}" data-height="${fraction(c.target)}" data-radius="${radii[i]}">${flightMath(circular?`(${rationalTex(c.x)},${rationalTex(c.target)})`:`h = ${rationalTex(c.target)}`,x,y+20*direction,circular?96:70,'target-height',16*direction)}</span>`;
+    return `<span class="target-label" data-match="${c.hit?'hit':'miss'}" data-plot-x="${x}" data-plot-y="${y}" data-height="${targetHeight(c)}" data-radius="${radii[i]}">${flightMath(circular?`(${rationalTex(c.x)},${targetLatex(c)})`:`h = ${targetLatex(c)}`,x,y+20*direction,circular?96:70,'target-height',16*direction)}</span>`;
   }).join('');
   const ticks=circular?Array.from({length:Math.min(25,Math.ceil(camera.maxX!)-Math.floor(camera.minX!)+1)},(_,i)=>{
     const [x]=transform(state,camera,[Math.floor(camera.minX!)+i,0]);
@@ -154,12 +175,13 @@ export function flightView(state:State,result:Result,camera:Camera,flight:Flight
     <g clip-path="url(#plot-clip)">${ticks}
       <path class="flight-height-axis" d="M${zeroX} ${circular?40:top}V${circular?356:bottom}"/>
       <path class="flight-zero-line" data-zero-line d="M${circular?185:84} ${zeroY}H${circular?575:width-46}"/>
-      <path id="target-leaders" class="target-leaders" d=""/>${result.outline?`<path class="outline-target" aria-label="Required whole outline" d="${result.outline.paths.map(p=>path(p.points,state,camera)).join(' ')}"/>`:''}<path id="trajectory" clip-path="url(#crop-preview-clip)" d="${drawnPaths(result).map(p=>path(p.points,state,camera)).join(' ')}"/>
+      ${cropWindow(result.crop,x=>transform(state,camera,[x,0])[0],{left:84,right:width-46,top:52,bottom:335},'flight-crop',result.relation?'':(result.stages.at(-1)!.paths??[{points:result.stages.at(-1)!.points}]).map(p=>path(p.points,state,camera)).join(' '))}
+      <path id="target-leaders" class="target-leaders" d=""/><path id="trajectory" clip-path="url(#crop-preview-clip)" d="${drawnPaths(result).map(p=>path(p.points,state,camera)).join(' ')}"/>
       <g class="flight-path-ends">${pathEnds(result.relation?.paths??result.paths,p=>transform(state,camera,p))}</g>
       <path id="flight-trail" d=""/>
       ${flightStrokes(result).map((_,i)=>flightRig(i)).join('')}
       ${rings}
-    </g></svg><div class="flight-annotations"><div id="target-labels">${targetLabels}</div><div id="axis-labels">${annotations}</div></div>${outlineVerdict(result)}</div>`;
+    </g></svg><div class="flight-annotations"><div id="target-labels">${targetLabels}</div><div id="axis-labels">${annotations}</div></div>${cropVerdict(result)}</div>`;
 }
 /** One rig per non-retracing implicit trail; stepped height graphs retain one. */
 function flightRig(index:number) {
@@ -209,16 +231,16 @@ export const heightGapFormula=(guide:NonNullable<Result['heightGuide']>)=>`${hei
 export function functionView(state:State,result:Result,flight:Flight) {
   const puzzle=state.mode!=='remix';
   const guide=result.heightGuide;
-  const gap=guide?`<tfoot><tr class="gap-comparison" data-gap-match="${guide.hit}"><th scope="row"><span>Height gap</span><small title="Heights at the highest and lowest targets' positions" aria-label="Height at x=${guide.toX} minus height at x=${guide.fromX}, the positions of the highest and lowest targets">${tex(heightGapFormula(guide))}</small></th><td>${comparisonValue(guide.target)}</td><td>${comparisonValue(guide.actual,guide.actualLatex,guide.stages.at(-1)?.gapNumber)}</td><td><span class="gap-verdict" aria-label="${guide.hit?'Height gap matches':'Height gap does not match'}">${targetMark(guide.hit?'hit':'miss')}</span></td></tr></tfoot>`:'';
-  const rows=result.checkpoints.map((c,i)=>{const status=c.hit?'hit':'miss',confirmed=targetStatus(c,state,flight);return `<tr data-status="${puzzle?status:'sample'}"><td>${result.relation?tex(`(${rationalTex(c.x)},${rationalTex(c.target)})`):comparisonValue(c.x)}</td>${puzzle?`<td>${comparisonValue(result.relation?c.lhs!:c.target)}</td>`:''}<td>${comparisonValue(c.actual,c.actualLatex,c.actualNumber)}</td>${puzzle?`<td class="verdict-cell"><span class="equation-verdict" data-target="${i}" data-status="${confirmed}" aria-label="${targetDescription(c,i,confirmed)}">${targetMark(status)}</span></td>`:''}</tr>`;}).join('');
-  return `<div class="equation-layout"><section class="final-equation" aria-label="Final equation">${equationForms(result)}${outlineVerdict(result)}</section><div class="value-table"><table aria-label="${puzzle?'Compare your equation with the targets':'Sample heights'}"><thead><tr><th>${result.relation?'Target '+tex('(x,h)'):'Position '+tex('x')}</th>${puzzle?'<th>Expected '+(result.relation?tex('h^2'):'')+'</th>':''}<th>${result.relation?'Recipe '+tex('h^2'):puzzle?'Actual':'Height'}</th>${puzzle?`<th><span class="sr-only">Matches target</span>${icon('target',16)}</th>`:''}</tr></thead><tbody>${rows}</tbody>${gap}</table></div></div>`;
+  const gap=guide?`<tfoot><tr class="gap-comparison" data-gap-match="${guide.hit}"><th scope="row"><span>Height gap</span><small title="Heights at the highest and lowest targets' positions" aria-label="Height at x=${guide.toX} minus height at x=${guide.fromX}, the positions of the highest and lowest targets">${tex(heightGapFormula(guide))}</small></th><td>${comparisonValue(guide.target,guide.targetLatex,guide.targetNumber)}</td><td>${comparisonValue(guide.actual,guide.actualLatex,guide.stages.at(-1)?.gapNumber)}</td><td><span class="gap-verdict" aria-label="${guide.hit?'Height gap matches':'Height gap does not match'}">${targetMark(guide.hit?'hit':'miss')}</span></td></tr></tfoot>`:'';
+  const rows=result.checkpoints.map((c,i)=>{const status=c.hit?'hit':'miss',confirmed=targetStatus(c,state,flight);return `<tr data-status="${puzzle?status:'sample'}"><td>${result.relation?tex(`(${rationalTex(c.x)},${targetLatex(c)})`):comparisonValue(c.x)}</td>${puzzle?`<td>${result.relation?comparisonValue(c.lhs!):comparisonValue(c.target,c.targetLatex,c.targetNumber)}</td>`:''}<td>${comparisonValue(c.actual,c.actualLatex,c.actualNumber)}</td>${puzzle?`<td class="verdict-cell"><span class="equation-verdict" data-target="${i}" data-status="${confirmed}" aria-label="${targetDescription(c,i,confirmed)}">${targetMark(status)}</span></td>`:''}</tr>`;}).join('');
+  return `<div class="equation-layout"><section class="final-equation" aria-label="Final equation">${equationForms(result)}${cropVerdict(result)}</section><div class="value-table"><table aria-label="${puzzle?'Compare your equation with the targets':'Sample heights'}"><thead><tr><th>${result.relation?'Target '+tex('(x,h)'):'Position '+tex('x')}</th>${puzzle?'<th>Expected '+(result.relation?tex('h^2'):'')+'</th>':''}<th>${result.relation?'Recipe '+tex('h^2'):puzzle?'Actual':'Height'}</th>${puzzle?`<th><span class="sr-only">Matches target</span>${icon('target',16)}</th>`:''}</tr></thead><tbody>${rows}</tbody>${gap}</table></div></div>`;
 }
 
 const flowScales=new WeakMap<Result,{min:number;max:number;start:number;end:number}>();
 function flowScale(result:Result) {
   let scale=flowScales.get(result);
   if(!scale) {
-    const heights=[...result.stages.flatMap(stage=>stage.points.map(point=>point[1])),...result.checkpoints.map(c=>fraction(c.target)),...(result.relation?.playback.map(p=>p[1])??[])];
+    const heights=[...result.stages.flatMap(stage=>stage.points.map(point=>point[1])),...result.checkpoints.map(c=>targetHeight(c)),...(result.relation?.playback.map(p=>p[1])??[])];
     const min=Math.min(0,...heights),max=Math.max(0,...heights),padding=Math.max(2,max-min)*.12;
     const points=probePoints(result);
     scale={min:min-padding,max:max+padding,start:points[0][0],end:points.at(-1)![0]};
@@ -235,7 +257,18 @@ const stagePath=(result:Result,stage:Result['stages'][number])=>(stage.paths??[{
 export const cropFlowPath=(result:Result)=>drawnPaths(result).map(p=>flowPath(result,p.points)).join(' ');
 function cropCard(result:Result,targets:string) {
   const crop=result.crop!,zero=flowPoint(result,[0,0])[1];
-  return `<span class="flow-connector" aria-hidden="true">${icon('arrow',18)}</span><article class="flow-machine crop-machine"><div class="machine-body"><div class="machine-meta"><span class="machine-kicker">CROP · FINISH</span><span class="machine-icon">${icon('crop',20)}${tex(`${rationalTex(crop.from)}\\le x\\le ${rationalTex(crop.to)}`)}</span><span class="machine-sample" data-crop-reading></span><span class="relation-caption">Kept heights stay the same.</span></div><svg class="flow-plot" viewBox="0 0 184 132" role="img" aria-label="Only the kept interval"><path class="flow-zero-line" d="M26 ${zero}H164"/><path class="flow-before" d="${stagePath(result,result.stages.at(-1)!)}"/>${result.outline?`<path class="outline-target" d="${result.outline.paths.map(p=>flowPath(result,p.points)).join(' ')}"/>`:''}<path class="flow-curve" d="${cropFlowPath(result)}"/>${targets}<circle class="flow-point" data-crop-probe r="4"/></svg></div></article>`;
+  return `<span class="flow-connector" aria-hidden="true">${icon('arrow',18)}</span><article class="flow-machine crop-machine"><div class="machine-body"><div class="machine-meta"><span class="machine-kicker">CROP · FINISH</span><span class="machine-icon">${icon('crop',20)}<span data-crop-interval data-from="${crop.from}" data-to="${crop.to}">${tex(`${rationalTex(crop.from)}\\le x\\le ${rationalTex(crop.to)}`)}</span></span><span class="machine-sample" data-crop-reading></span><span class="relation-caption">Kept heights stay the same.</span></div><svg class="flow-plot" viewBox="0 0 184 132" role="img" aria-label="Only the kept interval"><defs><clipPath id="flow-crop-kept"><rect x="${flowPoint(result,[crop.fromNumber,0])[0]}" y="0" width="${flowPoint(result,[crop.toNumber,0])[0]-flowPoint(result,[crop.fromNumber,0])[0]}" height="132"/></clipPath></defs>${cropWindow(crop,x=>flowPoint(result,[x,0])[0],{left:22,right:170,top:18,bottom:109},'flow-crop',result.relation?'':stagePath(result,result.stages.at(-1)!))}<path class="flow-zero-line" d="M26 ${zero}H164"/><path class="flow-curve" clip-path="url(#flow-crop-kept)" d="${cropFlowPath(result)}"/>${targets}<circle class="flow-point" data-crop-probe r="4"/></svg></div></article>`;
+}
+export function updateFlowCrop(root:HTMLElement,result:Result,crop:NonNullable<Result['crop']>,instant=false) {
+  updateCropWindow(root,crop,x=>flowPoint(result,[x,0])[0]);
+  const left=flowPoint(result,[fraction(crop.from),0])[0],right=flowPoint(result,[fraction(crop.to),0])[0];
+  const clip=root.querySelector('#flow-crop-kept rect');clip?.setAttribute('x',String(left));clip?.setAttribute('width',String(right-left));
+  if(instant&&!result.relation)root.querySelector('.crop-machine .flow-curve')?.setAttribute('d',stagePath(result,result.stages.at(-1)!));
+  const interval=root.querySelector<HTMLElement>('[data-crop-interval]');
+  if(interval&&(interval.dataset.from!==crop.from||interval.dataset.to!==crop.to)) {
+    interval.innerHTML=tex(`${rationalTex(crop.from)}\\le x\\le ${rationalTex(crop.to)}`);
+    interval.dataset.from=crop.from;interval.dataset.to=crop.to;
+  }
 }
 function relationCard(result:Result,targets:string) {
   const relation=result.relation!,zero=flowPoint(result,[0,0])[1];
@@ -250,14 +283,14 @@ export function flow(state:State,result:Result,selectedStage:string,probeIndex:n
   const scale=flowScale(result),points=probePoints(result),x=points[Math.max(0,Math.min(points.length-1,probeIndex))][0];
   const guide=result.heightGuide;
   const symbol=result.relation?'h^2':'h';
-  const gapGoal=guide?`<span class="flow-gap-goal" aria-label="Target height gap from x=${guide.fromX} to x=${guide.toX}">Target ${tex(`${heightGapFormula(guide)}=${rationalTex(guide.target)}`)}</span>`:'';
+  const gapGoal=guide?`<span class="flow-gap-goal" aria-label="Target height gap from x=${guide.fromX} to x=${guide.toX}">Target ${tex(`${heightGapFormula(guide)}=${guide.targetLatex??rationalTex(guide.target)}`)}</span>`:'';
   const zero=flowPoint(result,[0,0])[1];
   const goals=state.mode==='remix'?[]:result.checkpoints;
   const targets=goals.map((c,i)=>{
-    const [x,y]=flowPoint(result,[fraction(c.x),fraction(c.target)]),status=targetStatus(c,state,flight);
+    const [x,y]=flowPoint(result,[fraction(c.x),targetHeight(c)]),status=targetStatus(c,state,flight);
     return `<circle class="flow-target" data-target="${i}" data-match="${c.hit?'hit':'miss'}" data-status="${status}" cx="${x}" cy="${y}" r="6"/>`;
   }).join('');
-  const goalList=goals.map((c,i)=>{const status=targetStatus(c,state,flight);return `<span class="flow-goal" data-target="${i}" data-match="${c.hit?'hit':'miss'}" data-status="${status}" role="img" aria-label="${targetDescription(c,i,status)}">${tex(`(${rationalTex(c.x)},\\,${rationalTex(c.target)})`)}<span class="target-result" aria-hidden="true">${targetMark(c.hit?'hit':'miss')}</span></span>`;}).join('');
+  const goalList=goals.map((c,i)=>{const status=targetStatus(c,state,flight);return `<span class="flow-goal" data-target="${i}" data-match="${c.hit?'hit':'miss'}" data-status="${status}" role="img" aria-label="${targetDescription(c,i,status)}">${tex(`(${rationalTex(c.x)},\\,${targetLatex(c)})`)}<span class="target-result" aria-hidden="true">${targetMark(c.hit?'hit':'miss')}</span></span>`;}).join('');
   const cards=result.stages.map((stage,i)=>{
     const op=i?state.nodes[i-1].op:undefined,previous=i&&op!=='D'&&op!=='I'?result.stages[i-1]:undefined;
     const tangent=state.nodes[i]?.op==='D',area=state.nodes[i]?.op==='I';
@@ -273,7 +306,7 @@ export function flow(state:State,result:Result,selectedStage:string,probeIndex:n
     }
     return `${i?`<span class="flow-connector" aria-hidden="true">${icon('arrow',18)}</span>`:''}<article class="flow-machine ${op==='D'||op==='I'||op==='S'?'calculus-machine':''} ${op?OPS[op].color:'source-machine'} ${stage.id===selectedStage?'inspected':''}" aria-label="${i?'Step '+i+': '+OPS[op!].name:'Starting curve'}">${stationScene(op,i,tex)}<div class="machine-body"><div class="machine-meta"><span class="machine-kicker">${i?'STEP '+i:'START'}</span><span class="machine-icon">${op?operationTex(op):tex(symbol+' = '+stage.latex)}</span><span class="machine-sample">${tex(symbol+' \\approx ')}<span data-flow-stage="${i}"></span></span>${gapLabel}${area?`<span class="area-sample">Area ${tex('\\approx')} <span data-flow-area-value="${i}"></span></span>`:''}${tangent?`<span class="tangent-sample">${tex('\\frac{\\mathrm{d}h}{\\mathrm{d}x} \\approx ')}<span data-flow-slope="${i}"></span></span>`:''}</div><svg class="flow-plot" viewBox="0 0 184 132" role="img" data-flow-plot="${i}"><defs><clipPath id="flow-clip-${i}"><rect x="22" y="15" width="148" height="100"/></clipPath>${area?`<clipPath id="flow-area-window-${i}"><rect data-flow-area-window="${i}" x="26" y="15" width="0" height="100"/></clipPath><clipPath id="flow-positive-${i}"><rect x="22" y="15" width="148" height="${Math.max(0,zero-15)}"/></clipPath><clipPath id="flow-negative-${i}"><rect x="22" y="${zero}" width="148" height="${Math.max(0,115-zero)}"/></clipPath><pattern id="area-hatch-${i}" patternUnits="userSpaceOnUse" width="5" height="5"><path d="M-1 1L1-1M0 5L5 0M4 6L6 4" stroke="#ac6755" stroke-width=".8"/></pattern>`:''}</defs><path class="flow-axis" d="M26 20V108"/><foreignObject x="2" y="${zero-8}" width="20" height="20"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-zero">${tex('0')}</div></foreignObject><g clip-path="url(#flow-clip-${i})">${area?`<g clip-path="url(#flow-area-window-${i})" class="flow-area" data-flow-area="${i}"><path class="area-positive" clip-path="url(#flow-positive-${i})" d="${areaPath}"/><g clip-path="url(#flow-negative-${i})"><path class="area-negative" d="${areaPath}"/><path fill="url(#area-hatch-${i})" d="${areaPath}"/></g></g>`:''}<path class="flow-zero-line" data-zero-line d="M26 ${zero}H164"/>${previous?`<path class="flow-before" d="${stagePath(result,previous)}"/>`:''}<path class="flow-curve" d="${stagePath(result,stage)}"/>${pathEnds(stage.paths,p=>flowPoint(result,p))}${tangent?`<path class="flow-tangent" data-flow-tangent="${i}"/>`:''}<path class="flow-probe" data-flow-probe="${i}"/><path class="flow-change" data-flow-change="${i}"/>${previous?`<circle class="flow-before-point" data-flow-before="${i}" r="3.5"/>`:''}<circle class="flow-point" data-flow-point="${i}" r="4.5"/></g>${gapPlot}${i===result.stages.length-1&&!result.relation&&!result.crop?targets:''}</svg></div></article>`;
   }).join('');
-  return `<div class="flow-controls">${outlineVerdict(result)}<div class="flow-control-heading"><label for="flow-position">Explore at ${tex('x = ')}<output id="flow-position-value" for="flow-position">${tex(positionText(x))}</output></label>${gapGoal}${goals.length?`<div class="flow-goals" role="group" aria-label="Target coordinates and validation">${goalList}</div>`:''}</div><div class="flow-slider-row"><span>${tex(positionText(scale.start))}</span><input id="flow-position" type="range" min="${scale.start}" max="${scale.end}" step="any" value="${x}" aria-label="Position x" aria-valuetext="x = ${positionText(x)}"><span>${tex(positionText(scale.end))}</span><span class="flow-key"><span class="before-key"></span>Before <span class="after-key"></span>After</span></div><span class="sr-only">Every graph uses the same height scale. Move position to compare each operation. A tangent shows the incoming slope before a slope block. Before an area block, shading shows accumulated area: solid above zero adds, hatched below zero subtracts. Targets appear on the final graph. During a throw, position follows the flight, then returns to your inspected position.</span></div><div class="flow-line" role="group" aria-label="Transformation chain">${cards}${result.relation?relationCard(result,result.crop?'':targets):''}${result.crop?cropCard(result,targets):''}</div>`;
+  return `<div class="flow-controls">${cropVerdict(result)}<div class="flow-control-heading"><label for="flow-position">Explore at ${tex('x = ')}<output id="flow-position-value" for="flow-position">${tex(positionText(x))}</output></label>${gapGoal}${goals.length?`<div class="flow-goals" role="group" aria-label="Target coordinates and validation">${goalList}</div>`:''}</div><div class="flow-slider-row"><span>${tex(positionText(scale.start))}</span><input id="flow-position" type="range" min="${scale.start}" max="${scale.end}" step="any" value="${x}" aria-label="Position x" aria-valuetext="x = ${positionText(x)}"><span>${tex(positionText(scale.end))}</span><span class="flow-key"><span class="before-key"></span>Before <span class="after-key"></span>After</span></div><span class="sr-only">Every graph uses the same height scale. Move position to compare each operation. A tangent shows the incoming slope before a slope block. Before an area block, shading shows accumulated area: solid above zero adds, hatched below zero subtracts. Targets appear on the final graph. During a throw, position follows the flight, then returns to your inspected position.</span></div><div class="flow-line" role="group" aria-label="Transformation chain">${cards}${result.relation?relationCard(result,result.crop?'':targets):''}${result.crop?cropCard(result,targets):''}</div>`;
 }
 export function updateFlowProbe(root:HTMLElement,state:State,result:Result,index:number) {
   const points=probePoints(result);

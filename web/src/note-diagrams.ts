@@ -1,4 +1,4 @@
-import { CHAPTERS, chapterIndex, escape, fraction, LEVELS, OPS, puzzleLabel, type Checkpoint, type Op, type Result, type Stage } from './types';
+import { CHAPTERS, chapterIndex, escape, fraction, targetHeight, LEVELS, OPS, puzzleLabel, type Checkpoint, type Op, type Result, type Stage } from './types';
 import { icon } from './icons';
 import { heightAtFormula, operationTex, rationalTex, solvedHeights, tex } from './views';
 
@@ -83,10 +83,10 @@ export function compare(title:string,choices:NoteChoice[],readings:{index:number
 }
 
 export function strip(stages:Stage[],captions:string[],links:string[],connection=false,goals:Checkpoint[]=[]) {
-  const points=stages.flatMap(stagePoints),heights=[...points.map(point=>point[1]),...goals.map(goal=>fraction(goal.target))];
+  const points=stages.flatMap(stagePoints),heights=[...points.map(point=>point[1]),...goals.map(goal=>targetHeight(goal))];
   const low=Math.min(0,...heights),high=Math.max(0,...heights),pad=Math.max(1,high-low)*.12;
   const min=low-pad,max=high+pad,start=Math.min(...points.map(point=>point[0])),end=Math.max(...points.map(point=>point[0]));
   const xy=([x,h]:[number,number])=>[17+(x-start)/(end-start)*142,99-(h-min)/(max-min)*84];
   const zero=xy([start,0])[1];
-  return `<div class="note-strip ${connection?'note-connection':''}" data-count="${stages.length}">${stages.map((stage,i)=>`${i&&links.length?`<div class="note-link">${icon('arrow',20)}<span>${links[i-1]}</span></div>`:''}<figure class="note-stage ${connection&&i===1?'shared-shape':''}"><figcaption>${captions[i]}</figcaption>${notePlot(captions[i]+': '+stage.expression,zero,`${drawStage(stage,xy,'note-curve')}${segmentedStage(stage)?'':stage.points.filter((_,j)=>j===0||j===Math.floor(stage.points.length/2)||j===stage.points.length-1).map(point=>{const [x,y]=xy(point);return `<circle cx="${x}" cy="${y}" r="2.8" class="note-point"/>`;}).join('')}${(i===stages.length-1?goals:[]).map(goal=>{const [x,y]=xy([fraction(goal.x),fraction(goal.target)]);return `<circle cx="${x}" cy="${y}" r="3.8" class="note-required" data-note-target/>`;}).join('')}`)}<div class="note-formula">${tex(stage.latex)}</div></figure>`).join('')}</div>`;
+  return `<div class="note-strip ${connection?'note-connection':''}" data-count="${stages.length}">${stages.map((stage,i)=>`${i&&links.length?`<div class="note-link">${icon('arrow',20)}<span>${links[i-1]}</span></div>`:''}<figure class="note-stage ${connection&&i===1?'shared-shape':''}"><figcaption>${captions[i]}</figcaption>${notePlot(captions[i]+': '+stage.expression,zero,`${drawStage(stage,xy,'note-curve')}${segmentedStage(stage)?'':stage.points.filter((_,j)=>j===0||j===Math.floor(stage.points.length/2)||j===stage.points.length-1).map(point=>{const [x,y]=xy(point);return `<circle cx="${x}" cy="${y}" r="2.8" class="note-point"/>`;}).join('')}${(i===stages.length-1?goals:[]).map(goal=>{const [x,y]=xy([fraction(goal.x),targetHeight(goal)]);return `<circle cx="${x}" cy="${y}" r="3.8" class="note-required" data-note-target/>`;}).join('')}`)}<div class="note-formula">${tex(stage.latex)}</div></figure>`).join('')}</div>`;
 }

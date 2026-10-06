@@ -17,11 +17,11 @@ export interface State {
 export type Point = [number,number];
 export interface CurvePath { points:Point[]; startClosed:boolean; endClosed:boolean; approximateEnds?:boolean }
 export interface Stage { id: string; expression: string; latex: string; values: string[]; valueLatex?:string[]; points: Point[]; paths?:CurvePath[]; projection?:Point[] }
-export interface Checkpoint { x: string; target: string; actual: string; actualLatex?:string; actualNumber?:number; defined?:boolean; hit: boolean; y: number; phase?:number; lhs?:string; rhs?:string; dx?:string; dy?:string; dxSquared?:string; dySquared?:string }
+export interface Checkpoint { x: string; target: string; targetNumber?:number; targetLatex?:string; actual: string; actualLatex?:string; actualNumber?:number; defined?:boolean; hit: boolean; y: number; phase?:number; lhs?:string; rhs?:string; dx?:string; dy?:string; dxSquared?:string; dySquared?:string }
 export interface CircleResult { equationLatex:string; radiusSquared:string; centre:[number,number]; radius:number; editable:(keyof Circle)[]; bounds:{minX:number;maxX:number;minY:number;maxY:number}; tangent:[number,number]; initial:Circle }
-export interface HeightGuide { fromX:string; toX:string; target:string; actual:string; actualLatex?:string; hit:boolean; stages:{from:string;to:string;gap:string;fromLatex?:string;toLatex?:string;gapLatex?:string;fromNumber?:number;toNumber?:number;gapNumber?:number}[] }
+export interface HeightGuide { fromX:string; toX:string; target:string; targetNumber?:number; targetLatex?:string; actual:string; actualLatex?:string; hit:boolean; stages:{from:string;to:string;gap:string;fromLatex?:string;toLatex?:string;gapLatex?:string;fromNumber?:number;toNumber?:number;gapNumber?:number}[] }
 export interface RelationResult { kind:'height-squared'; equationLatex:string; solvedLatex?:string; solvedLines?:{heightLatex:string;conditionLatex:string}[]; paths:CurvePath[]; playback:Point[]; breaks:number[]; flights?:[number,number][] }
-export interface Result { constructedLatex: string; equationLatex?:string; stages: Stage[]; checkpoints: Checkpoint[]; points: Point[]; paths?:CurvePath[]; startSlope: number; solved: boolean; heightGuide?:HeightGuide; circle?:CircleResult; relation?:RelationResult; crop?:Crop & {fromNumber:number;toNumber:number;editable:boolean;required?:Crop;hit:boolean}; outline?:{paths:CurvePath[];hit:boolean} }
+export interface Result { constructedLatex: string; equationLatex?:string; stages: Stage[]; checkpoints: Checkpoint[]; points: Point[]; paths?:CurvePath[]; startSlope: number; solved: boolean; heightGuide?:HeightGuide; circle?:CircleResult; relation?:RelationResult; crop?:Crop & {fromNumber:number;toNumber:number;editable:boolean;required?:Crop;hit:boolean}; picture?:{paths:CurvePath[]} }
 export interface Artifact { schema: number; rules: string; engine: string; type: string; sourceId: number; view: View; nodes?: Part[]; goals?: Goal[]; inventory?: Partial<Record<Op,number>>; limit?: number; circle?:Circle; crop?:Crop }
 export interface Response { status: 'ok' | 'invalid' | 'error'; state?: State; result?: Result; message?: string; artifact?: Artifact }
 export type Action = { type: string; [key: string]: unknown };
@@ -144,3 +144,6 @@ export const decimalTex = (value:string|number) => {
   return exponent===undefined?mantissa:`${mantissa}\\times 10^{${Number(exponent)}}`;
 };
 export const escape = (s: unknown) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
+
+/** Numeric target placement comes from the kernel for algebraic heights. */
+export const targetHeight = (checkpoint:Checkpoint) => checkpoint.targetNumber ?? fraction(checkpoint.target);

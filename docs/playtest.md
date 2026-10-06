@@ -186,6 +186,6 @@ Design reference: [The Level Design Book on pacing](https://book.leveldesignbook
 
 ## Picture and mastery transfer checks
 
-At 10.1, move a crop edge and ask whether any retained height should change. At 10.2, ask where the area anchor stays before changing the crop. At 10.3–10.6, ask for a prediction about zeros, thickness or phase before a block move. After the picture is built, observe whether players identify intermediate subgoals in 10.7–10.9 and choose to continue. Mastery labels and large search spaces are not evidence of understanding or fun.
+At 10.1, ask the player to identify the kept region from the cut lines and faded discarded sections, then move an edge and ask whether any retained height should change. Check whether the required-interval bracket is understood separately from fitting the target heights. At 10.2, ask where the area anchor stays before changing the crop. At 10.3–10.6, ask for a prediction about zeros, thickness or phase before a block move. After the picture is built, observe whether players identify intermediate subgoals in 10.7–10.9 and choose to continue. Mastery labels and large search spaces are not evidence of understanding or fun.
 
 For the leaf/cucumber transfer, ask which outline will have rounded caps before the 7.7 move, and why. At 10.6, ask which earlier idea controls the broad body separately from its endpoints. If a player needs the target recipe from Hints before distinguishing these properties, revisit the rounded/pointed comparison; do not infer understanding from a successful three-square experiment.

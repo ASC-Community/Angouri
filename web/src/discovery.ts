@@ -1,5 +1,5 @@
 import { icon } from './icons';
-import { operationTex, rationalTex, tex } from './views';
+import { operationTex, tex } from './views';
 import { circleEdited } from './circle';
 import { OPS, type Op, type Result, type State } from './types';
 
@@ -10,10 +10,8 @@ export function isDiscovery(state:State) {
 export function discoveryObservation(state:State,result:Result,selected?:string) {
   if(!isDiscovery(state))return '';
   if(state.sourceId===72) {
-    const crop=result.crop;
-    if(!crop)return '';
-    const range=tex(`${rationalTex(crop.from)}\\le x\\le ${rationalTex(crop.to)}`);
-    return `<span class="discovery-operation teal" aria-hidden="true">${tex('a\\le x\\le b')}</span><span>Crop keeps ${range}. Heights inside stay the same.${crop.hit?' The outlined lobe is framed.':''}</span>`;
+    if(!result.crop)return '';
+    return `<span class="discovery-operation teal" aria-hidden="true">${icon('crop',16)}</span><span>Move the cuts to keep part of the curve. Heights inside stay the same.</span>`;
   }
   if(state.circle)return circleEdited(state,result)?`${icon(state.sourceId===43?'resize':'move',16)}<span>${state.sourceId===43?'A larger radius reaches farther in every direction.':'Moving the centre moves the whole loop.'}</span>`:'';
   const edits=state.nodes.filter(node=>node.id!==state.station?.id);

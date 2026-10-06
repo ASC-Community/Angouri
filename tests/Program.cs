@@ -132,7 +132,17 @@ static class ContractTests
             {
                 ExtendedPuzzleContract();
                 CropOutlineContract();
-                Console.WriteLine($"PASS: {assertions} focused Crop/outline contract assertions");
+                Console.WriteLine($"PASS: {assertions} focused Crop/picture contract assertions");
+                return 0;
+            }
+            if (args.Contains("--import-export-only", StringComparer.Ordinal))
+            {
+                ExtendedPuzzleContract();
+                CropOutlineContract();
+                HeightSquaredRelationContract();
+                PreviewLimitContract();
+                ExportImportContract();
+                Console.WriteLine($"PASS: {assertions} focused import/export contract assertions");
                 return 0;
             }
             ExhaustivePuzzleContract();
@@ -317,6 +327,10 @@ static class ContractTests
             "squaring capstone guide uses its maximum target position");
         Equal("9/8", level28Guide["result"]!["heightGuide"]!["target"]!.GetValue<string>(),
             "squaring capstone guide exposes its exact target range");
+        Equal(@"\frac{9}{8}", level28Guide["result"]!["heightGuide"]!["targetLatex"]!.GetValue<string>(),
+            "height guide exposes authoritative target LaTeX");
+        Equal(1.125d, level28Guide["result"]!["heightGuide"]!["targetNumber"]!.GetValue<double>(),
+            "height guide exposes its authoritative numeric target");
         var level28Start = Level(28);
         CheckHeightGuide(28, level28Start["result"]!.AsObject(), []);
         var level28Edited = PlayPuzzle(28, ["A"]);
@@ -2482,6 +2496,13 @@ static class ContractTests
                 $"extended source {source} independently authored witness solves exactly");
             True(!string.IsNullOrWhiteSpace(result["constructedLatex"]!.GetValue<string>()),
                 $"extended source {source} has a constructed equation");
+            if (source is >= 72 and <= 77)
+            {
+                True(result["picture"]!["paths"]!.AsArray().Count > 0,
+                    $"art source {source} supplies its informational reference picture");
+                True(!result["picture"]!.AsObject().ContainsKey("hit"),
+                    $"art source {source} picture does not add a sampled win condition");
+            }
 
             var checkpoints = result["checkpoints"]!.AsArray();
             Equal(state["goals"]!.AsArray().Count, checkpoints.Count,
@@ -2491,6 +2512,10 @@ static class ContractTests
                 var checkpoint = checkpointNode!.AsObject();
                 True(!string.IsNullOrWhiteSpace(checkpoint["actualLatex"]!.GetValue<string>()),
                     $"extended source {source} checkpoint has exact LaTeX");
+                True(!string.IsNullOrWhiteSpace(checkpoint["targetLatex"]!.GetValue<string>()),
+                    $"extended source {source} checkpoint has authoritative target LaTeX");
+                True(double.IsFinite(checkpoint["targetNumber"]!.GetValue<double>()),
+                    $"extended source {source} checkpoint has an authoritative numeric target");
                 True(double.IsFinite(checkpoint["actualNumber"]!.GetValue<double>()),
                     $"extended source {source} checkpoint has a finite numeric reading");
                 Equal(true, checkpoint["hit"]!.GetValue<bool>(),
@@ -2544,6 +2569,10 @@ static class ContractTests
                 var guide = result["heightGuide"]!.AsObject();
                 True(!string.IsNullOrWhiteSpace(guide["actualLatex"]!.GetValue<string>()),
                     $"extended source {source} height guide has exact LaTeX");
+                True(!string.IsNullOrWhiteSpace(guide["targetLatex"]!.GetValue<string>()),
+                    $"extended source {source} height guide has authoritative target LaTeX");
+                True(double.IsFinite(guide["targetNumber"]!.GetValue<double>()),
+                    $"extended source {source} height guide has an authoritative numeric target");
                 foreach (var stageNode in guide["stages"]!.AsArray())
                 {
                     var stage = stageNode!.AsObject();
@@ -2584,6 +2613,19 @@ static class ContractTests
 
     private static void CropOutlineContract()
     {
+        var legacyPictureGoals = new Dictionary<int, (string x, string y)[]>
+        {
+            [72] = [("0", "0"), ("1", "1"), ("2", "0")],
+            [73] = [("1", "7/6"), ("2", "4/3"), ("3", "3/2")],
+            [74] = [("3/2", "0"), ("2", "1/2"), ("2", "-1/2"), ("5/2", "0")],
+            [75] = [("0", "0"), ("1", "3/4"), ("1", "-3/4"), ("2", "1"),
+                    ("2", "-1"), ("3", "3/4"), ("3", "-3/4"), ("4", "0")],
+            [76] = [("1", "1/2"), ("2", "1"), ("3", "1/2")],
+            [77] = [("0", "0"), ("2", "1/2"), ("2", "-1/2"), ("4", "0")]
+        };
+        static JsonArray GoalJson(IEnumerable<(string x, string y)> goals) =>
+            new(goals.Select(goal => (JsonNode)new JsonObject { ["x"] = goal.x, ["y"] = goal.y }).ToArray());
+
         var initial = Level(72);
         var initialCrop = initial["result"]!["crop"]!.AsObject();
         Equal("0", initialCrop["from"]!.GetValue<string>(), "authored Crop starts at its initial left bound");
@@ -2591,8 +2633,10 @@ static class ContractTests
         Equal("0", initialCrop["required"]!["from"]!.GetValue<string>(), "authored Crop exposes required left bound");
         Equal("2", initialCrop["required"]!["to"]!.GetValue<string>(), "authored Crop exposes required right bound");
         Equal(false, initialCrop["hit"]!.GetValue<bool>(), "initial full wave has not matched the required crop");
-        Equal(true, initial["result"]!["outline"]!["hit"]!.GetValue<bool>(),
-            "initial full wave already matches the required outline on the kept interval");
+        True(initial["result"]!["picture"]!["paths"]!.AsArray().Count > 0,
+            "authored picture supplies an informational reference silhouette");
+        True(!initial["result"]!["picture"]!.AsObject().ContainsKey("hit"),
+            "informational picture does not impose a second success predicate");
         Equal(false, initial["result"]!["solved"]!.GetValue<bool>(), "landmarks alone do not bypass the Crop goal");
 
         var cropped = Act(initial["state"]!, new JsonObject
@@ -2600,8 +2644,7 @@ static class ContractTests
             ["type"] = "crop", ["from"] = "0", ["to"] = "2"
         });
         Equal(true, cropped["result"]!["crop"]!["hit"]!.GetValue<bool>(), "exact required Crop bounds match");
-        Equal(true, cropped["result"]!["outline"]!["hit"]!.GetValue<bool>(), "sine outline matches by exact expression proof");
-        Equal(true, cropped["result"]!["solved"]!.GetValue<bool>(), "matching landmarks, Crop, and outline solves");
+        Equal(true, cropped["result"]!["solved"]!.GetValue<bool>(), "matching exact landmarks and Crop solves");
         Contains(cropped["result"]!["equationLatex"]!.GetValue<string>(), @"\text{for}",
             "simplified equation uses native Provided presentation");
         Contains(cropped["result"]!["constructedLatex"]!.GetValue<string>(), @"0 \le x \le 2",
@@ -2688,6 +2731,24 @@ static class ContractTests
         });
         Equal(cachedA["result"]!["stages"]!.ToJsonString(), replayedCrop["result"]!["stages"]!.ToJsonString(),
             "replaying Crop bounds reuses the same immutable uncropped stage result");
+        var slopeCrop = Remix(1);
+        slopeCrop = Act(slopeCrop["state"]!, new JsonObject
+        {
+            ["type"] = "crop", ["from"] = "1", ["to"] = "3"
+        });
+        Equal(2d, slopeCrop["result"]!["startSlope"]!.GetValue<double>(),
+            "cached derivative is still substituted at the current exact Crop endpoint");
+        slopeCrop = Act(slopeCrop["state"]!, new JsonObject
+        {
+            ["type"] = "crop", ["from"] = "3", ["to"] = "7/2"
+        });
+        Equal(-2d, slopeCrop["result"]!["startSlope"]!.GetValue<double>(),
+            "a later Crop endpoint cannot reuse an earlier substituted slope");
+        var movedCropLatex = slopeCrop["result"]!["equationLatex"]!.GetValue<string>();
+        Contains(movedCropLatex, @"x \geq 3",
+            "expression presentation reuse retains the current Provided left endpoint");
+        Contains(movedCropLatex, @"x \leq \frac{7}{2}",
+            "expression presentation reuse retains the current Provided right endpoint");
         var sfExact = ImportCreation(1, ["S", "F"])["result"]!.AsObject();
         Equal("0,0,0", string.Join(',', sfExact["checkpoints"]!.AsArray()
                 .Select(point => point!["actual"]!.GetValue<string>())),
@@ -2742,25 +2803,14 @@ static class ContractTests
                 .All(checkpoint => checkpoint!.AsObject().ContainsKey("lhs")),
             "outside-Crop relation checkpoints retain their exact expected left side");
 
-        var wrongOutline = PlayExtendedPuzzle(74, "NAHQ");
-        True(wrongOutline["result"]!["checkpoints"]!.AsArray()
-                .All(checkpoint => checkpoint!["hit"]!.GetValue<bool>()),
-            "quartic decoy hits every moon landmark");
-        Equal(false, wrongOutline["result"]!["outline"]!["hit"]!.GetValue<bool>(),
-            "common-refinement outline proof rejects a curve that only hits landmarks");
-        Equal(false, wrongOutline["result"]!["solved"]!.GetValue<bool>(),
-            "landmark-only decoy cannot solve an outline puzzle");
-        Equal(true, PlayExtendedPuzzle(73, "HI")["result"]!["outline"]!["hit"]!.GetValue<bool>(),
-            "algebraically equivalent operation order still matches the exact outline");
-
         var reset = Act(cropped["state"]!, new JsonObject { ["type"] = "reset" });
         Equal("4", reset["state"]!["crop"]!["to"]!.GetValue<string>(),
             "authored reset restores the initial Crop interval");
         var remixed = Act(cropped["state"]!, new JsonObject { ["type"] = "remix" });
         Equal("2", remixed["state"]!["crop"]!["to"]!.GetValue<string>(),
             "moving an authored construction to Create preserves its Crop");
-        True(!remixed["result"]!.AsObject().ContainsKey("outline"),
-            "authored outline authority is not inherited into Create");
+        True(!remixed["result"]!.AsObject().ContainsKey("picture"),
+            "authored reference picture is not inherited into Create");
         remixed = Act(remixed["state"]!, new JsonObject
         {
             ["type"] = "crop", ["from"] = "1", ["to"] = "2"
@@ -2786,6 +2836,103 @@ static class ContractTests
             "shared challenge omits authored Crop target metadata");
         Equal(true, differentCropChallenge["result"]!["solved"]!.GetValue<bool>(),
             "shared challenge solves against its exported kept-interval targets");
+
+        var witnesses = new Dictionary<int, string>
+        {
+            [72] = "", [73] = "IH", [74] = "NAHH", [75] = "HQNAQ", [76] = "ASAH", [77] = "HQQQNAHH"
+        };
+        foreach (int source in legacyPictureGoals.Keys)
+        {
+            var current = PlayExtendedPuzzle(source, witnesses[source]);
+            var legacyState = Clone(current["state"]!).AsObject();
+            var retainedNodes = legacyState["nodes"]!.ToJsonString();
+            var retainedCrop = legacyState["crop"]?.ToJsonString();
+            legacyState["goals"] = GoalJson(legacyPictureGoals[source]);
+            var migrated = Ok(new JsonObject
+            {
+                ["state"] = legacyState,
+                ["action"] = new JsonObject { ["type"] = "evaluate" }
+            });
+            Equal(Level(source)["state"]!["goals"]!.ToJsonString(), migrated["state"]!["goals"]!.ToJsonString(),
+                $"legacy authored picture goals for source {source} upgrade to current targets");
+            Equal(retainedNodes, migrated["state"]!["nodes"]!.ToJsonString(),
+                $"legacy authored migration preserves source {source} node identities");
+            Equal(retainedCrop ?? "<none>", migrated["state"]!["crop"]?.ToJsonString() ?? "<none>",
+                $"legacy authored migration preserves source {source} Crop bounds");
+        }
+        var forgedLegacyState = Clone(Level(72)["state"]!).AsObject();
+        var forgedLegacyGoals = GoalJson(legacyPictureGoals[72]);
+        forgedLegacyGoals[1]!["y"] = "999";
+        forgedLegacyState["goals"] = forgedLegacyGoals;
+        Invalid(new JsonObject
+        {
+            ["state"] = forgedLegacyState,
+            ["action"] = new JsonObject { ["type"] = "evaluate" }
+        }, "near-legacy authored picture goals remain rejected");
+
+        var legacyChallengeGoals = GoalJson(legacyPictureGoals[77].Select((goal, index) =>
+            (goal.x, y: new[] { "1", "2", "-3", "4" }[index])));
+        JsonObject PictureChallenge(JsonArray goals) => new()
+        {
+            ["schema"] = 1, ["rules"] = "vine-1", ["engine"] = "AngouriMath-2.5.0",
+            ["type"] = "challenge", ["sourceId"] = 77, ["view"] = "flight",
+            ["goals"] = goals, ["inventory"] = new JsonObject(), ["limit"] = 0
+        };
+        var importedLegacyChallenge = Ok(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = PictureChallenge(legacyChallengeGoals) }
+        });
+        Equal(legacyChallengeGoals.ToJsonString(), importedLegacyChallenge["state"]!["goals"]!.ToJsonString(),
+            "legacy picture challenge positions retain their original challenge heights");
+        var forgedLegacyChallengeGoals = Clone(legacyChallengeGoals).AsArray();
+        forgedLegacyChallengeGoals[1]!["x"] = "5";
+        Invalid(new JsonObject
+        {
+            ["action"] = new JsonObject
+            {
+                ["type"] = "import", ["artifact"] = PictureChallenge(forgedLegacyChallengeGoals)
+            }
+        }, "forged near-legacy picture challenge positions remain rejected");
+
+        foreach (int source in new[] { 76, 77 })
+        {
+            var symbolicPuzzle = PlayExtendedPuzzle(source, witnesses[source]);
+            var exported = Act(symbolicPuzzle["state"]!, new JsonObject
+            {
+                ["type"] = "export", ["kind"] = "challenge", ["view"] = "flight"
+            });
+            var imported = Ok(new JsonObject
+            {
+                ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = Clone(exported["artifact"]!) }
+            });
+            True(imported["result"]!["checkpoints"]!.AsArray().All(checkpoint =>
+                    !string.IsNullOrWhiteSpace(checkpoint!["targetLatex"]!.GetValue<string>()) &&
+                    double.IsFinite(checkpoint["targetNumber"]!.GetValue<double>())),
+                $"source {source} symbolic target challenge roundtrip keeps kernel target presentation");
+        }
+
+        foreach ((int source, string recipe, string newX) in new[]
+                 { (74, "QNAHH", "17/10"), (76, "QHNA", "3/2"), (77, "HQNAHH", "1/2") })
+        {
+            var collision = PlayExtendedPuzzle(source, recipe);
+            var added = collision["result"]!["checkpoints"]!.AsArray()
+                .Where(checkpoint => checkpoint!["x"]!.GetValue<string>() == newX).ToArray();
+            True(added.Length > 0 && added.All(checkpoint => !checkpoint!["hit"]!.GetValue<bool>()),
+                $"source {source} new exact checkpoint rejects its former whole-target collision {recipe}");
+            Equal(false, collision["result"]!["solved"]!.GetValue<bool>(),
+                $"source {source} former collision cannot solve after checkpoint strengthening");
+        }
+        var radicalGuide = PlayExtendedPuzzle(76, witnesses[76])["result"]!["heightGuide"]!.AsObject();
+        Equal("1", radicalGuide["fromX"]!.GetValue<string>(),
+            "certified algebraic ordering retains the first rational minimum around a radical target");
+        Equal("2", radicalGuide["toX"]!.GetValue<string>(),
+            "certified algebraic ordering identifies the rational maximum above a radical target");
+        Equal("1/2", radicalGuide["target"]!.GetValue<string>(),
+            "radical target between the extrema leaves the exact guide gap unchanged");
+        var source76Radical = PlayExtendedPuzzle(76, witnesses[76])["result"]!["checkpoints"]!.AsArray()
+            .Single(checkpoint => checkpoint!["x"]!.GetValue<string>() == "3/2")!.AsObject();
+        Contains(source76Radical["targetLatex"]!.GetValue<string>(), @"\sqrt{2}",
+            "algebraic checkpoint target LaTeX comes from the kernel exact constant");
 
         var clamped = Act(partial["state"]!, new JsonObject { ["type"] = "source", ["sourceId"] = 5 });
         Equal("2", clamped["state"]!["crop"]!["to"]!.GetValue<string>(),
@@ -3401,13 +3548,26 @@ static class ContractTests
         {
             ["state"] = Clone(initialLoop["state"]!),
             ["action"] = new JsonObject { ["type"] = "export", ["kind"] = "challenge", ["view"] = "flight" }
-        }, "rational real checkpoint heights", "implicit challenge rejects negative or irrational squared heights");
+        }, "no real height", "implicit challenge rejects a negative squared height");
         JsonObject radicalWave = Level(54);
-        InvalidContains(new JsonObject
+        var radicalExport = Act(radicalWave["state"]!, new JsonObject
         {
-            ["state"] = Clone(radicalWave["state"]!),
-            ["action"] = new JsonObject { ["type"] = "export", ["kind"] = "challenge", ["view"] = "function" }
-        }, "rational checkpoint heights", "explicit challenge rejects radical targets until artifacts support them");
+            ["type"] = "export", ["kind"] = "challenge", ["view"] = "function"
+        });
+        var radicalImport = Ok(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = Clone(radicalExport["artifact"]!) }
+        });
+        Equal(radicalExport["artifact"]!["goals"]!.ToJsonString(),
+            radicalImport["state"]!["goals"]!.ToJsonString(),
+            "explicit challenge artifacts round-trip exact radical checkpoint heights");
+        True(radicalImport["state"]!["goals"]!.AsArray().Any(goal =>
+                goal!["y"]!.GetValue<string>().Contains("sqrt", StringComparison.Ordinal)),
+            "explicit challenge artifact keeps a symbolic radical rather than a numeric approximation");
+        True(radicalImport["result"]!["checkpoints"]!.AsArray().All(checkpoint =>
+                !string.IsNullOrWhiteSpace(checkpoint!["targetLatex"]!.GetValue<string>()) &&
+                double.IsFinite(checkpoint["targetNumber"]!.GetValue<double>())),
+            "continuous symbolic challenge checkpoints expose kernel target presentation");
     }
 
     private static double PointY(JsonArray points, double x) =>
@@ -3961,7 +4121,8 @@ static class ContractTests
             ["state"] = Clone(high["state"]!),
             ["action"] = new JsonObject { ["type"] = "export", ["kind"] = "challenge", ["view"] = "flight" }
         }, "challenge target export range rejection");
-        Equal("This construction's checkpoint values exceed the supported challenge target range.", challengeRangeFailure["message"]!.GetValue<string>(), "challenge export explanation has no runtime diagnostics");
+        Contains(challengeRangeFailure["message"]!.GetValue<string>(), "Checkpoint height", "challenge export identifies the checkpoint field");
+        Contains(challengeRangeFailure["message"]!.GetValue<string>(), "supported challenge range", "challenge export explains the supported range");
     }
 
     private static void ExportImportContract()
@@ -4065,6 +4226,21 @@ static class ContractTests
         {
             ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = oversizedRational }
         }, "bounded exact fractions", "oversized exact challenge value rejection");
+
+        foreach ((string value, string label) in new[]
+                 { ("1000001", "oversized rational challenge height"),
+                   ("sqrt(1000002000001)", "oversized algebraic challenge height"),
+                   ("x", "variable challenge height"),
+                   ("sqrt(-1)", "non-real challenge height"),
+                   (new string('1', 257), "overlong symbolic challenge height") })
+        {
+            var invalidGoal = Clone(emptyExport["artifact"]!).AsObject();
+            invalidGoal["goals"]![0]!["y"] = value;
+            Invalid(new JsonObject
+            {
+                ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = invalidGoal }
+            }, label);
+        }
 
         var oversizedInventory = Clone(largeChallenge).AsObject();
         oversizedInventory["inventory"]!["H"] = 65;

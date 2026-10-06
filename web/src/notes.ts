@@ -1,6 +1,6 @@
 import './notes.css';
 import { Kernel } from './engine';
-import { CHAPTERS, chapterIndex, EXTRA_PUZZLES, GEOMETRY_PUZZLES, PUZZLE_ORDER, fraction, type Op, type Result } from './types';
+import { CHAPTERS, chapterIndex, EXTRA_PUZZLES, GEOMETRY_PUZZLES, PUZZLE_ORDER, fraction, targetHeight, type Op, type Result } from './types';
 import { heightAtFormula, rationalTex, tex } from './views';
 import { chapterArt, lesson, move, viewButton, recall, strip, compare, circleSketch, diagramChoices, relationSketch } from './note-diagrams';
 import { renderReference } from './reference';
@@ -276,7 +276,7 @@ class LessonSketches {
     if(!this.known.has(47))return chord+recall([45],'Diameter and squared distance',diameter)+recall([44],'Move the centre',centre);
     const final=await this.kernel.run(undefined,{type:'level',sourceId:47,mode:'puzzle'});
     if(!final.result)throw new Error('Circle targets unavailable');
-    const finalTargets=final.result.checkpoints.map(point=>[fraction(point.x),fraction(point.target)] as [number,number]);
+    const finalTargets=final.result.checkpoints.map(point=>[fraction(point.x),targetHeight(point)] as [number,number]);
     const locating='<h3>Find the second line.</h3><p>The target arrangement has changed. Here is one pair and its line of possible centres. Which other pair could narrow it to a single point?</p>'+circleSketch([],{targets:finalTargets,pairs:[[0,1]],bounds:[-2,4,-4,3]})+'<p class="note-takeaway">Compare another pair in '+viewButton('flow')+'. Locate the common centre, then fit the distance. The centre and radius are still yours to find.</p>';
     return locating+recall([46],'How two pairs locate a centre',chord)+recall([45],'Diameter and squared distance',diameter)+recall([44],'Move the centre',centre);
   }
@@ -296,7 +296,7 @@ class LessonSketches {
     if(!this.known.has(49))return '<h3>The right side chooses rounded or pointed ends.</h3>'+paired+recall([48],'A roof becomes a loop',roof)+recall([43,44],'Geometry behind the equation',await this.geometryEquationConnection());
     const final=await this.kernel.run(undefined,{type:'level',sourceId:49,mode:'puzzle'});
     if(!final.result)throw new Error('Two-height targets unavailable');
-    const targets=final.result.checkpoints.map(point=>[fraction(point.x),fraction(point.target)] as [number,number]);
+    const targets=final.result.checkpoints.map(point=>[fraction(point.x),targetHeight(point)] as [number,number]);
     const geometry=circleSketch([],{targets,bounds:[-2,4,-3,3]});
     return '<h3>Infer the loop. Then build its equation.</h3><p>The matching heights above and below zero share a horizontal position. That widest pair locates the circle\u2019s centre and radius. A target on zero locates one horizontal edge.</p>'+geometry+'<p class="note-takeaway">Use '+viewButton('function')+' to compare squared heights. In '+viewButton('flow')+', build a roof whose maximum is the squared radius and whose zeros are the circle\u2019s edges. Its scale and block order remain yours to find.</p>'+recall([66],'Rounded or pointed ends',paired)+recall([48],'How one roof supplies two heights',roof);
   }

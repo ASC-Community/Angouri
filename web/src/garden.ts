@@ -18,14 +18,14 @@ interface Piece {
 }
 interface Sample { paths:Point[][] }
 
-const FRAME:Box={x:0,y:0,width:760,height:400};
+const FRAME:Box={x:0,y:0,width:760,height:424};
 const PIECES:Piece[]=[
-  {sourceId:72,name:'Water lobe',shortName:'Water',description:'a cropped sine lobe beside the water',className:'water-lobe',box:{x:66,y:287,width:190,height:56},orientation:'horizontal',labelAt:[161,365]},
-  {sourceId:73,name:'Curved stem',shortName:'Stem',description:'a growing curved stem',className:'stem',box:{x:314,y:171,width:66,height:141},orientation:'vertical',labelAt:[310,348]},
-  {sourceId:74,name:'Moon',shortName:'Moon',description:'a round moon above the garden',className:'moon',box:{x:91,y:42,width:112,height:112},orientation:'horizontal',labelAt:[147,176]},
-  {sourceId:75,name:'Pointed leaf',shortName:'Leaf',description:'both sides of a pointed leaf',className:'leaf',box:{x:279,y:91,width:168,height:82},orientation:'horizontal',labelAt:[363,70]},
-  {sourceId:76,name:'Quiet ripple',shortName:'Ripple',description:'a small ripple across the water',className:'ripple',box:{x:442,y:316,width:174,height:40},orientation:'horizontal',labelAt:[460,284]},
-  {sourceId:77,name:'Cucumber',shortName:'Cucumber',description:'the long cucumber outline',className:'cucumber',box:{x:555,y:55,width:95,height:286},orientation:'vertical',labelAt:[653,375]}
+  {sourceId:72,name:'Water lobe',shortName:'Water',description:'a cropped sine lobe beside the water',className:'water-lobe',box:{x:66,y:287,width:190,height:56},orientation:'horizontal',labelAt:[161,381]},
+  {sourceId:73,name:'Curved stem',shortName:'Stem',description:'a growing curved stem',className:'stem',box:{x:314,y:171,width:66,height:141},orientation:'vertical',labelAt:[310,350]},
+  {sourceId:74,name:'Moon',shortName:'Moon',description:'a round moon above the garden',className:'moon',box:{x:91,y:42,width:112,height:112},orientation:'horizontal',labelAt:[147,192]},
+  {sourceId:75,name:'Pointed leaf',shortName:'Leaf',description:'both sides of a pointed leaf',className:'leaf',box:{x:279,y:91,width:168,height:82},orientation:'horizontal',labelAt:[290,211]},
+  {sourceId:76,name:'Quiet ripple',shortName:'Ripple',description:'a small ripple across the water',className:'ripple',box:{x:442,y:316,width:174,height:40},orientation:'horizontal',labelAt:[460,394]},
+  {sourceId:77,name:'Cucumber',shortName:'Cucumber',description:'the long cucumber outline',className:'cucumber',box:{x:555,y:55,width:95,height:286},orientation:'vertical',labelAt:[653,394]}
 ];
 const SOURCE_IDS=PIECES.map(piece=>piece.sourceId);
 
@@ -176,7 +176,7 @@ export class Garden {
     if(!cached) {
       cached=(async()=>{
         const response=await this.kernel.run(undefined,{type:'level',sourceId,mode:'puzzle'});
-        const paths=response.status==='ok'?response.result?.outline?.paths:undefined;
+        const paths=response.status==='ok'?response.result?.picture?.paths:undefined;
         if(!paths?.length)throw new Error('Outline unavailable');
         const clean=paths.map(path=>path.points.filter(finite)).filter(points=>points.length>1);
         if(!clean.length)throw new Error('Outline unavailable');
@@ -252,7 +252,9 @@ export class Garden {
     const paths=fittedPaths(sample.paths,piece.box,piece.orientation);
     const done=this.completed.has(piece.sourceId);
     const action=done?'Revisit':'Build',name=escapeHtml(piece.name),label=escapeHtml(piece.shortName),[labelX,labelY]=piece.labelAt;
-    const area=[74,75,77].includes(piece.sourceId)?`<path class="garden-area-hit" d="${closedPathData(joinedClosed(paths))}"/>`:'';
+    const area=[74,75,77].includes(piece.sourceId)
+      ?`<path class="garden-area-hit" d="${closedPathData(joinedClosed(paths))}"/>`
+      :`<rect class="garden-area-hit" x="${piece.box.x}" y="${piece.box.y}" width="${piece.box.width}" height="${piece.box.height}"/>`;
     const curvePaths=paths.map((points,index)=>{
       const d=pathData(points);
       return `<path class="garden-piece-hit" d="${d}"/><path class="garden-focus-path" d="${d}"/><path class="garden-art-path" pathLength="1" style="--garden-path-delay:${(revealOrder+index)*100}ms" d="${d}"/>`;

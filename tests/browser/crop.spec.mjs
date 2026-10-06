@@ -16,9 +16,12 @@ test('Crop discovery validates the interval, keeps focus/history, and explains e
   const initial=await page.evaluate(()=>window.angouri.result);
   expect(initial.checkpoints.every(c=>c.hit)).toBe(true);expect(initial.solved).toBe(false);
   await expect(page.locator('#palette')).toBeHidden();await expect(page.locator('#hints-open')).toBeHidden();
-  await expect(page.locator('.outline-target')).toHaveCount(1);
+  await expect(page.locator('.crop-window')).toHaveCount(1);
+  await expect(page.locator('.crop-before')).toHaveCount(1);
+  await expect(page.locator('.crop-verdict')).toHaveAttribute('data-crop-match','false');
   await bound(page,'to','2');await expect(page.locator('[data-crop-exact="to"]')).toBeFocused();
   expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(true);
+  await expect(page.locator('.crop-verdict')).toHaveAttribute('data-crop-match','true');
   expect(await page.evaluate(()=>window.angouri.result.points.every(([x])=>x>=0&&x<=2))).toBe(true);
   await page.locator('#undo').click();await idle(page);expect(await page.evaluate(()=>window.angouri.state.crop.to)).toBe('4');
   await page.locator('#redo').click();await idle(page);expect(await page.evaluate(()=>window.angouri.state.crop.to)).toBe('2');
@@ -40,11 +43,15 @@ test('range previews leave acknowledged state alone, cancel cleanly, and commit 
   await range.focus();
   const immediate=await range.evaluate(input=>{
     const rect=document.querySelector('#crop-preview-clip rect'),before=rect.getAttribute('width');
+    window.cropStableNodes=[document.querySelector('.crop-verdict'),document.querySelector('.crop-verdict .katex'),document.querySelector('#feedback').firstChild];
+    const cuts=document.querySelector('[data-crop-cuts]'),beforeCuts=cuts.getAttribute('d');
     input.value='3';input.dispatchEvent(new Event('input',{bubbles:true}));
-    return {changed:rect.getAttribute('width')!==before,state:window.angouri.state.crop.to,result:window.angouri.result.crop.to,pending:document.querySelector('#scene').hasAttribute('data-crop-pending')};
+    return {changed:rect.getAttribute('width')!==before,cutsChanged:cuts.getAttribute('d')!==beforeCuts,state:window.angouri.state.crop.to,result:window.angouri.result.crop.to,pending:document.querySelector('#scene').hasAttribute('data-crop-pending')};
   });
-  expect(immediate).toEqual({changed:true,state:'4',result:'4',pending:true});
+  expect(immediate).toEqual({changed:true,cutsChanged:true,state:'4',result:'4',pending:true});
   await page.waitForFunction(()=>window.angouri.result.crop.to==='3');
+  expect(await page.evaluate(()=>window.cropStableNodes.every(node=>node.isConnected))).toBe(true);
+  await expect(page.locator('.crop-verdict')).toHaveCSS('opacity','1');
   expect(await page.evaluate(()=>({state:window.angouri.state,history:window.angouri.history}))).toEqual(before);
   await page.keyboard.press('Escape');await expect(range).toHaveValue('4');
   expect(await page.evaluate(()=>window.angouri.result.crop.to)).toBe('4');
@@ -70,14 +77,17 @@ test('crop values allow native selection and replacement and protect crop-only w
   expect(await page.evaluate(()=>window.angouri.state.crop.to)).toBe('2');
 });
 
-test('the six picture constructions match whole outlines and do not award missing pieces',async({page})=>{
+test('the six picture constructions meet exact targets and do not award missing pieces',async({page})=>{
   test.setTimeout(240000);
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
   for(const [id,ops,range] of [[72,'',['0','2']],[73,'IH',['1','3']],[74,'NAHH'],[75,'HQNAQ'],[76,'ASAH',['1','3']],[77,'HQQQNAHH']]){
     await ready(page,id);await add(page,ops);
     if(range){await bound(page,'from',range[0]);await bound(page,'to',range[1]);}
     const result=await page.evaluate(()=>window.angouri.result);
-    expect(result.outline.hit,`outline ${id}`).toBe(true);expect(result.solved,`solve ${id}`).toBe(true);
+    expect(result.picture.paths.length,`picture ${id}`).toBeGreaterThan(0);
+    expect(result.checkpoints.every(c=>c.hit),`targets ${id}`).toBe(true);expect(result.solved,`solve ${id}`).toBe(true);
+    expect(result.checkpoints.every(c=>Number.isFinite(c.targetNumber)),`target placement ${id}`).toBe(true);
+    expect(result.outline).toBeUndefined();
     await page.locator('#tab-flow').click();await expect(page.locator('.katex-error')).toHaveCount(0);
     await page.locator('#tab-function').click();await expect(page.locator('.katex-error')).toHaveCount(0);
   }

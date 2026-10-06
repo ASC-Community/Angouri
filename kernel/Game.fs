@@ -280,6 +280,18 @@ module Game =
         extendedPuzzles
         |> Array.choose (fun puzzle -> if isNull puzzle.outline then None else Some (puzzle.id,puzzle.outline))
         |> Map.ofArray
+    // Exact authored goals shipped before the picture puzzles moved from a
+    // whole-outline win condition to stronger checkpoint sets. These are the
+    // only obsolete authored rules that state loading may upgrade.
+    let private legacyPictureGoals = Map [
+        72,[{X="0";Y="0"};{X="1";Y="1"};{X="2";Y="0"}]
+        73,[{X="1";Y="7/6"};{X="2";Y="4/3"};{X="3";Y="3/2"}]
+        74,[{X="3/2";Y="0"};{X="2";Y="1/2"};{X="2";Y="-1/2"};{X="5/2";Y="0"}]
+        75,[{X="0";Y="0"};{X="1";Y="3/4"};{X="1";Y="-3/4"};{X="2";Y="1"};
+            {X="2";Y="-1"};{X="3";Y="3/4"};{X="3";Y="-3/4"};{X="4";Y="0"}]
+        76,[{X="1";Y="1/2"};{X="2";Y="1"};{X="3";Y="1/2"}]
+        77,[{X="0";Y="0"};{X="2";Y="1/2"};{X="2";Y="-1/2"};{X="4";Y="0"}]
+    ]
     let private baseStationDefinitions = Map [
         32,{ Id="station"; Op="D"; Before=1; After=1 }
         33,{ Id="station"; Op="D"; Before=1; After=1 }
@@ -401,6 +413,10 @@ module Game =
         with
         | :? InvalidInput -> reraise()
         | :? ArgumentException -> invalidInput fieldName "Exact values must use a supported constant expression."
+    let private compareGoalHeight (left: Goal) (right: Goal) =
+        let leftValue,rightValue = exactConstant "goals" left.Y,exactConstant "goals" right.Y
+        Piecewise.tryCompareConstants leftValue rightValue
+        |> Option.defaultWith (fun () -> invalidInput "goals" "Authored checkpoint heights could not be compared exactly.")
     let goalsJson (goals: Goal seq) = goals |> Seq.map (fun g -> obj [ "x",str g.X; "y",str g.Y ]) |> arr
     let nodesJson (nodes: Node seq) = nodes |> Seq.map (fun n -> obj [ "id",str n.Id; "op",str n.Op ]) |> arr
     let inventoryJson inventory = inventory |> Map.toList |> List.map (fun (k,v) -> k,num v) |> obj
@@ -480,7 +496,13 @@ module Game =
             let point = Piecewise.parseRational goalX
             Piecewise.compareRational point (Piecewise.parseRational crop.From) >= 0 &&
             Piecewise.compareRational point (Piecewise.parseRational crop.To) <= 0
-    let readGoals source allowSymbolic cropTargets crop n =
+    let private serializedGoalsExactly (n: JsonNode) (expected: Goal list) =
+        let supplied =
+            array n |> List.map (fun goal ->
+                keys goal ["x";"y"]
+                { X=stringField goal "x";Y=stringField goal "y" })
+        supplied = expected
+    let readGoals source _allowSymbolic cropTargets crop n =
         let gs = array n
         if isCircleSource source then
             if gs.Length < 3 || gs.Length > 8 then invalidInput "goals" "Circle challenges require between three and eight targets."
@@ -491,19 +513,35 @@ module Game =
                     invalidInput "goals" "Circle target coordinates must stay between -10 and 14."
                 { X=x.ToString(); Y=y.ToString() })
         else
-            let expectedTargets =
+            let currentTargets =
                 targets[source-1]
                 |> List.filter (fun (goalX,_) -> not cropTargets || goalIsInsideCrop crop goalX)
-            if gs.Length <> expectedTargets.Length then invalidInput "goals" "This source has a fixed set of checkpoint positions."
-            gs |> List.mapi (fun i n ->
-                keys n [ "x"; "y" ]
-                let x,y = stringField n "x",stringField n "y"
-                if rational x <> rational (fst expectedTargets[i]) then invalidInput "goals" "Checkpoint positions do not match the source."
-                if allowSymbolic then exactConstant "goals" y |> ignore
-                else
-                    let height = asFloat (rational y)
-                    if not (Double.IsFinite(height)) || abs height > maxTargetMagnitude then
-                        invalidInput "goals" "Checkpoint height is outside the supported challenge range."
+            let supplied =
+                gs |> List.map (fun n ->
+                    keys n [ "x"; "y" ]
+                    stringField n "x",stringField n "y")
+            let positionCandidates =
+                if cropTargets then
+                    match legacyPictureGoals |> Map.tryFind source with
+                    | Some legacy ->
+                        let legacyTargets =
+                            legacy
+                            |> List.filter (fun goal -> goalIsInsideCrop crop goal.X)
+                            |> List.map (fun goal -> goal.X,goal.Y)
+                        [currentTargets;legacyTargets] |> List.distinct
+                    | None -> [currentTargets]
+                else [currentTargets]
+            let expectedTargets =
+                positionCandidates
+                |> List.tryFind (fun candidate ->
+                    supplied.Length = candidate.Length &&
+                    (supplied,candidate) ||> List.forall2 (fun (suppliedX,_) (expectedX,_) -> rational suppliedX = rational expectedX))
+                |> Option.defaultWith (fun () -> invalidInput "goals" "This source has a fixed set of checkpoint positions.")
+            (supplied,expectedTargets) ||> List.map2 (fun (x,y) _ ->
+                match Piecewise.tryParseRational y with
+                | Some _ -> rational y |> ignore
+                | None -> ()
+                exactConstant "goals" y |> ignore
                 { X=x; Y=y })
     let readInventory n =
         keys n operations
@@ -617,7 +655,10 @@ module Game =
             | _,supplied,_ -> supplied
         let goalData = field n "goals"
         let goals =
-            if mode = "remix" && (array goalData).IsEmpty then []
+            if mode = "puzzle" &&
+               (legacyPictureGoals |> Map.tryFind source |> Option.exists (serializedGoalsExactly goalData)) then
+                baseState.Goals
+            elif mode = "remix" && (array goalData).IsEmpty then []
             else readGoals source (mode = "puzzle") (mode = "challenge") crop goalData
         let inventory = readInventory (field n "inventory")
         let limit = intField n "limit"
@@ -817,7 +858,9 @@ module Game =
             let actual = evaluateAt final (rational g.X)
             let target = exactConstant "goals" g.Y
             let height = actual |> asFloat |> checkedPreviewValue
+            let targetNumber = target |> asFloat |> checkedPreviewValue
             obj [ "x",str g.X; "target",str g.Y; "actual",str (actual.ToString())
+                  "targetLatex",str (target.Latexize()); "targetNumber",flt targetNumber
                   "actualLatex",str (actual.Latexize()); "actualNumber",flt height
                   "hit",boolean (exactEqual actual target); "y",flt height ])
         let endpoint = sourceEndpoints[s.Source-1]
@@ -853,20 +896,12 @@ module Game =
                            "stages",arr stageJson; "checkpoints",arr checkpoints; "points",arr points; "startSlope",flt startSlope
                            "solved",boolean (s.Mode<>"remix" && (checkpoints |> List.forall (fun c -> c["hit"].GetValue<bool>()))) ]
         if s.Mode = "puzzle" && s.Source >= 3 then
-            let compareExact left right =
-                let parts (value: string) =
-                    let split = value.Split('/')
-                    if split.Length = 1 then BigInteger.Parse(split[0]),BigInteger.One
-                    else BigInteger.Parse(split[0]),BigInteger.Parse(split[1])
-                let leftNumerator,leftDenominator = parts left
-                let rightNumerator,rightDenominator = parts right
-                compare (leftNumerator * rightDenominator) (rightNumerator * leftDenominator)
             let fromGoal =
                 s.Goals |> List.reduce (fun best candidate ->
-                    if compareExact candidate.Y best.Y < 0 then candidate else best)
+                    if compareGoalHeight candidate best < 0 then candidate else best)
             let toGoal =
                 s.Goals |> List.reduce (fun best candidate ->
-                    if compareExact candidate.Y best.Y > 0 then candidate else best)
+                    if compareGoalHeight candidate best > 0 then candidate else best)
             let fromX,toX = rational fromGoal.X,rational toGoal.X
             let gap f =
                 let fromValue,toValue = evaluateAt f fromX,evaluateAt f toX
@@ -875,6 +910,8 @@ module Game =
             let _,_,actualGap = gap final
             result["heightGuide"] <- obj [
                 "fromX",str fromGoal.X; "toX",str toGoal.X; "target",str (targetGap.ToString())
+                "targetLatex",str (targetGap.Latexize())
+                "targetNumber",flt (targetGap |> asFloat |> checkedPreviewValue)
                 "actual",str (actualGap.ToString()); "actualLatex",str (actualGap.Latexize())
                 "hit",boolean (exactEqual actualGap targetGap)
                 "stages",arr (stages |> List.map (fun stage ->
@@ -981,9 +1018,6 @@ module Game =
 
     let private piecewisePaths sampleXs (fn: Piecewise.Function) =
         piecewisePathsWithEvaluators sampleXs (numericSegments fn)
-
-    let private compareGoalHeight (left: Goal) (right: Goal) =
-        compareExact (rational left.Y) (rational right.Y)
 
     let private exactOutputRange (nodes: Node list) =
         let ordered low high =
@@ -1483,18 +1517,16 @@ module Game =
             if playback.Count>first then ranges.Add(first,playback.Count-1)
         playback |> Seq.toList,breaks |> Seq.toList,ranges |> Seq.toList
 
-    type private OutlineTarget = { Function: Piecewise.Function; Paths: NumericCurvePath list }
-    let private outlineTargetCache = Dictionary<int,OutlineTarget>()
-    let private outlineTargetOrder = Queue<int>()
-    let private outlineHitCache = Dictionary<string,bool>()
-    let private outlineHitOrder = Queue<string>()
-    let private outlineCacheGate = System.Object()
+    type private PictureTarget = { Paths: NumericCurvePath list }
+    let private pictureTargetCache = Dictionary<int,PictureTarget>()
+    let private pictureTargetOrder = Queue<int>()
+    let private pictureCacheGate = System.Object()
     let private boundedCached (cache: Dictionary<'key,'value>) (order: Queue<'key>) key create =
-        match lock outlineCacheGate (fun () -> match cache.TryGetValue(key) with | true,value -> Some value | _ -> None) with
+        match lock pictureCacheGate (fun () -> match cache.TryGetValue(key) with | true,value -> Some value | _ -> None) with
         | Some value -> value
         | None ->
             let value = create()
-            lock outlineCacheGate (fun () ->
+            lock pictureCacheGate (fun () ->
                 match cache.TryGetValue(key) with
                 | true,cached -> cached
                 | _ ->
@@ -1502,8 +1534,8 @@ module Game =
                     cache[key] <- value
                     order.Enqueue(key)
                     value)
-    let private outlineTarget (source: int) (relation: bool) =
-        boundedCached outlineTargetCache outlineTargetOrder source (fun () ->
+    let private pictureTarget (source: int) (relation: bool) =
+        boundedCached pictureTargetCache pictureTargetOrder source (fun () ->
             let outlineText = outlineDefinitions[source]
             let target =
                 match Piecewise.fromExpression x maxSegments sourceEndpoints[source-1] (MathS.FromString(outlineText)) with
@@ -1524,17 +1556,7 @@ module Game =
                     let solution = solveHeightSquaredRelation (Piecewise.presentation target).Simplified
                     relationCurveData samples [] None None solution |> fst
                 else piecewisePathsWithEvaluators samples (numericSegments target)
-            { Function=target; Paths=paths })
-
-    let private cachedOutlineHit (source: int) (fromPoint: Piecewise.Rational) (toPoint: Piecewise.Rational)
-                                 (actual: Piecewise.Function) (target: Piecewise.Function) =
-        let segmentKey (segment: Piecewise.Segment) =
-            String.concat "\u001f" [Piecewise.rationalText segment.Start;Piecewise.rationalText segment.End;
-                                     string segment.StartClosed;string segment.EndClosed;segment.Expression.ToString()]
-        let key =
-            String.concat "\u001e" ([string source;Piecewise.rationalText fromPoint;Piecewise.rationalText toPoint] @
-                                     (actual.Segments |> List.map segmentKey))
-        boundedCached outlineHitCache outlineHitOrder key (fun () -> Piecewise.exactlyEqualOn x fromPoint toPoint actual target)
+            { Paths=paths })
 
     type private ExactOutputRange = (Piecewise.Rational*Piecewise.Rational) option
     type private SegmentedBaseEvaluation = {
@@ -1674,7 +1696,7 @@ module Game =
                     |> List.tryHead
                     |> Option.map (fun goal ->
                         Piecewise.toFloat (Piecewise.parseRational goal.X),
-                        Piecewise.toFloat (Piecewise.parseRational goal.Y))
+                        exactConstant "goals" goal.Y |> asFloat)
                 relationCurveData outputSampleXs checkpointXs preferredTarget finalDegree solution
             | None -> [],[]
         let playback,breaks,flights = playbackData playbackPaths
@@ -1717,21 +1739,25 @@ module Game =
             (presentationGoals,finalValues) ||> List.map2 (fun goal actual ->
                 let point = Piecewise.parseRational goal.X
                 let authoredTarget = exactConstant "goals" goal.Y
+                let authoredTargetNumber = exactNumber authoredTarget
+                let authoredTargetLatex = exactLatex authoredTarget
                 let expected = if relation then authoredTarget.Pow(rational "2").InnerSimplified else authoredTarget
                 let defined = Piecewise.isDefinedAt point outputFinal
                 let checkpoint =
                     if not defined then
                         obj [ "x",str goal.X; "target",str goal.Y; "actual",str "undefined"
+                              "targetNumber",flt authoredTargetNumber; "targetLatex",str authoredTargetLatex
                               "actualLatex",str "\\varnothing"; "defined",boolean false
-                              "hit",boolean false; "y",flt (authoredTarget |> asFloat |> checkedPreviewValue) ]
+                              "hit",boolean false; "y",flt authoredTargetNumber ]
                     else
                         let actualNumber = exactNumber actual
                         let actualLatex = exactLatex actual
                         let hit =
                             if rangeProvesMismatch finalRange expected then false
                             else cachedExactEqual actual expected
-                        let y = if relation then authoredTarget |> asFloat |> checkedPreviewValue else actualNumber
+                        let y = if relation then authoredTargetNumber else actualNumber
                         obj [ "x",str goal.X; "target",str goal.Y; "actual",str (actual.ToString())
+                              "targetNumber",flt authoredTargetNumber; "targetLatex",str authoredTargetLatex
                               "actualLatex",str actualLatex; "actualNumber",flt actualNumber
                               "defined",boolean true; "hit",boolean hit; "y",flt y ]
                 match cropBounds with
@@ -1803,19 +1829,11 @@ module Game =
                     hit,Some (Piecewise.parseRational required.From,Piecewise.parseRational required.To)
                 | Some _,None -> false,None
                 | None,_ -> true,None
-        let outlineData =
+        let pictureData =
             if s.Mode <> "puzzle" then None
             else
                 outlineDefinitions |> Map.tryFind s.Source |> Option.map (fun _ ->
-                    let cached = outlineTarget s.Source relation
-                    let fromPoint,toPoint =
-                        requiredBounds |> Option.defaultValue (Piecewise.zero,Piecewise.ofInt sourceEndpoints[s.Source-1])
-                    let coversRequired =
-                        Piecewise.compareRational outputFinal.DomainStart fromPoint <= 0 &&
-                        Piecewise.compareRational outputFinal.DomainEnd toPoint >= 0
-                    let hit = coversRequired && cachedOutlineHit s.Source fromPoint toPoint outputFinal cached.Function
-                    cached.Paths,hit)
-        let outlineHit = outlineData |> Option.map snd |> Option.defaultValue true
+                    (pictureTarget s.Source relation).Paths)
         let constructed =
             match cropBounds with
             | None -> baseEvaluation.ConstructedLatex
@@ -1827,7 +1845,7 @@ module Game =
             "stages",arr stageJson; "checkpoints",arr checkpoints; "points",arr points
             "paths",arr finalPaths
             "startSlope",flt startSlope
-            "solved",boolean (s.Mode<>"remix" && cropHit && outlineHit && checkpoints |> List.forall (fun checkpoint -> checkpoint["hit"].GetValue<bool>())) ]
+            "solved",boolean (s.Mode<>"remix" && cropHit && checkpoints |> List.forall (fun checkpoint -> checkpoint["hit"].GetValue<bool>())) ]
         match s.Crop with
         | Some crop ->
             let fromPoint,toPoint = Piecewise.parseRational crop.From,Piecewise.parseRational crop.To
@@ -1842,9 +1860,9 @@ module Game =
             result["crop"] <- cropResult
             result["equationLatex"] <- str (sprintf "%s = %s" (if relation then "h^{2}" else "h") (Piecewise.providedLatex finalPresentation.Simplified))
         | None -> ()
-        match outlineData with
-        | Some (paths,hit) ->
-            result["outline"] <- obj ["paths",arr (paths |> List.map pathJson);"hit",boolean hit]
+        match pictureData with
+        | Some paths ->
+            result["picture"] <- obj ["paths",arr (paths |> List.map pathJson)]
         | None -> ()
         if relation then
             let solution = relationSolution.Value
@@ -1874,6 +1892,8 @@ module Game =
             let _,_,actualGap = gap finalValues
             result["heightGuide"] <- obj [
                 "fromX",str fromGoal.X; "toX",str toGoal.X; "target",str (targetGap.ToString())
+                "targetLatex",str (exactLatex targetGap)
+                "targetNumber",flt (exactNumber targetGap)
                 "actual",str (actualGap.ToString()); "actualLatex",str (exactLatex actualGap)
                 "hit",boolean (cachedExactEqual actualGap targetGap)
                 "stages",arr (stageValues |> List.map (fun values ->
@@ -2126,28 +2146,28 @@ module Game =
                                 Piecewise.tryParseRational (stringField checkpoint "actual")
                                 |> Option.defaultWith (fun () ->
                                     invalidInput "export" "This height-squared construction needs rational real checkpoint heights before it can be shared as a challenge.")
+                            if squaredHeight.Numerator.Sign < 0 then
+                                invalidInput "export" "This height-squared construction has no real height at a required checkpoint."
                             let height =
-                                Piecewise.tryRationalSquareRoot squaredHeight
-                                |> Option.defaultWith (fun () ->
-                                    invalidInput "export" "This height-squared construction needs rational real checkpoint heights before it can be shared as a challenge.")
-                            let signedHeight =
-                                if (exactConstant "export" referenceGoal.Y |> asFloat) < 0. then Piecewise.negate height else height
-                            if abs (Piecewise.toFloat signedHeight) > maxTargetMagnitude then
+                                MathS.FromString(sprintf "sqrt(%s)" (Piecewise.rationalText squaredHeight)).InnerSimplified
+                            let referenceHeight = exactConstant "export" referenceGoal.Y
+                            let sign =
+                                Piecewise.tryCompareConstants referenceHeight (rational "0")
+                                |> Option.defaultWith (fun () -> invalidInput "export" "A checkpoint height sign could not be established exactly.")
+                            let signedHeight = if sign < 0 then -height else height
+                            if abs (signedHeight |> asFloat) > maxTargetMagnitude then
                                 invalidInput "export" "This construction's checkpoint values exceed the supported challenge target range."
-                            { X=stringField checkpoint "x"; Y=Piecewise.rationalText signedHeight })
+                            { X=stringField checkpoint "x"; Y=signedHeight.ToString() })
                     generated,(s.Nodes |> List.countBy (fun node -> node.Op) |> Map.ofList),s.Nodes.Length
                 | None ->
                     let generated : Goal list =
                         result["checkpoints"] |> array
                         |> List.filter (fun checkpoint -> goalIsInsideCrop s.Crop (stringField checkpoint "x"))
                         |> List.map (fun checkpoint ->
-                            let exact =
-                                Piecewise.tryParseRational (stringField checkpoint "actual")
-                                |> Option.defaultWith (fun () ->
-                                    invalidInput "export" "Shared challenges currently require rational checkpoint heights.")
-                            { X=stringField checkpoint "x";Y=Piecewise.rationalText exact })
+                            let exact = exactConstant "export" (stringField checkpoint "actual")
+                            { X=stringField checkpoint "x";Y=exact.ToString() })
                     for goal in generated do
-                        let height = Piecewise.parseRational goal.Y |> Piecewise.toFloat
+                        let height = exactConstant "export" goal.Y |> asFloat
                         if not (Double.IsFinite(height)) || abs height > maxTargetMagnitude then
                             invalidInput "export" "This construction's checkpoint values exceed the supported challenge target range."
                     generated,(s.Nodes |> List.countBy (fun node -> node.Op) |> Map.ofList),s.Nodes.Length

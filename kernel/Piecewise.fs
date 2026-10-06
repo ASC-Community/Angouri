@@ -39,6 +39,44 @@ module internal Piecewise =
 
     let private exactZeroEntity = MathS.FromString("0")
 
+    // Crop changes interval ownership, not the algebra inside each segment.
+    // Keep the expensive exact transformations bounded and reuse them while a
+    // player drags an endpoint through many distinct rational positions.
+    let private expressionCacheLimit = 256
+    let private expressionCacheGate = obj()
+    let private simplifiedExpressionCache = Dictionary<string,Entity*string*string>()
+    let private simplifiedExpressionOrder = Queue<string>()
+    let private derivativeCache = Dictionary<string,Entity>()
+    let private derivativeOrder = Queue<string>()
+
+    let private boundedExpressionCached (cache: Dictionary<string,'value>) (order: Queue<string>) key create =
+        match lock expressionCacheGate (fun () ->
+            match cache.TryGetValue(key) with
+            | true,cached -> Some cached
+            | false,_ -> None) with
+        | Some cached -> cached
+        | None ->
+            let computed = create()
+            lock expressionCacheGate (fun () ->
+                match cache.TryGetValue(key) with
+                | true,cached -> cached
+                | false,_ ->
+                    if cache.Count >= expressionCacheLimit then
+                        cache.Remove(order.Dequeue()) |> ignore
+                    cache[key] <- computed
+                    order.Enqueue(key)
+                    computed)
+
+    let private simplifiedExpression (expression: Entity) =
+        let key = expression.ToString()
+        boundedExpressionCached simplifiedExpressionCache simplifiedExpressionOrder key (fun () ->
+            let simplified = expression.Simplify()
+            simplified,simplified.ToString(),simplified.Latexize())
+
+    let private differentiatedExpression (x: Entity.Variable) (expression: Entity) =
+        let key = x.ToString()+"\u001f"+expression.ToString()
+        boundedExpressionCached derivativeCache derivativeOrder key (fun () -> expression.Differentiate(x))
+
     let createRational (numerator: BigInteger) (denominator: BigInteger) =
         if denominator = BigInteger.Zero then invalidArg "denominator" "A rational denominator cannot be zero."
         let numerator,denominator =
@@ -314,34 +352,6 @@ module internal Piecewise =
 
     let evaluateSegmentAt (x: Entity.Variable) point segment =
         evaluateExpressionAt x point segment.Expression
-
-    /// Exact equality of partial functions on a closed rational interval. Each
-    /// boundary is checked separately, then every open cell is compared by its
-    /// owning symbolic expressions. Sampling is never used as proof.
-    let exactlyEqualOn x fromPoint toPoint left right =
-        let left = crop fromPoint toPoint left
-        let right = crop fromPoint toPoint right
-        let cuts =
-            fromPoint :: toPoint :: (boundaries left @ boundaries right)
-            |> List.distinct
-            |> List.sortWith compareRational
-        let sameAt point =
-            match trySegmentAt point left,trySegmentAt point right with
-            | None,None -> true
-            | Some leftSegment,Some rightSegment ->
-                exactEqual
-                    (evaluateExpressionAt x point leftSegment.Expression)
-                    (evaluateExpressionAt x point rightSegment.Expression)
-            | _ -> false
-        let sameCell (startPoint,endPoint) =
-            if compareRational startPoint endPoint >= 0 then true
-            else
-                let point = midpoint startPoint endPoint
-                match trySegmentAt point left,trySegmentAt point right with
-                | None,None -> true
-                | Some leftSegment,Some rightSegment -> exactEqual leftSegment.Expression rightSegment.Expression
-                | _ -> false
-        cuts |> List.forall sameAt && cuts |> List.pairwise |> List.forall sameCell
 
     /// Compile smooth children with AngouriMath; round only their visual double
     /// readings. These delegates never decide checkpoint equality.
@@ -645,7 +655,9 @@ module internal Piecewise =
         // With no subsequent integral or derivative, compositions of these
         // rounding nodes are locally constant on the right of the endpoint.
         if hasSymbolicRounding rightSegment.Expression then exactZeroEntity
-        else rightSegment.Expression.Differentiate(x).Substitute(x,toEntity point).InnerSimplified
+        else
+            (differentiatedExpression x rightSegment.Expression)
+                .Substitute(x,toEntity point).InnerSimplified
 
     let rightSlopeAtZero (x: Entity.Variable) fn = rightSlopeAt x zero fn
 
@@ -698,21 +710,23 @@ module internal Piecewise =
         // Reuse each simplified entity for both plain text and LaTeX serialization.
         let segments =
             fn.Segments
-            |> List.map (fun segment -> segment,segment.Expression.Simplify())
+            |> List.map (fun segment ->
+                let simplified,text,latex = simplifiedExpression segment.Expression
+                segment,simplified,text,latex)
         let simplifiedFunction =
-            { fn with Segments=segments |> List.map (fun (segment,simplified) -> { segment with Expression=simplified }) }
+            { fn with Segments=segments |> List.map (fun (segment,simplified,_,_) -> { segment with Expression=simplified }) }
         match segments with
-        | [(segment,simplified)] when compareRational segment.Start segment.End < 0 ->
-            { Simplified=simplifiedFunction; ExpressionText=simplified.ToString(); Latex=simplified.Latexize() }
+        | [(segment,_,text,latex)] when compareRational segment.Start segment.End < 0 ->
+            { Simplified=simplifiedFunction; ExpressionText=text; Latex=latex }
         | segments ->
             let expressionText =
                 segments
-                |> List.map (fun (segment,simplified) -> sprintf "%s for %s" (simplified.ToString()) (segmentConditionLatex segment))
+                |> List.map (fun (segment,_,text,_) -> sprintf "%s for %s" text (segmentConditionLatex segment))
                 |> String.concat "; "
                 |> sprintf "piecewise(%s)"
             let rows =
                 segments
-                |> List.map (fun (segment,simplified) -> sprintf "%s & %s" (simplified.Latexize()) (segmentConditionLatex segment))
+                |> List.map (fun (segment,_,_,latex) -> sprintf "%s & %s" latex (segmentConditionLatex segment))
                 |> String.concat " \\\\ "
             { Simplified=simplifiedFunction; ExpressionText=expressionText; Latex=sprintf "\\begin{cases}%s\\end{cases}" rows }
 
@@ -770,3 +784,65 @@ module internal Piecewise =
             if numeratorRoot*numeratorRoot = value.Numerator && denominatorRoot*denominatorRoot = value.Denominator then
                 Some (createRational numeratorRoot denominatorRoot)
             else None
+
+    /// Compare bounded algebraic constants without using AngouriMath's numeric
+    /// Signum path. The authored targets currently need rational arithmetic and
+    /// square roots; dyadic bounds are widened outward and only decide once the
+    /// two intervals are disjoint.
+    let tryCompareConstants (left: Entity) (right: Entity) =
+        let minRational values = values |> List.reduce (fun best value -> if compareRational value best < 0 then value else best)
+        let maxRational values = values |> List.reduce (fun best value -> if compareRational value best > 0 then value else best)
+        let sqrtBounds bits value =
+            if value.Numerator.Sign < 0 then None
+            else
+                let scale = BigInteger.One <<< bits
+                let scaledSquare = value.Numerator*scale*scale
+                let quotient = scaledSquare/value.Denominator
+                let root = integerSquareRoot quotient
+                let lower = createRational root scale
+                let upper =
+                    if root*root*value.Denominator = scaledSquare then lower
+                    else createRational (root+BigInteger.One) scale
+                Some (lower,upper)
+        let rec bounds bits (value: Entity) =
+            match tryRationalEntity value with
+            | Some rational -> Some (rational,rational)
+            | None ->
+                match value.InnerSimplified with
+                | :? Entity.Sumf as sum ->
+                    match bounds bits sum.Augend,bounds bits sum.Addend with
+                    | Some (leftLow,leftHigh),Some (rightLow,rightHigh) ->
+                        Some (add leftLow rightLow,add leftHigh rightHigh)
+                    | _ -> None
+                | :? Entity.Mulf as product ->
+                    match bounds bits product.Multiplier,bounds bits product.Multiplicand with
+                    | Some (leftLow,leftHigh),Some (rightLow,rightHigh) ->
+                        let products = [multiply leftLow rightLow;multiply leftLow rightHigh
+                                        multiply leftHigh rightLow;multiply leftHigh rightHigh]
+                        Some (minRational products,maxRational products)
+                    | _ -> None
+                | :? Entity.Divf as division ->
+                    match bounds bits division.Dividend,bounds bits division.Divisor with
+                    | Some (numeratorLow,numeratorHigh),Some (denominatorLow,denominatorHigh)
+                        when compareRational denominatorLow zero > 0 || compareRational denominatorHigh zero < 0 ->
+                        let reciprocalLow,reciprocalHigh = divide one denominatorHigh,divide one denominatorLow
+                        let products = [multiply numeratorLow reciprocalLow;multiply numeratorLow reciprocalHigh
+                                        multiply numeratorHigh reciprocalLow;multiply numeratorHigh reciprocalHigh]
+                        Some (minRational products,maxRational products)
+                    | _ -> None
+                | :? Entity.Powf as power when tryRationalEntity power.Exponent = Some (createRational BigInteger.One (BigInteger 2)) ->
+                    match bounds bits power.Base with
+                    | Some (baseLow,baseHigh) when compareRational baseLow zero >= 0 ->
+                        match sqrtBounds bits baseLow,sqrtBounds bits baseHigh with
+                        | Some (low,_),Some (_,high) -> Some (low,high)
+                        | _ -> None
+                    | _ -> None
+                | _ -> None
+        if exactEqual left right then Some 0
+        else
+            [32;64;128;256]
+            |> List.tryPick (fun bits ->
+                match bounds bits left,bounds bits right with
+                | Some (_,leftHigh),Some (rightLow,_) when compareRational leftHigh rightLow < 0 -> Some -1
+                | Some (leftLow,_),Some (_,rightHigh) when compareRational leftLow rightHigh > 0 -> Some 1
+                | _ -> None)

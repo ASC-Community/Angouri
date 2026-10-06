@@ -1,7 +1,7 @@
 import './style.css';
 import './play.css';
 import './crop.css';
-import { CropEditor, cropControl, cropEdited, outlineVerdict, probePoints } from './crop';
+import { CropEditor, cropControl, cropEdited, updateCropVerdict, updateCropWindow, probePoints } from './crop';
 import { renderBrand } from './brand';
 import { Kernel } from './engine';
 import { icon } from './icons';
@@ -14,8 +14,8 @@ import { discoveryObservation, isDiscovery } from './discovery';
 import { Garden } from './garden';
 import { installBlockTooltip } from './block-tooltip';
 import { along, drawnPaths, flightPoints, flightStrokes, nearestIndex, strokePosition, sampledPosition, travelledPaths } from './geometry';
-import { functionView, flow, cropFlowPath, interpolate, launcherPose, operationTex, path, sizeFlightAnnotations, targetDescription, targetMark, targetStatus, tex, transform, updateFlowProbe, flightView, type Camera, type Flight } from './views';
-import { CHAPTERS, chapterIndex, CURVES, curveId, escape, EXTRA_PUZZLES, GEOMETRY_PUZZLES, OPTIONAL_PUZZLES, fraction, isCapstone, isCircleSource, isMastery, isPicture, LEVELS, OPS, PUZZLE_ORDER, puzzleLabel, type Action, type Artifact, type Circle, type Op, type Response, type Result, type State, type View } from './types';
+import { functionView, flow, cropFlowPath, interpolate, launcherPose, operationTex, path, sizeFlightAnnotations, targetDescription, targetMark, targetStatus, tex, transform, updateFlowProbe, updateFlowCrop, flightView, type Camera, type Flight } from './views';
+import { CHAPTERS, chapterIndex, CURVES, curveId, escape, EXTRA_PUZZLES, GEOMETRY_PUZZLES, OPTIONAL_PUZZLES, fraction, targetHeight, isCapstone, isCircleSource, isMastery, isPicture, LEVELS, OPS, PUZZLE_ORDER, puzzleLabel, type Action, type Artifact, type Circle, type Op, type Response, type Result, type State, type View } from './types';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 installBlockTooltip($('palette'));
@@ -83,18 +83,24 @@ const cropEditor=new CropEditor($('construction'),()=>state&&result&&pending===0
   preview=>{
     $('scene').removeAttribute('data-crop-pending');
     cropPlayback??={flight:{...flight},won:throwWon};flight={phase:'ready',position:0};throwWon=false;result=preview;
-    if(displayedView()==='flight')paintTrajectory(preview.points);
+    if(displayedView()==='flight'){
+      paintTrajectory(preview.points);
+      updateCropWindow($('scene'),preview.crop!,x=>transform(state!,camera,[x,0])[0]);
+    }
     else if(displayedView()==='function')renderScene();
     else {
       $('scene').querySelector('.crop-machine .flow-curve')?.setAttribute('d',cropFlowPath(preview));
+      updateFlowCrop($('scene'),preview,preview.crop!);
       updateFlowProbe($('scene'),state!,preview,probeIndex);
     }
     preview.checkpoints.forEach((checkpoint,i)=>document.querySelectorAll<HTMLElement>(`[data-target="${i}"]`).forEach(el=>{
-      el.dataset.match=checkpoint.hit?'hit':'miss';el.dataset.status='waiting';el.classList.remove('hit','miss','just-hit');el.classList.add('waiting');
+      const match=checkpoint.hit?'hit':'miss',changed=el.dataset.match!==match;
+      el.dataset.match=match;el.dataset.status='waiting';el.classList.remove('hit','miss','just-hit');el.classList.add('waiting');
       el.setAttribute('aria-label',targetDescription(checkpoint,i,'waiting'));
-      const mark=el.querySelector('.target-result');if(mark)mark.innerHTML=targetMark(checkpoint.hit?'hit':'miss');
+      const mark=el.querySelector('.target-result');if(mark&&changed)mark.innerHTML=targetMark(match);
     }));
-    const verdict=$('scene').querySelector('.outline-verdict');if(verdict)verdict.outerHTML=outlineVerdict(preview);
+    $('scene').querySelectorAll<HTMLElement>('.target-label').forEach((label,i)=>label.dataset.match=preview.checkpoints[i].hit?'hit':'miss');
+    updateCropVerdict($('scene'),preview);
     updatePrimary();animatePosition();
   },
   crop=>{cropPlayback=undefined;return perform({type:'crop',...crop}).then(ok=>{if(!ok){void perform({type:'evaluate'},'keep');}});},
@@ -102,7 +108,10 @@ const cropEditor=new CropEditor($('construction'),()=>state&&result&&pending===0
   (crop,base)=>{
     cropPlayback??={flight:{...flight},won:throwWon};flight={phase:'ready',position:0};throwWon=false;updatePrimary();animatePosition();
     $('scene').dataset.cropPending='true';
-    if(displayedView()!=='flight'||base.relation)return;
+    if(displayedView()==='flow')updateFlowCrop($('scene'),base,{...base.crop!,...crop},true);
+    if(displayedView()!=='flight')return;
+    updateCropWindow($('scene'),crop,x=>transform(state!,camera,[x,0])[0]);
+    if(base.relation)return;
     // A domain drag changes visibility, not the underlying equation. Clip the
     // already acknowledged kernel geometry immediately, without evaluating it.
     const stage=base.stages.at(-1)!,from=fraction(crop.from),to=fraction(crop.to),left=transform(state!,camera,[from,0])[0],right=transform(state!,camera,[to,0])[0];
@@ -117,11 +126,13 @@ const cropEditor=new CropEditor($('construction'),()=>state&&result&&pending===0
 
 function preferences() { write(PREF,{view,motion:reduced}); }
 function progress() { if(state) write(SAVE,{schema:1,type:'save',state,slots:railSlots,completed:[...completed],view,entry:location.hash.slice(0,8192)}); }
+let feedbackContent:string|undefined;
 function showNotice() {
   $('feedback').className=`feedback ${notice.kind}`;
   const finding=state&&result&&notice.kind!=='error'?discoveryObservation(state,result,selectedStage):'';
   $('feedback').classList.toggle('discovery-feedback',!!finding);
-  $('feedback').innerHTML=finding||`${notice.kind==='error'?'':icon('hand',16)}<span>${escape(notice.text)}</span>`;
+  const content=finding||`${notice.kind==='error'?'':icon('hand',16)}<span>${escape(notice.text)}</span>`;
+  if(content!==feedbackContent){$('feedback').innerHTML=content;feedbackContent=content;}
   $('feedback').hidden=!(finding||notice.text)||(throwWon&&notice.kind!=='error');
 }
 function error(message: string) { notice={text:message,kind:'error'}; showNotice(); }
@@ -196,7 +207,7 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
       } else if(fullCurve)fitCircleCamera();
     } else if(newSource||history==='clear'||!result.crop) {
       const [baseMin,baseMax]=LEVELS[state.sourceId-1].y;
-      const ys=[...result.points.map(p=>p[1]),...state.goals.map(g=>fraction(g.y))];
+      const ys=[...result.points.map(p=>p[1]),...result.checkpoints.map(targetHeight)];
       const min=Math.min(0,baseMin,...ys),max=Math.max(0,baseMax,...ys),padding=Math.max((max-min)*.12,.6);
       camera={min:min<baseMin?min-padding:baseMin,max:max>baseMax?max+padding:baseMax};
     }
@@ -405,7 +416,7 @@ function fitCircleCamera(targetsFirst=false) {
   if(result.relation){
     // An unfinished curve can be much taller than the intended shape. Keep the
     // required geometry readable on entry; explicit Fit includes the whole path.
-    const goals=state!.goals.map(g=>[fraction(g.x),fraction(g.y)] as [number,number]);
+    const goals=result.checkpoints.map(g=>[fraction(g.x),targetHeight(g)] as [number,number]);
     const points=targetsFirst&&goals.length?goals:[...result.relation.playback,...goals],ys=points.map(p=>p[1]);
     camera={min:Math.min(-1,...ys)-.7,max:Math.max(1,...ys)+.7,minX:-.7,maxX:4.7};
   }
