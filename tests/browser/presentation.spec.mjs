@@ -36,17 +36,20 @@ test('Hints guide the current puzzle while Notes retain the chapter reference',a
 
 test('Equation keeps node order visible above the kernel simplified result',async({page})=>{
   await ready(page,3,'function');await add(page,'A');await add(page,'H');
-  const check=async()=>{
+  const check=async(showSimplified)=>{
     const result=await page.evaluate(()=>window.angouri.result);
     await expect(page.locator('.constructed-formula annotation')).toHaveText(result.constructedLatex);
-    await expect(page.locator('.final-formula annotation')).toHaveText(`h = ${result.stages.at(-1).latex}`);
-    const raw=await page.locator('.constructed-formula').boundingBox(),simple=await page.locator('.final-formula').boundingBox();expect(raw.y+raw.height).toBeLessThan(simple.y);
+    if(showSimplified===false)await expect(page.locator('.final-formula')).toBeHidden();
+    if(showSimplified===true) {
+      await expect(page.locator('.final-formula annotation')).toHaveText(`h = ${result.stages.at(-1).latex}`);
+      const raw=await page.locator('.constructed-formula').boundingBox(),simple=await page.locator('.final-formula').boundingBox();expect(raw.y+raw.height).toBeLessThan(simple.y);
+    }
     await expect(page.locator('.katex-error')).toHaveCount(0);
     return result.constructedLatex;
   };
-  const first=await check();await page.locator('.part-body').first().focus();await page.keyboard.press('ArrowRight');await idle(page);expect(await check()).not.toBe(first);
+  const first=await check(false);await page.locator('.part-body').first().focus();await page.keyboard.press('ArrowRight');await idle(page);expect(await check()).not.toBe(first);
   await page.locator('#undo').click();await idle(page);expect(await check()).toBe(first);
-  await ready(page,41,'function');await add(page,'D');await check();
+  await ready(page,41,'function');await add(page,'D');await check(true);
   await ready(page,45,'function');await expect(page.locator('.constructed-formula annotation')).toHaveText(await page.evaluate(()=>window.angouri.result.constructedLatex));
   for(const size of [{width:1440,height:900},{width:320,height:568},{width:844,height:390}]) {
     await page.setViewportSize(size);await expect(page.locator('.katex-error')).toHaveCount(0);

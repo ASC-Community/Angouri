@@ -59,6 +59,8 @@ const clues:Record<number,[string,string]> = {
   65:['First isolate a positive step window with phase, rounding and sine.','What continuous shape does that finite pulse accumulate? Compare its midpoint and ends before choosing how to centre or fold it.'],
   66:['The squared-height relation needs the same magnitude above and below the axis.','Square the provided nonnegative roof so solving for height produces its positive and negative copies.'],
   67:['Find the zero outer regions and the positive inner window, then follow the accumulated total as its value goes from $0$ to $2$.','Its midpoint value is $1$ at the symmetry position $x=2$. Centre the values around $1$ and fold them; at the end, distinguish $h$ from $h^2$ so the relation supplies both sides.'],
+  69:['The right side is squared height. Compare the visible height after each halve.','Quartering a squared value halves its square root. Track both heights in Equation.'],
+  71:['A loop and its outer echoes can come from the same signed roof. Locate its middle and zero before choosing its scale.','The height beyond the zero belongs to a region where that roof has changed sign. Which operation makes both signs of its magnitude visible?'],
   14:['Where the bowl is flat, the slope is zero.','Compare downhill, flat and uphill positions in Flow before fitting the output.'],
   5:['The cubic’s slopes form a familiar bowl.','Inspect the slope first, then decide how that bowl needs to be scaled.'],
   15:['Look for the familiar shape in the S curve’s slope.','Once you have that bowl, reuse the turning and placement ideas.'],

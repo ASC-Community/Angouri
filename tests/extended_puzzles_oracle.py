@@ -104,6 +104,15 @@ def source_expr(text: str) -> Expr:
         return add(X, const(-2))
     if text == "2*x-4":
         return add(scale(q(2), X), const(-4))
+    if text == "3-(x-2)^2":
+        centered = add(X, const(-2))
+        return add(const(3), scale(q(-1), mul(centered, centered)))
+    if text == "4-(x-2)^2":
+        centered = add(X, const(-2))
+        return add(const(4), scale(q(-1), mul(centered, centered)))
+    if text == "(x-2)^2-1":
+        centered = add(X, const(-2))
+        return add(mul(centered, centered), const(-1))
     if text == "x*(4-x)/4":
         return scale(q("1/4"), mul(X, add(const(4), scale(q(-1), X))))
     if text == "x^2/2":
@@ -271,26 +280,30 @@ def build(source: str, recipe: str) -> Expr:
 
 SPECS = [
     # id, source, degree, positions, inventory, limit, witness, name, hint, chapter, station?, relation?, signed y choices?
-    (48,"x-2",1,["3","2","1","2"],{"Q":1,"N":1,"A":1},3,"QNA","The roof becomes a loop","Shape one squared height; both vertical sides must satisfy the same equation.",8,None,"height-squared",["0","1","0","-1"]),
-    (49,"2*x-4",1,["3","1","1","13/5","13/5"],{"H":3,"A":5,"Q":2,"N":2},10,"HAQNAAAA","Build the whole circle","Fit the squared height at the centre and edge, then check both halves of the loop.",8,None,"height-squared",["0","2","-2","6/5","-6/5"]),
-    (50,"x",1,["0","1","2","3","4"],{"S":1,"N":1},1,"S","A quarter turn","One input unit advances one quarter-turn around sine's repeating cycle.",9,None,None,None),
-    (51,"x",1,["0","1","2","3","4"],{"A":1},3,"AS","Move the wave","Changing the input before sine shifts where its zeroes and peaks appear.",9,{"id":"station","op":"S","before":1,"after":1},None,None),
-    (52,"x",1,["0","2","4"],{"H":1},3,"HS","Stretch the wave","Scaling the input before sine changes the horizontal period.",9,{"id":"station","op":"S","before":1,"after":1},None,None),
-    (53,"x",1,["0","1","2","3","4"],{"Q":1,"N":1},2,"SQ","Fold both lobes","Squaring after sine folds the negative lobe above zero.",9,{"id":"station","op":"S","before":0,"after":1},None,None),
-    (54,"x",1,["0","1/2","1","3/2","2","3","4"],{"H":1,"Q":1,"A":1},5,"SQHA","Set height and baseline","Operations after sine set the wave's amplitude and baseline.",9,{"id":"station","op":"S","before":1,"after":3},None,None),
-    (55,"x",1,["0","1/2","1","3/2","2","5/2","3","4"],{"A":3,"H":2,"S":1,"Q":2,"N":1},8,"ASQHHA","Place the repeating pattern","Plan phase and period first, then fit the repeated shape's height.",9,None,None,None),
-    (56,"x",1,["0","1/2","1","3/2","7/2","4"],{"F":1,"C":1},1,"F","Round down","Floor keeps each input on the step below until the next integer.",10,None,None,None),
-    (57,"x",1,["0","1/2","1","3/2","7/2","4"],{"F":1,"C":1},1,"C","Round up","Ceiling moves a non-integer input to the step above.",10,None,None,None),
-    (58,"x-2",1,["0","1/2","1","3/2","2","5/2","7/2","4"],{"N":1},3,"NF","Reverse the thresholds","A reflection before rounding changes the order and ownership of the steps.",10,{"id":"station","op":"F","before":1,"after":1},None,None),
-    (59,"x",1,["0","1/2","3/2","2","5/2","7/2","4"],{"H":1},3,"HF","Widen each step","Scaling the input before floor changes every step's width.",10,{"id":"station","op":"F","before":1,"after":1},None,None),
-    (60,"x",1,["0","1/2","1","3/2","2","5/2","3","4"],{"A":1,"H":1,"F":1},3,"AHF","Move and widen","Move the thresholds and set their spacing before rounding.",10,None,None,None),
-    (61,"x",1,["0","1/2","1","3/2","5/2","3","7/2","4"],{"F":1,"C":1},2,"FS","Project the steps","Sine maps integer step levels onto a repeating sequence of heights.",10,{"id":"station","op":"S","before":1,"after":0},None,None),
-    (62,"x",1,["0","1","3/2","2","5/2","3","7/2","4"],{"F":1,"S":1},3,"FSI","Accumulate signed steps","Positive and negative step widths add to the anchored accumulated height.",10,{"id":"station","op":"I","before":2,"after":0},None,None),
-    (63,"x",1,["0","1/2","1","3/2","2","5/2","3","4"],{"H":2,"A":3,"F":1,"C":1,"S":1,"I":1,"Q":2,"N":2},10,"AHFSIQNA","Shape the staircase area","Build the signed step area as a subgoal, then shape its accumulated path.",10,None,None,None),
-    (64,"x^3",3,["0","1/3","2/3","1","4/3","5/3","2","4"],{"D":1,"S":1,"Q":2,"H":2,"A":2,"N":1},8,"DSQHA","Uneven wave spacing","A changing input can wind the circle by unequal amounts. Find the bowl hidden in the starting curve.",11,None,None,None),
-    (65,"x",1,["0","1/2","1","3/2","2","5/2","3","4"],{"A":4,"H":2,"F":1,"C":1,"S":1,"I":1,"N":3,"Q":2},12,"AHFSINAQNA","Build a gate","First accumulate a finite step pulse, then shape the resulting ramp and plateau.",11,None,None,None),
-    (66,"x*(4-x)/4",2,["0","1","1","2","2","3","3","4"],{"Q":1,"H":1},1,"Q","Both sides of a roof","The squared-height equation asks one roof to account for matching upper and lower points.",8,None,"height-squared",["0","3/4","-3/4","1","-1","3/4","-3/4","0"]),
-    (67,"x^2/2",2,["0","1","3/2","3/2","2","2","5/2","5/2","3","4"],{"H":3,"A":5,"N":3,"Q":3,"D":1,"I":1,"S":1,"F":1,"C":1},14,"DAHFSINAQNAQ","The whole garden","Connect a slope, thresholds, a repeating projection, signed area and a two-sided final shape.",11,None,"height-squared",["0","0","3/4","-3/4","1","-1","3/4","-3/4","0","0"]),
+    (48,"x-2",1,["3","2","1","2"],{"Q":1,"N":1,"A":1},3,"QNA","The roof becomes a loop","Shape one squared height; both vertical sides must satisfy the same equation.",7,None,"height-squared",["0","1","0","-1"]),
+    (49,"2*x-4",1,["3","1","1","13/5","13/5"],{"H":3,"A":5,"Q":2,"N":2},10,"HAQNAAAA","Build the whole circle","Fit the squared height at the centre and edge, then check both halves of the loop.",7,None,"height-squared",["0","2","-2","6/5","-6/5"]),
+    (50,"x",1,["0","1","2","3","4"],{"S":1,"N":1},1,"S","A quarter turn","One input unit advances one quarter-turn around sine's repeating cycle.",8,None,None,None),
+    (51,"x",1,["0","1","2","3","4"],{"A":1},3,"AS","Move the wave","Changing the input before sine shifts where its zeroes and peaks appear.",8,{"id":"station","op":"S","before":1,"after":1},None,None),
+    (52,"x",1,["0","2","4"],{"H":1},3,"HS","Stretch the wave","Scaling the input before sine changes the horizontal period.",8,{"id":"station","op":"S","before":1,"after":1},None,None),
+    (53,"x",1,["0","1","2","3","4"],{"Q":1,"N":1},2,"SQ","Fold both lobes","Squaring after sine folds the negative lobe above zero.",8,{"id":"station","op":"S","before":0,"after":1},None,None),
+    (54,"x",1,["0","1/2","1","3/2","2","3","4"],{"H":1,"Q":1,"A":1},5,"SQHA","Set height and baseline","Operations after sine set the wave's amplitude and baseline.",8,{"id":"station","op":"S","before":1,"after":3},None,None),
+    (55,"x",1,["0","1/2","1","3/2","2","5/2","3","4"],{"A":3,"H":2,"S":1,"Q":2,"N":1},8,"ASQHHA","Place the repeating pattern","Plan phase and period first, then fit the repeated shape's height.",8,None,None,None),
+    (56,"x",1,["0","1/2","1","3/2","7/2","4"],{"F":1,"C":1},1,"F","Round down","Floor keeps each input on the step below until the next integer.",9,None,None,None),
+    (57,"x",1,["0","1/2","1","3/2","7/2","4"],{"F":1,"C":1},1,"C","Round up","Ceiling moves a non-integer input to the step above.",9,None,None,None),
+    (58,"x-2",1,["0","1/2","1","3/2","2","5/2","7/2","4"],{"N":1},3,"NF","Reverse the thresholds","A reflection before rounding changes the order and ownership of the steps.",9,{"id":"station","op":"F","before":1,"after":1},None,None),
+    (59,"x",1,["0","1/2","3/2","2","5/2","7/2","4"],{"H":1},3,"HF","Widen each step","Scaling the input before floor changes every step's width.",9,{"id":"station","op":"F","before":1,"after":1},None,None),
+    (60,"x",1,["0","1/2","1","3/2","2","5/2","3","4"],{"A":1,"H":1,"F":1},3,"AHF","Move and widen","Move the thresholds and set their spacing before rounding.",9,None,None,None),
+    (61,"x",1,["0","1/2","1","3/2","5/2","3","7/2","4"],{"F":1,"C":1},2,"FS","Project the steps","Sine maps integer step levels onto a repeating sequence of heights.",9,{"id":"station","op":"S","before":1,"after":0},None,None),
+    (62,"x",1,["0","1","3/2","2","5/2","3","7/2","4"],{"F":1,"S":1},3,"FSI","Accumulate signed steps","Positive and negative step widths add to the anchored accumulated height.",9,{"id":"station","op":"I","before":2,"after":0},None,None),
+    (63,"x",1,["0","1/2","1","3/2","2","5/2","3","4"],{"H":2,"A":3,"F":1,"C":1,"S":1,"I":1,"Q":2,"N":2},10,"AHFSIQNA","Shape the staircase area","Build the signed step area as a subgoal, then shape its accumulated path.",9,None,None,None),
+    (64,"x^3",3,["0","1/3","2/3","1","4/3","5/3","2","4"],{"D":1,"S":1,"Q":2,"H":2,"A":2,"N":1},8,"DSQHA","Uneven wave spacing","A changing input can wind the circle by unequal amounts. Find the bowl hidden in the starting curve.",10,None,None,None),
+    (65,"x",1,["0","1/2","1","3/2","2","5/2","3","4"],{"A":4,"H":2,"F":1,"C":1,"S":1,"I":1,"N":3,"Q":2},12,"AHFSINAQNA","Build a gate","First accumulate a finite step pulse, then shape the resulting ramp and plateau.",10,None,None,None),
+    (66,"x*(4-x)/4",2,["0","1","1","2","2","3","3","4"],{"Q":1,"H":1},1,"Q","Both sides of a roof","The squared-height equation asks one roof to account for matching upper and lower points.",7,None,"height-squared",["0","3/4","-3/4","1","-1","3/4","-3/4","0"]),
+    (67,"x^2/2",2,["0","1","3/2","3/2","2","2","5/2","5/2","3","4"],{"H":3,"A":5,"N":3,"Q":3,"D":1,"I":1,"S":1,"F":1,"C":1},14,"DAHFSINAQNAQ","The whole garden","Connect a slope, thresholds, a repeating projection, signed area and a two-sided final shape.",10,None,"height-squared",["0","0","3/4","-3/4","1","-1","3/4","-3/4","0","0"]),
+    (68,"3-(x-2)^2",2,["0","4/5","2","2","4"],{"A":1,"H":1},1,"A","Grow both sides","The block changes squared height. Watch both halves of the loop.",7,None,"height-squared",["0","8/5","2","-2","0"]),
+    (69,"4-(x-2)^2",2,["0","4/5","2","2","4"],{"H":2,"A":1,"Q":1},2,"HH","Half the height","Compare halving the right side once with halving it twice.",7,None,"height-squared",["0","4/5","1","-1","0"]),
+    (70,"(x-2)^2-1",2,["1","2","2","3"],{"N":1,"Q":1,"A":1},1,"N","Where heights exist","A negative right side has no real height. Change which regions can appear.",7,None,"height-squared",["0","1","-1","0"]),
+    (71,"2*x-4",1,["0","0","3/2","3/2","5/2","5/2","7/2","4","4"],{"H":3,"A":3,"N":2,"Q":3},9,"AHHQNAHQ","A loop and its echoes","Use a signed roof as an intermediate shape, then account for both heights and the region beyond its zero.",7,None,"height-squared",["7/32","-7/32","1/2","-1/2","3/8","-3/8","0","9/32","-9/32"]),
 ]
 
 
@@ -422,6 +435,55 @@ def one_edit_neighborhood(witness: str, inventory: dict[str, int]) -> set[str]:
     return candidates
 
 
+def exhaustive_rational_recipes(item: dict) -> tuple[list[int], list[str]]:
+    """Visit every legal recipe when all operations act pointwise on rationals."""
+    positions = list(dict.fromkeys(q(target["x"]) for target in item["targets"]))
+    expected_by_position: dict[Fraction, Fraction] = {}
+    for target in item["targets"]:
+        position = q(target["x"])
+        expected = q(target["y"])
+        if item.get("relation") == "height-squared":
+            expected *= expected
+        previous = expected_by_position.setdefault(position, expected)
+        assert previous == expected
+
+    state = tuple(evaluate(source_expr(item["source"]), position).as_rational()
+                  for position in positions)
+    goal = tuple(expected_by_position[position] for position in positions)
+    remaining = dict(item["inventory"])
+    prefix: list[str] = []
+    visited = [0] * (item["limit"] + 1)
+    hits: list[str] = []
+
+    def walk(values: tuple[Fraction, ...]) -> None:
+        visited[len(prefix)] += 1
+        if values == goal:
+            hits.append("".join(prefix))
+        if len(prefix) == item["limit"]:
+            return
+        for op in sorted(remaining):
+            if remaining[op] == 0:
+                continue
+            if op == "A":
+                next_values = tuple(value + 1 for value in values)
+            elif op == "H":
+                next_values = tuple(value / 2 for value in values)
+            elif op == "N":
+                next_values = tuple(-value for value in values)
+            elif op == "Q":
+                next_values = tuple(value * value for value in values)
+            else:
+                raise ValueError(f"rational recipe audit does not support {op}")
+            remaining[op] -= 1
+            prefix.append(op)
+            walk(next_values)
+            prefix.pop()
+            remaining[op] += 1
+
+    walk(state)
+    return visited, sorted(hits, key=lambda recipe: (len(recipe), recipe))
+
+
 def shortcut_evidence(manifest: list[dict], witnesses: dict[int, str]) -> list[str]:
     by_id = {item["id"]: item for item in manifest}
     report: list[str] = []
@@ -449,6 +511,23 @@ def shortcut_evidence(manifest: list[dict], witnesses: dict[int, str]) -> list[s
     report.append(f"67: {len(edits)} deletion/swap/substitution neighbors visited "
                   f"({edit_supported} exact, {edit_unsupported} outside subset); solutions={edit_hits}; "
                   f"full witness-multiset space is {multinomial_count(witness)} permutations and was not enumerated")
+    ident = 71
+    item = by_id[ident]
+    visited, hits = exhaustive_rational_recipes(item)
+    shortest = min(map(len, hits))
+    shortest_hits = [recipe for recipe in hits if len(recipe) == shortest]
+    core_retained = all(
+        recipe.startswith("A")
+        and recipe[:recipe.index("Q")].count("H") >= 2
+        and "H" in recipe[recipe.index("Q") + 1:]
+        and recipe.endswith("Q")
+        for recipe in hits)
+    assert core_retained
+    report.append(
+        f"71: all {sum(visited)} legal recipes through limit {item['limit']} visited exactly "
+        f"(by length {visited}); shortest length={shortest}, shortest solutions={shortest_hits}; "
+        f"all {len(hits)} solutions={hits}; every solution starts with the centering lift, "
+        f"has two halves before its first square and another half afterward, and ends in square")
     return report
 
 
@@ -460,11 +539,11 @@ def main() -> None:
     # Round-trip schema/object integrity and witness legality.
     loaded = json.loads(MANIFEST.read_text(encoding="utf-8"))
     assert loaded == manifest, "Authored rules changed: update the independent fixtures deliberately."
-    assert [item["id"] for item in loaded] == list(range(48, 68))
+    assert [item["id"] for item in loaded] == list(range(48, 72))
     allowed = {"id","source","degree","endpoint","targets","inventory","limit","station","relation","name","hint","chapter"}
     for item in loaded:
         assert set(item) <= allowed
-        assert item["endpoint"] == 4 and item["chapter"] in {8,9,10,11}
+        assert item["endpoint"] == 4 and item["chapter"] in {7,8,9,10}
         station_op = item.get("station", {}).get("op")
         movable = item["inventory"]
         witness_movable = witnesses[item["id"]]
@@ -476,9 +555,9 @@ def main() -> None:
         assert solves(item, witnesses[item["id"]])
 
     print(f"manifest: {MANIFEST}")
-    print(f"verified: {len(loaded)} IDs, contiguous 48..67; every witness exact and legal")
+    print(f"verified: {len(loaded)} IDs, contiguous 48..71; every witness exact and legal")
     print("witnesses (oracle evidence only; absent from product JSON):")
-    for ident in range(48, 68):
+    for ident in range(48, 72):
         print(f"  {ident}: {witnesses[ident]}")
     if "--shortcuts" in sys.argv:
         print("bounded shortcut checks:")

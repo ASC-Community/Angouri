@@ -1,10 +1,16 @@
 import './notes.css';
 import { Kernel } from './engine';
-import { CHAPTERS, chapterIndex, EXTRA_PUZZLES, PUZZLE_ORDER, fraction, type Op, type Result } from './types';
+import { CHAPTERS, chapterIndex, EXTRA_PUZZLES, GEOMETRY_PUZZLES, PUZZLE_ORDER, fraction, type Op, type Result } from './types';
 import { heightAtFormula, rationalTex, tex } from './views';
 import { chapterArt, lesson, move, viewButton, recall, strip, compare, circleSketch, diagramChoices, relationSketch } from './note-diagrams';
 import { renderReference } from './reference';
 export { chapterArt } from './note-diagrams';
+
+const knownLessons=(source:number)=>new Set(source===0||EXTRA_PUZZLES.includes(source)
+  ?[...PUZZLE_ORDER,...GEOMETRY_PUZZLES]
+  :GEOMETRY_PUZZLES.includes(source)
+    ?[...PUZZLE_ORDER.slice(0,PUZZLE_ORDER.indexOf(44)+1),...GEOMETRY_PUZZLES.slice(0,GEOMETRY_PUZZLES.indexOf(source)+1)]
+    :PUZZLE_ORDER.slice(0,PUZZLE_ORDER.indexOf(source)+1));
 
 // These are reference examples evaluated by the same stateless kernel as play.
 // No note may accept a response into the player's state, history or progress.
@@ -41,13 +47,12 @@ export class ShapeNotes {
     this.source=source;
     // Scope references to this puzzle, including when replaying an early lesson.
     // Create has the whole book.
-    const at=PUZZLE_ORDER.indexOf(source);
-    this.known=new Set(source===0||EXTRA_PUZZLES.includes(source)?PUZZLE_ORDER:PUZZLE_ORDER.slice(0,at+1));
+    this.known=knownLessons(source);
     this.topics=new Set(CHAPTERS.flatMap((chapter,i)=>this.known.has(chapter.levels[0])?[i]:[]));
     const choices=CHAPTERS.flatMap((chapter,i)=>this.topics.has(i)?[`<button data-note="${i}" aria-pressed="false"><span class="note-tab-art ${chapter.color}">${chapterArt(i)}</span><span>${chapter.name}</span></button>`]:[]);
     this.index.innerHTML=choices.join('');
     this.index.hidden=choices.length<2;
-    void this.select(EXTRA_PUZZLES.includes(source)?EXTRA_PUZZLES.indexOf(source)<4?4:5:Math.max(0,chapterIndex(source)));
+    void this.select(GEOMETRY_PUZZLES.includes(source)?6:EXTRA_PUZZLES.includes(source)?EXTRA_PUZZLES.indexOf(source)<4?4:5:Math.max(0,chapterIndex(source)));
   }
 
   private async select(topic:number) {
@@ -69,9 +74,8 @@ export class ShapeNotes {
   }
 
   async hintSketch(source:number) {
-    const at=PUZZLE_ORDER.indexOf(source);
-    const known=new Set(at<0?PUZZLE_ORDER:PUZZLE_ORDER.slice(0,at+1));
-    const topic=EXTRA_PUZZLES.includes(source)?EXTRA_PUZZLES.indexOf(source)<4?4:5:Math.max(0,chapterIndex(source));
+    const known=knownLessons(source);
+    const topic=GEOMETRY_PUZZLES.includes(source)?6:EXTRA_PUZZLES.includes(source)?EXTRA_PUZZLES.indexOf(source)<4?4:5:Math.max(0,chapterIndex(source));
     const sketches=new LessonSketches(this.kernel,source,known,this.examples);
     if(EXTRA_PUZZLES.includes(source)) {
       const op:Op=EXTRA_PUZZLES.indexOf(source)<4?'D':'I',reading=await sketches.example(source,op);
@@ -158,10 +162,9 @@ class LessonSketches {
     if(topic===3)return this.powerNotes();
     if(topic===4)return this.slopeNotes();
     if(topic===5)return this.areaNotes();
-    if(topic===6)return this.circleNotes();
-    if(topic===7)return this.relationNotes();
-    if(topic===8)return this.waveNotes();
-    if(topic===9)return this.stepNotes();
+    if(topic===6)return this.source<=47?this.circleNotes():this.relationNotes();
+    if(topic===7)return this.waveNotes();
+    if(topic===8)return this.stepNotes();
     return this.togetherNotes();
   }
 
@@ -262,6 +265,14 @@ class LessonSketches {
   }
 
   private async relationNotes():Promise<string> {
+    if(this.source===71) {
+      const [before,after]=await Promise.all([this.example(68,'HH'),this.example(68,'HHQ')]);
+      return '<h3>One signed roof can make several visible pieces.</h3><p>Read the zero and the distance from the middle first. The outer heights can be copies of a negative part of that same roof.</p>'+diagramChoices('An independent roof, before and after squaring.',[
+        {label:'Signed right side',html:relationSketch(before,'Only its nonnegative region has heights',{bounds:[0,4,-2,2]})},
+        {label:'Squared right side',html:relationSketch(after,'Both signs of its magnitude',{before,bounds:[0,4,-2,2]})}
+      ])+'<p>Your targets still determine the roof\u2019s centre, scale and final magnitude. Compare them in '+viewButton('function')+'.</p>';
+    }
+    if([68,69,70].includes(this.source))return '<h3>Read the right side as squared height.</h3><p>Track what the block changes before taking the two square roots. Use '+viewButton('flow')+' to see both stages.</p>';
     const roof=await this.circleRoofLesson();
     if(!this.known.has(66))return '<h3>Build an equation with two heights.</h3>'+roof+recall([43,44],'From centre and radius to a roof',await this.geometryEquationConnection());
     const paired=await this.pairedRoofLesson();
@@ -269,8 +280,8 @@ class LessonSketches {
     const final=await this.kernel.run(undefined,{type:'level',sourceId:49,mode:'puzzle'});
     if(!final.result)throw new Error('Two-height targets unavailable');
     const targets=final.result.checkpoints.map(point=>[fraction(point.x),fraction(point.target)] as [number,number]);
-    const geometry=circleSketch([],{targets,pairs:[[0,1]],bounds:[-2,4,-3,3]});
-    return '<h3>Infer the loop. Then build its equation.</h3><p>The geometric and block-building jobs now meet. Use target pairs to infer a centre and radius. In a squared-height equation, the horizontal edges become zeros of the roof and the centre height determines its maximum.</p>'+geometry+'<p class="note-takeaway">Find a second geometric constraint in '+viewButton('flow')+', then shape the matching nonnegative roof with familiar transformations. The second bisector, exact roof and completing block order remain yours to find.</p>'+recall([66],'A roof can make paired parabolas',paired)+recall([48],'How one roof supplies two heights',roof)+recall([46,47],'How target pairs locate a centre',await this.geometryPairRecall());
+    const geometry=circleSketch([],{targets,bounds:[-2,4,-3,3]});
+    return '<h3>Infer the loop. Then build its equation.</h3><p>The matching heights above and below zero share a horizontal position. That widest pair locates the circle\u2019s centre and radius. A target on zero locates one horizontal edge.</p>'+geometry+'<p class="note-takeaway">Use '+viewButton('function')+' to compare squared heights. In '+viewButton('flow')+', build a roof whose maximum is the squared radius and whose zeros are the circle\u2019s edges. Its scale and block order remain yours to find.</p>'+recall([66],'A roof can make paired parabolas',paired)+recall([48],'How one roof supplies two heights',roof);
   }
 
   private async circleRoofLesson() {

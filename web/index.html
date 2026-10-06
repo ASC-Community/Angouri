@@ -77,13 +77,14 @@
     <details><summary><span data-icon="keyboard"></span>Keyboard controls</summary><dl class="keyboard-guide"><dt><kbd>Tab</kbd> <kbd>Enter</kbd></dt><dd>Choose and add a block</dd><dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Move the focused recipe block</dd><dt><kbd>Delete</kbd></dt><dd>Return the focused block to its stack</dd><dt><kbd>Esc</kbd></dt><dd>Cancel a pickup or selection</dd><dt><kbd>Ctrl/⌘ Z</kbd></dt><dd>Undo; add Shift to redo</dd><dt><kbd>Space</kbd></dt><dd>Throw when the board has focus</dd><dt><kbd>?</kbd></dt><dd>Open this guide</dd></dl></details>
     <p>Circles use a centre and radius. Move the centre or pull the slingshot to set the radius; select either control then tap a destination, or use its arrow keys. Enter exact fractions in the recipe. Flow compares distances and target pairs.</p><p id="axis-help" class="muted"></p>
   </dialog>
+  <dialog id="garden-dialog" aria-labelledby="garden-title"><form method="dialog" class="dialog-top"><button class="icon-button close-dialog" aria-label="Back to game" title="Back to game"><span data-icon="back"></span></button><h2 id="garden-title">Picture garden</h2></form><div id="garden-content"></div></dialog>
   <input id="import-file" type="file" accept=".json,application/json" hidden>
   <dialog id="ending-dialog" aria-labelledby="ending-title" aria-describedby="ending-description">
     <form method="dialog" class="dialog-top ending-top"><button class="icon-button" aria-label="Back to final puzzle" title="Back to final puzzle"><span data-icon="back"></span></button><span class="eyebrow">THE LAST FLIGHT</span></form>
     <div class="ending-emblem" aria-hidden="true"><span></span><img src="./cucumber.svg" width="100" height="100" alt=""><i data-icon="check"></i></div>
     <h2 id="ending-title"></h2><p id="ending-description"></p>
     <ol id="ending-chapters" class="ending-chapters" aria-label="Your chapters"></ol><p id="ending-progress" class="ending-progress"></p>
-    <div class="ending-actions"><button id="ending-create" class="button primary"><span data-icon="create"></span>Create a flight</button><button id="ending-revisit" class="button"><span data-icon="puzzles"></span>Revisit puzzles</button></div>
+    <div class="ending-actions"><button id="ending-garden" class="button primary"><span data-icon="create"></span>Make a picture</button><button id="ending-create" class="button">Create a flight</button><button id="ending-revisit" class="button"><span data-icon="puzzles"></span>Revisit puzzles</button></div>
     <p class="ending-credit">Powered by <a href="https://github.com/asc-community/AngouriMath" target="_blank" rel="noopener noreferrer" aria-label="AngouriMath on GitHub, opens in a new tab"><img src="./projects/angourimath.png" width="22" height="22" alt="">AngouriMath<span data-icon="external"></span></a></p>
   </dialog>
   <noscript><p class="no-script">This game needs JavaScript. <a href="./about/">Meet Angouri and its open-source projects</a>.</p></noscript>

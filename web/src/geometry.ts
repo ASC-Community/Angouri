@@ -2,6 +2,21 @@ import type { CurvePath, Point, Result } from './types';
 
 // These helpers arrange kernel samples; they never evaluate a recipe.
 export const flightPoints=(result:Result)=>result.relation?.playback??result.points;
+export interface FlightStroke { points:Point[]; start:number; end:number; breaks:number[] }
+const strokes=new WeakMap<Result,FlightStroke[]>();
+/** Separate branch trails keep one shared reward clock. Steps still progress along x. */
+export function flightStrokes(result:Result):FlightStroke[] {
+  const cached=strokes.get(result);if(cached)return cached;
+  const points=flightPoints(result),ranges=result.relation?.flights??[[0,points.length-1]];
+  const resultStrokes=ranges.map(([start,end])=>({points:points.slice(start,end+1),start:start/Math.max(1,points.length-1),end:end/Math.max(1,points.length-1),breaks:(result.relation?.breaks??[]).filter(at=>at>start&&at<=end).map(at=>at-start)})).filter(s=>s.points.length>0);
+  strokes.set(result,resultStrokes);return resultStrokes;
+}
+export function strokePosition(stroke:FlightStroke,progress:number):Point {
+  const index=Math.max(0,Math.min(stroke.points.length-1,progress*(stroke.points.length-1))),a=Math.floor(index),b=Math.min(a+1,stroke.points.length-1);
+  if(stroke.breaks.includes(b))return stroke.points[a];
+  const t=index-a,left=stroke.points[a],right=stroke.points[b];
+  return [left[0]+(right[0]-left[0])*t,left[1]+(right[1]-left[1])*t];
+}
 export const nearestIndex=(points:Point[],x:number)=>points.reduce((best,p,i)=>Math.abs(p[0]-x)<Math.abs(points[best][0]-x)?i:best,0);
 export function along(points:Point[],x:number):Point {
   if(!points.length)return [x,0];

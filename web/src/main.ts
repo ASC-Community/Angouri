@@ -8,9 +8,11 @@ import { navigateTablist, rememberFocus, restoreFocus } from './keyboard';
 import { circleEdited, circleEquation, circleFlow, circleInput, circleRecipe, chooseCircleInspection, decorateCircleFlight, installCircleHandles, resetCircleInspection, sizeCircleControls, updateCircleProbe } from './circle';
 import { ShapeNotes, chapterArt } from './notes';
 import { puzzleHints } from './hints';
-import { drawnPaths, flightPoints, nearestIndex, sampledPosition, travelledPaths } from './geometry';
+import { discoveryObservation, isDiscovery } from './discovery';
+import { Garden } from './garden';
+import { drawnPaths, flightPoints, flightStrokes, nearestIndex, strokePosition, sampledPosition, travelledPaths } from './geometry';
 import { functionView, flow, interpolate, launcherPose, operationTex, path, sizeFlightAnnotations, targetDescription, targetMark, targetStatus, tex, transform, updateFlowProbe, flightView, type Camera, type Flight } from './views';
-import { CHAPTERS, chapterIndex, CURVES, curveId, escape, EXTRA_PUZZLES, fraction, isCapstone, isCircleSource, LEVELS, OPS, PUZZLE_ORDER, puzzleLabel, type Action, type Artifact, type Circle, type Op, type Response, type Result, type State, type View } from './types';
+import { CHAPTERS, chapterIndex, CURVES, curveId, escape, EXTRA_PUZZLES, GEOMETRY_PUZZLES, OPTIONAL_PUZZLES, fraction, isCapstone, isCircleSource, LEVELS, OPS, PUZZLE_ORDER, puzzleLabel, type Action, type Artifact, type Circle, type Op, type Response, type Result, type State, type View } from './types';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const SAVE = 'angouri:vine:v1:progress', PREF = 'angouri:vine:v1:preferences', SEEDS = 'angouri:vine:v1:seeds';
@@ -52,7 +54,7 @@ const introStage=()=>state?.mode==='puzzle'&&[1,2].includes(state.sourceId)?stat
 const introActive=()=>introStage()>0;
 const choiceActive=()=>!!state&&state.mode!=='remix'&&!state.circle&&!state.station&&state.limit===1;
 const displayedView=():View=>introActive()?'flight':view;
-const followingPuzzle=(sourceId:number)=>{const order=PUZZLE_ORDER.includes(sourceId)?PUZZLE_ORDER:EXTRA_PUZZLES;return order[order.indexOf(sourceId)+1];};
+const followingPuzzle=(sourceId:number)=>{const order=PUZZLE_ORDER.includes(sourceId)?PUZZLE_ORDER:GEOMETRY_PUZZLES.includes(sourceId)?GEOMETRY_PUZZLES:EXTRA_PUZZLES;return order[order.indexOf(sourceId)+1];};
 const hintOrders=new Set<string>();
 let hintOffered=false,hintCue=false;
 let hintBlockSet='',bestTargetHits=-1,unsuccessfulRevisions=0;
@@ -65,6 +67,7 @@ const storedSeeds = read(SEEDS);
 let seeds: Seed[] = Array.isArray(storedSeeds) ? storedSeeds.slice(0,12).filter((s):s is Seed=>!!s&&typeof s.name==='string'&&s.name.length<=60&&s.artifact?.type==='creation') : [];
 const kernel = new Kernel((message)=> { notice={text:message,kind:'error'}; showNotice(); });
 const shapeNotes = new ShapeNotes(kernel);
+const garden = new Garden($('garden-content'),kernel,{reduced:()=>reduced,onFinish:()=>{$<HTMLDialogElement>('garden-dialog').close();showEnding();}});
 const circleCommit=(circle:Circle)=>serial(async()=>accept(await kernel.run(state,{type:'circle',...circle})),true);
 const cancelCirclePickup=installCircleHandles($('scene'),()=>state?.circle&&result?.circle&&pending===0&&!['flying','releasing'].includes(flight.phase)?{state,result,camera}:undefined,circleCommit,async(snapshot,circle)=>{const reply=await kernel.run(snapshot,{type:'circle',...circle});return reply.status==='ok'?reply.result:undefined;});
 
@@ -72,8 +75,10 @@ function preferences() { write(PREF,{view,motion:reduced}); }
 function progress() { if(state) write(SAVE,{schema:1,type:'save',state,slots:railSlots,completed:[...completed],view,entry:location.hash.slice(0,8192)}); }
 function showNotice() {
   $('feedback').className=`feedback ${notice.kind}`;
-  $('feedback').innerHTML=`${notice.kind==='error'?'':icon('hand',16)}<span>${escape(notice.text)}</span>`;
-  $('feedback').hidden=!notice.text||(throwWon&&notice.kind!=='error');
+  const finding=state&&result&&notice.kind!=='error'?discoveryObservation(state,result,selectedStage):'';
+  $('feedback').classList.toggle('discovery-feedback',!!finding);
+  $('feedback').innerHTML=finding||`${notice.kind==='error'?'':icon('hand',16)}<span>${escape(notice.text)}</span>`;
+  $('feedback').hidden=!(finding||notice.text)||(throwWon&&notice.kind!=='error');
 }
 function error(message: string) { notice={text:message,kind:'error'}; showNotice(); }
 function serial<T>(work: ()=>Promise<T>,retainCirclePreview=false): Promise<T | undefined> {
@@ -89,7 +94,7 @@ function requireOk(reply: Response): asserts reply is Response & {state: State; 
   if(reply.status!=='ok' || !reply.state || !reply.result) throw new Error(reply.message || 'This move could not be accepted. Your previous recipe is safe.');
 }
 function updateHintCue(history:'push'|'keep'|'clear') {
-  if(!state||!result||state.mode!=='puzzle'||introActive()||hintOffered)return false;
+  if(!state||!result||state.mode!=='puzzle'||introActive()||isDiscovery(state)||hintOffered)return false;
   const order=state.nodes.map(node=>node.op).join(''),blockSet=[...order].sort().join('');
   const hits=result.checkpoints.filter(c=>c.hit).length;
   if(blockSet!==hintBlockSet) {hintBlockSet=blockSet;hintOrders.clear();bestTargetHits=-1;unsuccessfulRevisions=0;}
@@ -238,7 +243,7 @@ function renderLevels() {
   };
   const currentChapter=chapterIndex(state.sourceId);
   $('level-nav').innerHTML=CHAPTERS.map((chapter,i)=>`<details class="chapter-group" name="chapters" ${i===Math.max(0,currentChapter)?'open':''}><summary><span class="chapter-art ${chapter.color}">${chapterArt(i)}</span><span><small>Chapter ${i+1}</small><strong>${chapter.name}</strong></span><span class="chapter-progress" aria-label="${chapter.levels.filter(id=>completed.has(id)).length} of ${chapter.levels.length} puzzles complete">${chapter.levels.filter(id=>completed.has(id)).length} / ${chapter.levels.length}</span>${icon('arrow',16)}</summary><div class="chapter-levels">${chapter.levels.map(option).join('')}</div></details>`).join('');
-  $('level-nav').insertAdjacentHTML('beforeend',`<details class="chapter-group extra-puzzles" name="chapters" ${currentChapter<0?'open':''}><summary><span class="chapter-art neutral">${icon('puzzles',28)}</span><span><small>Optional collection</small><strong>More shape puzzles</strong></span>${icon('arrow',16)}</summary><div class="chapter-levels">${EXTRA_PUZZLES.map(id=>`<button class="level-option" data-level="${id}" ${state!.sourceId===id?'aria-current="step"':''}><span class="level-number">${icon(completed.has(id)?'check':'blocks',18)}</span><span>${LEVELS[id-1].name}</span>${icon('arrow',18)}</button>`).join('')}</div></details>`);
+  $('level-nav').insertAdjacentHTML('beforeend',`<details class="chapter-group extra-puzzles" name="chapters" ${currentChapter<0?'open':''}><summary><span class="chapter-art neutral">${icon('puzzles',28)}</span><span><small>Optional collection</small><strong>More shape puzzles</strong></span>${icon('arrow',16)}</summary><div class="chapter-levels">${[...EXTRA_PUZZLES,...GEOMETRY_PUZZLES].map(id=>`<button class="level-option" data-level="${id}" ${state!.sourceId===id?'aria-current="step"':''}><span class="level-number">${icon(completed.has(id)?'check':'blocks',18)}</span><span>${LEVELS[id-1].name}</span>${icon('arrow',18)}</button>`).join('')}</div></details>`);
 }
 function renderCurves() {
   $('curve-choices').innerHTML=CURVES.map(curve=>{
@@ -267,7 +272,7 @@ function updatePrimary() {
   $('rethrow').hidden=!advancing;
   $<HTMLButtonElement>('rethrow').disabled=!initialized||pending>0||active;
   const next=state?.mode==='puzzle'?followingPuzzle(state.sourceId):undefined;
-  const label=advancing?(state?.mode==='puzzle'?next?next===PUZZLE_ORDER.at(-1)?'Final challenge':chapterIndex(next)!==chapterIndex(state.sourceId)?'Next chapter':isCapstone(next)?'Chapter challenge':'Next puzzle':EXTRA_PUZZLES.includes(state.sourceId)?'More puzzles':'Finish':'Create'):active?'In flight':flight.phase==='landed'?'Throw again':'Throw';
+  const label=advancing?(state?.mode==='puzzle'?next?next===PUZZLE_ORDER.at(-1)?'Final challenge':chapterIndex(next)!==chapterIndex(state.sourceId)?'Next chapter':isCapstone(next)?'Chapter challenge':'Next puzzle':OPTIONAL_PUZZLES.includes(state.sourceId)?'More puzzles':'Finish':'Create'):active?'In flight':flight.phase==='landed'?'Throw again':'Throw';
   $<HTMLButtonElement>('launch').disabled=!initialized||pending>0||active&&!advancing||!!result?.relation&&!result.relation.playback.length;
   $('launch').title=result?.relation&&!result.relation.playback.length?'No real heights yet. Make the right side reach zero or above.':'';
   $('launch').innerHTML=advancing?`<span>${label}</span>${icon('arrow',21)}`:`${icon('throw',21)}<span>${label}</span>`;
@@ -308,7 +313,7 @@ function render() {
   $<HTMLButtonElement>('ideas-open').disabled=false;
   if(result.solved)hintCue=false;
   $<HTMLButtonElement>('hints-open').disabled=false;
-  $('hints-open').hidden=state.mode!=='puzzle';
+  $('hints-open').hidden=state.mode!=='puzzle'||isDiscovery(state);
   $('hints-open').classList.toggle('hint-cue',hintCue);
   $('circle-fit').hidden=!(result.circle||result.relation)||displayedView()==='function';
   $('circle-fit').setAttribute('aria-label',result.relation?'Fit path and targets':'Fit circle and targets');
@@ -391,33 +396,33 @@ function updateTargets() {
 }
 function animatePosition() {
   if(!state||!result)return;
-  const points=displayedPoints||flightPoints(result),xy=displayedPoints?interpolate(points,flight.position):sampledPosition(result,flight.position),[x,y]=transform(state,camera,xy);
-  const origin=points[0]??[0,0];
-  for(const id of ['launcher','launcher-front','cucumber'])$(id)?.setAttribute('visibility',points.length?'visible':'hidden');
-  const tangent=result.relation&&points.length>1?[points[1][0]-origin[0],points[1][1]-origin[1]] as [number,number]:result.circle?.tangent??[1,result.startSlope] as [number,number];
-  // The kernel supplies the exact initial slope. Project it through the same
-  // coordinate map as the curve; a mathematical angle is not a screen angle.
-  const {angle,degrees,transform:launcherTransform}=launcherPose(state,camera,origin,tangent);
-  $('launcher')?.setAttribute('transform',launcherTransform);
-  $('launcher-front')?.setAttribute('transform',launcherTransform);
-  const pull=flight.phase==='ready'?1:flight.phase==='releasing'?1-(flight.release||0):0;
-  $('cucumber')?.setAttribute('transform',`translate(${(x-68*pull*Math.cos(angle)).toFixed(2)} ${(y-68*pull*Math.sin(angle)).toFixed(2)})`);
-  // The artwork points upward. Keep one continuous rotation from the loaded
-  // pose through release, then gradually introduce the airborne tumble.
-  const tumble=620*flight.position*flight.position;
-  $('flight-spin')?.setAttribute('transform',`rotate(${degrees+90+tumble})`);
-  const before=transform(state,camera,sampledPosition(result,Math.max(0,flight.position-.005))),after=transform(state,camera,sampledPosition(result,Math.min(1,flight.position+.005)));
-  $('flight-motion')?.setAttribute('transform',`rotate(${flight.position===0?degrees:Math.atan2(after[1]-before[1],after[0]-before[0])*180/Math.PI})`);
-  const pouchX=-52*pull,pouchY=-3-9*pull,pouchScale=.75+.25*pull,pouchAngle=-90*(1-pull);
-  const radians=pouchAngle*Math.PI/180;
-  // Each band stays attached to an end of the pouch as it turns from loaded to resting.
-  for(const [id,forkX,edgeY] of [['band-back',-11,-8],['band-front',12,8]] as const) {
-    const endX=pouchX+(3*Math.cos(radians)-edgeY*Math.sin(radians))*pouchScale;
-    const endY=pouchY+(3*Math.sin(radians)+edgeY*Math.cos(radians))*pouchScale;
-    const middleX=(forkX+endX)/2,middleY=(-8+endY)/2+1.5*(1-pull);
-    $(id)?.setAttribute('d',`M${forkX} -8Q${middleX.toFixed(2)} ${middleY.toFixed(2)} ${endX.toFixed(2)} ${endY.toFixed(2)}`);
+  const points=displayedPoints||flightPoints(result),xy=displayedPoints?interpolate(points,flight.position):sampledPosition(result,flight.position);
+  const strokes=flightStrokes(result),size=strokes.length>1?.72:1;
+  for(const [index,stroke] of strokes.entries()) {
+    const el=(name:string)=>$(index?`${name}-${index}`:name);
+    const local=Math.max(0,Math.min(1,(flight.position-stroke.start)/Math.max(.00001,stroke.end-stroke.start)));
+    const at=result.relation?strokePosition(stroke,local):xy;
+    const [cx,cy]=transform(state,camera,at),origin=stroke.points[0];
+    const tangent=result.relation&&stroke.points.length>1?[stroke.points[1][0]-origin[0],stroke.points[1][1]-origin[1]] as [number,number]:result.circle?.tangent??[1,result.startSlope] as [number,number];
+    const {angle,degrees,transform:pose}=launcherPose(state,camera,origin,tangent,size);
+    el('launcher')?.setAttribute('transform',pose);el('launcher-front')?.setAttribute('transform',pose);
+    const queued=flight.position<stroke.start;
+    const pull=flight.phase==='ready'?1:flight.phase==='releasing'?index?1:1-(flight.release||0):queued?Math.min(1,(stroke.start-flight.position)/.018):0;
+    el('cucumber')?.setAttribute('transform',`translate(${(cx-68*size*pull*Math.cos(angle)).toFixed(2)} ${(cy-68*size*pull*Math.sin(angle)).toFixed(2)})`);
+    el('flight-spin')?.setAttribute('transform',`rotate(${degrees+90+620*local*local}) scale(${size})`);
+    const before=transform(state,camera,result.relation?strokePosition(stroke,Math.max(0,local-.005)):sampledPosition(result,Math.max(0,flight.position-.005)));
+    const after=transform(state,camera,result.relation?strokePosition(stroke,Math.min(1,local+.005)):sampledPosition(result,Math.min(1,flight.position+.005)));
+    el('flight-motion')?.setAttribute('transform',`rotate(${local===0?degrees:Math.atan2(after[1]-before[1],after[0]-before[0])*180/Math.PI}) scale(${size})`);
+    el('flight-motion')?.setAttribute('visibility',flight.phase==='flying'&&!queued&&flight.position<stroke.end?'visible':'hidden');
+    const pouchX=-52*pull,pouchY=-3-9*pull,pouchScale=.75+.25*pull,pouchAngle=-90*(1-pull),radians=pouchAngle*Math.PI/180;
+    for(const [name,forkX,edgeY] of [['band-back',-11,-8],['band-front',12,8]] as const) {
+      const endX=pouchX+(3*Math.cos(radians)-edgeY*Math.sin(radians))*pouchScale;
+      const endY=pouchY+(3*Math.sin(radians)+edgeY*Math.cos(radians))*pouchScale;
+      const middleX=(forkX+endX)/2,middleY=(-8+endY)/2+1.5*(1-pull);
+      el(name)?.setAttribute('d',`M${forkX} -8Q${middleX.toFixed(2)} ${middleY.toFixed(2)} ${endX.toFixed(2)} ${endY.toFixed(2)}`);
+    }
+    el('slingshot-pouch')?.setAttribute('transform',`translate(${pouchX} ${pouchY}) rotate(${pouchAngle}) scale(${pouchScale})`);
   }
-  $('slingshot-pouch')?.setAttribute('transform',`translate(${pouchX} ${pouchY}) rotate(${pouchAngle}) scale(${pouchScale})`);
   if(displayedView()==='flight')$('flight-trail')?.setAttribute('d',flight.phase==='ready'||flight.phase==='releasing'?'':travelledPaths(result,flight.position).map(p=>path(p,state!,camera)).join(' '));
   if(displayedView()==='flow') {
     const slider=$<HTMLInputElement>('flow-position'),playing=flight.phase==='releasing'||flight.phase==='flying';
@@ -441,7 +446,7 @@ function launch() {
   if(throwWon&&state?.mode!=='remix') {
     const next=followingPuzzle(state!.sourceId);
     if(state!.mode==='puzzle'&&next)goToPuzzle(next,false);
-    else if(state!.mode==='puzzle'&&EXTRA_PUZZLES.includes(state!.sourceId)){renderLevels();open('puzzles-dialog','launch');}
+    else if(state!.mode==='puzzle'&&OPTIONAL_PUZZLES.includes(state!.sourceId)){renderLevels();open('puzzles-dialog','launch');}
     else if(state!.mode==='puzzle')showEnding();
     else void perform({type:'remix'},'clear');
     return;
@@ -780,7 +785,7 @@ document.querySelectorAll<HTMLDialogElement>('dialog').forEach(dialog=>dialog.ad
 for(const [button,dialog] of [['help-open','help-dialog'],['menu-open','menu-dialog'],['settings-open','settings-dialog']])$(button).onclick=()=>open(dialog);
 $('puzzles-open').onclick=()=>{renderLevels();open('puzzles-dialog');};
 $('ideas-open').onclick=()=>{if(!state)return;open('ideas-dialog','ideas-open');shapeNotes.show(state.mode==='puzzle'?state.sourceId:0);};
-$('hints-open').onclick=()=>{if(!state||!result||state.mode!=='puzzle'||introActive())return;hintOffered=true;hintCue=false;$('hints-open').classList.remove('hint-cue');$('hints-content').innerHTML=puzzleHints(state,result);open('hints-dialog','hints-open');};
+$('hints-open').onclick=()=>{if(!state||!result||state.mode!=='puzzle'||introActive()||isDiscovery(state))return;hintOffered=true;hintCue=false;$('hints-open').classList.remove('hint-cue');$('hints-content').innerHTML=puzzleHints(state,result);open('hints-dialog','hints-open');};
 $('hints-content').onclick=event=>{
   const target=event.target as Element,button=target.closest<HTMLButtonElement>('#hint-more-toggle');
   if(button){const expanded=button.getAttribute('aria-expanded')!=='true';button.setAttribute('aria-expanded',String(expanded));$('hint-extra').hidden=!expanded;}
@@ -799,6 +804,8 @@ $('hints-content').onclick=event=>{
 };
 $('menu-version').onclick=()=>open('releases-dialog','menu-version');
 $('ending-create').onclick=()=>$('nav-create').click();
+$('ending-garden').onclick=()=>{open('garden-dialog','ending-garden');void garden.show();};
+$('garden-dialog').addEventListener('close',()=>garden.close());
 $('ending-revisit').onclick=()=>{renderLevels();open('puzzles-dialog');};
 $('reset-progress-open').onclick=()=>{$('reset-progress-error').hidden=true;open('reset-progress-dialog');};
 $('reset-progress-confirm').onclick=async()=>{
@@ -826,7 +833,7 @@ $('leave-save').onclick=async()=>{
 };
 document.querySelectorAll<HTMLElement>('[data-icon]').forEach(el=>el.innerHTML=icon(el.dataset.icon!,el.matches('.menu-art,.help-art')?32:18));
 renderBrand(document.querySelector<HTMLElement>('.brand')!,'./cucumber.svg');
-$('axis-help').innerHTML=`The dashed ${operationTex()} in a block stands for its input. ${tex('h(x)')} is the height at horizontal position ${tex('x')}. The blocks shape the path; throwing speed does not affect the result.`;
+$('axis-help').innerHTML=`The dashed ${operationTex()} in a block stands for its input. ${tex('x')} is horizontal position and ${tex('h')} is height. An equation such as ${tex('h=x')} describes the path; ${tex('h^2=x')} can describe two heights at one position. The blocks shape the path; throwing speed does not affect the result.`;
 $<HTMLInputElement>('motion-toggle').checked=reduced;document.body.classList.toggle('reduced-motion',reduced);
 $<HTMLInputElement>('motion-toggle').onchange=()=>{reduced=$<HTMLInputElement>('motion-toggle').checked;document.body.classList.toggle('reduced-motion',reduced);preferences();if(reduced&&(flight.phase==='flying'||flight.phase==='releasing'))finishFlight();render();};
 

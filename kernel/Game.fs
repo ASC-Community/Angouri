@@ -439,8 +439,6 @@ module Game =
         station
     let polynomialDegree s =
         s.Nodes |> List.fold (fun (degree,hasRounding) node ->
-            if node.Op = "D" && hasRounding then
-                invalidInput "preview" "Find slope cannot follow Floor or Ceiling in the current preview."
             let nextDegree =
                 match node.Op,degree with
                 | "Q",Some value -> Some (value * 2)
@@ -592,7 +590,6 @@ module Game =
     let expressions s =
         let source = sourceEntities[s.Source-1]
         s.Nodes |> List.scan (fun f n -> apply f n.Op) source
-    type private ConstructedVariable = { EntityName: string; Latex: string }
     type private NumericCurvePath = {
         Points: (float * float) list
         StartClosed: bool
@@ -601,8 +598,10 @@ module Game =
     type private NumericSegment = {
         Segment: Piecewise.Segment
         Evaluate: float -> float
+        Rounding: float -> float list
     }
     type private RelationBranch = {
+        Family: int
         Expression: Entity
         Domain: Entity
     }
@@ -612,11 +611,11 @@ module Game =
         match solution with
         | :? Entity.Set.FiniteSet as finite ->
             finite.Elements
-            |> Seq.map (fun branch ->
+            |> Seq.mapi (fun family branch ->
                 let simplified = branch.Simplify()
                 if simplified.Vars |> Seq.exists (fun variable -> variable = h) then
                     invalidInput "preview" "The squared-height relation could not be solved explicitly for h."
-                { Expression=simplified; Domain=simplified.DomainConditionIn(Domain.Real).Simplify() })
+                { Family=family; Expression=simplified; Domain=simplified.DomainConditionIn(Domain.Real).Simplify() })
             |> Seq.distinctBy (fun branch -> branch.Expression.ToString(),branch.Domain.ToString())
             |> Seq.sortBy (fun branch -> branch.Expression.ToString())
             |> Seq.toList
@@ -656,40 +655,45 @@ module Game =
         Latex: string
         Lines: RelationSolvedLine list
     }
-    type private RelationEdge = {
-        Curve: NumericCurvePath
-        StartNode: int
-        EndNode: int
-    }
     let private constructedLatex s =
-        let sourceRenderer (variable: ConstructedVariable) =
-            let source = sourceEntities[s.Source-1]
-            if variable.EntityName = "x" then source.Latexize()
-            else
-                let replacement = MathS.FromString(variable.EntityName) :?> Entity.Variable
-                source.Substitute(x,replacement).Latexize()
-        let renderNode (renderInput: ConstructedVariable -> string) (index,node: Node) : ConstructedVariable -> string =
+        // Keep the operation tree intact, then let AngouriMath serialize it with
+        // the precedence rules it uses for every other displayed expression.
+        // In particular, additions do not need a fresh pair of parentheses at
+        // every earlier operation, while powers and negation still retain the
+        // grouping needed to show the player's order exactly.
+        let operand = MathS.FromString("constructed_operand") :?> Entity.Variable
+        let two = rational "2"
+        let one = rational "1"
+        let zero = rational "0"
+        let sourceRenderer (variable: Entity.Variable) =
+            sourceEntities[s.Source-1].Substitute(x,variable)
+        let unaryTemplate text input =
+            MathS.FromString(text).Substitute(operand,input)
+        let renderNode (renderInput: Entity.Variable -> Entity) (index,node: Node) : Entity.Variable -> Entity =
             match node.Op with
-            | "H" -> fun variable -> sprintf "\\frac{1}{2}\\left(%s\\right)" (renderInput variable)
-            | "A" -> fun variable -> sprintf "\\left(%s\\right) + 1" (renderInput variable)
-            | "N" -> fun variable -> sprintf "-\\left(%s\\right)" (renderInput variable)
-            | "Q" -> fun variable -> sprintf "\\left(%s\\right)^{2}" (renderInput variable)
-            | "S" -> fun variable ->
-                sprintf "\\sin\\left(\\frac{\\pi}{2}\\left(%s\\right)\\right)" (renderInput variable)
-            | "F" -> fun variable -> sprintf "\\left\\lfloor %s \\right\\rfloor" (renderInput variable)
-            | "C" -> fun variable -> sprintf "\\left\\lceil %s \\right\\rceil" (renderInput variable)
+            | "H" -> fun variable -> renderInput variable / two
+            | "A" -> fun variable -> renderInput variable + one
+            | "N" -> fun variable -> -(renderInput variable)
+            | "Q" -> fun variable -> (renderInput variable).Pow(two)
+            | "S" -> fun variable -> unaryTemplate "sin(pi*constructed_operand/2)" (renderInput variable)
+            | "F" -> fun variable -> unaryTemplate "floor(constructed_operand)" (renderInput variable)
+            | "C" -> fun variable -> unaryTemplate "ceil(constructed_operand)" (renderInput variable)
             | "D" -> fun variable ->
-                sprintf "\\frac{\\mathrm{d}}{\\mathrm{d}%s}\\left(%s\\right)" variable.Latex (renderInput variable)
+                upcast Entity.Derivativef(renderInput variable,variable,1)
             | "I" -> fun variable ->
-                let dummy : ConstructedVariable = { EntityName=sprintf "u_%d" (index+1); Latex=sprintf "u_{%d}" (index+1) }
-                sprintf "\\int_{0}^{%s}\\left(%s\\right)\\,\\mathrm{d}%s"
-                    variable.Latex (renderInput dummy) dummy.Latex
+                let dummy = MathS.FromString(sprintf "u_%d" (index+1)) :?> Entity.Variable
+                // Construct the bound node directly. Substituting its upper
+                // limit through every nested integral makes deep recipes grow
+                // exponentially during rendering, despite their small output.
+                let bounds = Nullable<ValueTuple<Entity,Entity>>(ValueTuple<Entity,Entity>(zero,variable))
+                upcast Entity.Integralf(renderInput dummy,dummy,bounds)
             | _ -> invalidInput "op" "Unknown operation."
         let rendered =
             s.Nodes
             |> List.indexed
             |> List.fold renderNode sourceRenderer
-            |> fun render -> render ({ EntityName="x"; Latex="x" } : ConstructedVariable)
+            |> fun render -> render x
+            |> fun expression -> expression.Latexize()
         sprintf "%s = %s" (if isHeightSquaredSource s.Source then "h^{2}" else "h") rendered
     let evaluateAt (f: Entity) (v: Entity) = f.Substitute(x,v).InnerSimplified
     let exactEqual left right = Piecewise.exactEqual left right
@@ -796,13 +800,10 @@ module Game =
 
     let private numericSegments (fn: Piecewise.Function) : NumericSegment list =
         fn.Segments |> List.map (fun segment ->
-            let compiled = segment.Expression.Compile([|x|])
+            let evaluate,rounding = Piecewise.compileNumeric x segment.Expression
             { Segment=segment
-              Evaluate=fun value ->
-                  let result = compiled.Call([|Complex(value,0.)|])
-                  if not (Double.IsFinite(result.Real)) || not (Double.IsFinite(result.Imaginary)) || abs result.Imaginary > 0.0000001 then
-                      invalidInput "preview" "The curve did not return a real number."
-                  checkedPreviewValue result.Real })
+              Rounding=rounding
+              Evaluate=evaluate >> checkedPreviewValue })
 
     let private numericAt point fn (evaluators: NumericSegment list) =
         let owner = Piecewise.segmentAt point fn
@@ -815,10 +816,46 @@ module Game =
         obj [ "points",arr (path.Points |> List.map (fun (px,py) -> arr [flt px;flt py]))
               "startClosed",boolean path.StartClosed; "endClosed",boolean path.EndClosed ]
 
+    let private sampledRoundingPaths sampleXs (evaluator: NumericSegment) =
+        let segment=evaluator.Segment
+        let startValue,endValue=Piecewise.toFloat segment.Start,Piecewise.toFloat segment.End
+        let sample point = let value=evaluator.Evaluate point in point,value,[value]
+        // Geometry is approximate and compiled. Exact target ownership is
+        // evaluated separately; bisection here only locates visual jumps.
+        let rec between depth (left,_,leftSignature as first) (right,_,rightSignature as last) =
+            if depth=0 || right-left<0.000000001 || leftSignature=rightSignature then [first;last]
+            else
+                let middle=sample ((left+right)/2.)
+                between (depth-1) first middle @ (between (depth-1) middle last |> List.tail)
+        let values =
+            ([0..640] |> List.map (fun index -> startValue+(endValue-startValue)*float index/640.)) @
+                (sampleXs |> List.map Piecewise.toFloat |> List.filter (fun point -> point>=startValue && point<=endValue))
+            |> List.distinct |> List.sort |> List.map sample
+            |> List.pairwise |> List.collect (fun (first,last) -> between 28 first last |> List.tail)
+            |> fun rest -> sample startValue :: rest
+        let paths=ResizeArray<NumericCurvePath>()
+        let mutable points=[]
+        let mutable previous=[]
+        let flush () =
+            if not points.IsEmpty then
+                paths.Add({Points=List.rev points;StartClosed=true;EndClosed=false})
+                points<-[]
+        for point,height,signature in values do
+            if not points.IsEmpty && signature<>previous then flush ()
+            points<-(point,height)::points
+            previous<-signature
+        flush ()
+        if paths.Count>maxSegments then invalidInput "preview" (sprintf "This rounding construction creates more than %d preview segments." maxSegments)
+        paths |> Seq.mapi (fun index path ->
+            {path with StartClosed=(if index=0 then segment.StartClosed else false)
+                       EndClosed=(if index=paths.Count-1 then segment.EndClosed else false)}) |> Seq.toList
+
     let private piecewisePathsWithEvaluators sampleXs (evaluators: NumericSegment list) =
         evaluators
-        |> List.map (fun evaluator ->
+        |> List.collect (fun evaluator ->
             let segment = evaluator.Segment
+            if Piecewise.hasSymbolicRounding segment.Expression then sampledRoundingPaths sampleXs evaluator
+            else
             let points =
                 segment.Start :: segment.End ::
                     (sampleXs |> List.filter (fun point ->
@@ -829,7 +866,7 @@ module Game =
                 |> List.map (fun point ->
                     let px = Piecewise.toFloat point
                     px,evaluator.Evaluate(px))
-            { Points=points; StartClosed=segment.StartClosed; EndClosed=segment.EndClosed })
+            [{ Points=points; StartClosed=segment.StartClosed; EndClosed=segment.EndClosed }])
 
     let private piecewisePaths sampleXs (fn: Piecewise.Function) =
         piecewisePathsWithEvaluators sampleXs (numericSegments fn)
@@ -953,7 +990,7 @@ module Game =
                        domain.Vars |> Seq.exists (fun variable -> variable = relationRhs) then
                         invalidInput "preview" "The squared-height relation could not be solved explicitly for h."
                     if domain.ToString() = "False" then None
-                    else Some { Expression=branch; Domain=domain })
+                    else Some { Family=schema.Family; Expression=branch; Domain=domain })
                 |> List.distinctBy (fun branch -> branch.Expression.ToString(),branch.Domain.ToString())
                 |> List.sortBy (fun branch -> branch.Expression.ToString()))
         let segments =
@@ -990,206 +1027,113 @@ module Game =
 
     let private relationRawPaths sampleXs checkpointXs polynomialDegree (solution: RelationSolution) =
         let tolerance = 0.000000001
-        let rawPaths = ResizeArray<NumericCurvePath>()
+        let rawPaths = ResizeArray<int*NumericCurvePath>()
         let samePath (left: NumericCurvePath) (right: NumericCurvePath) =
             left.StartClosed = right.StartClosed && left.EndClosed = right.EndClosed &&
             left.Points.Length = right.Points.Length &&
             List.forall2 samePoint left.Points right.Points
-        let addPath path =
-            if not (rawPaths |> Seq.exists (samePath path)) then rawPaths.Add(path)
+        let addPath family path =
+            if not (rawPaths |> Seq.exists (fun (existingFamily,existing) -> family=existingFamily && samePath path existing)) then rawPaths.Add(family,path)
         for solved in solution.Segments do
             let segment = solved.Segment
-            let evaluator = (numericSegments { DomainStart=segment.Start; DomainEnd=segment.End; Segments=[segment]; HasRounding=false }).Head
+            let compiledEvaluator = (numericSegments { DomainStart=segment.Start; DomainEnd=segment.End; Segments=[segment]; HasRounding=false }).Head
+            let genericRounding = Piecewise.hasSymbolicRounding segment.Expression
+            let evaluator =
+                if genericRounding then
+                    let known =
+                        sampleXs |> List.filter (fun point ->
+                            Piecewise.compareRational point segment.Start>=0 && Piecewise.compareRational point segment.End<=0 &&
+                            (checkpointXs |> List.contains (Piecewise.toFloat point)))
+                        |> List.map (fun point -> Piecewise.toFloat point,Piecewise.evaluateSegmentAt x point segment |> asFloat)
+                        |> Map.ofList
+                    {compiledEvaluator with Evaluate=fun point -> Map.tryFind point known |> Option.defaultWith (fun () -> compiledEvaluator.Evaluate point)}
+                else compiledEvaluator
             let branchEvaluators =
                 solved.Branches
                 |> List.map (fun branch ->
-                    let compiled = branch.Expression.Compile([|x|])
-                    fun value ->
-                        let result = compiled.Call([|Complex(value,0.)|])
-                        if not (Double.IsFinite(result.Real)) || not (Double.IsFinite(result.Imaginary)) ||
-                           abs result.Imaginary > 0.0000001 then
-                            invalidInput "preview" "The solved relation branch did not return a real number."
-                        if abs result.Real < tolerance then 0. else checkedPreviewValue result.Real)
-            let startValue,endValue = Piecewise.toFloat segment.Start,Piecewise.toFloat segment.End
-            let exactRoots =
-                match polynomialDegree with
-                | Some degree when degree <= 2 -> rationalQuadraticRoots segment
-                | _ -> []
-            let baseCandidates =
-                startValue :: endValue :: exactRoots @
-                    (sampleXs |> List.map Piecewise.toFloat |> List.filter (fun value -> value >= startValue && value <= endValue))
-                |> List.filter (fun value -> Double.IsFinite(value) && value >= startValue-tolerance && value <= endValue+tolerance)
-                |> List.map (fun value -> max startValue (min endValue value))
-                |> approximatelyDistinct tolerance
-            let crossingRoots =
-                baseCandidates
-                |> List.pairwise
-                |> List.choose (fun (left,right) ->
-                    let leftValue,rightValue = evaluator.Evaluate(left),evaluator.Evaluate(right)
-                    if leftValue * rightValue >= 0. || right-left <= tolerance then None
-                    else
-                        let mutable low,high = left,right
-                        let mutable lowValue = leftValue
-                        for _ in 1..52 do
-                            let middle = (low+high)/2.
-                            let middleValue = evaluator.Evaluate(middle)
-                            if lowValue * middleValue <= 0. then high <- middle
-                            else
-                                low <- middle
-                                lowValue <- middleValue
-                        Some ((low+high)/2.))
-            let candidates = baseCandidates @ crossingRoots |> approximatelyDistinct tolerance
-            let samples =
-                candidates
-                |> List.map (fun px ->
-                    let value = evaluator.Evaluate(px)
-                    px,(if abs value < tolerance then 0. else value))
-            let runs = ResizeArray<(float*float) list>()
-            let mutable current : (float*float) list = []
-            for point in samples do
-                if snd point >= 0. then current <- point::current
-                elif not current.IsEmpty then
-                    runs.Add(List.rev current)
-                    current <- []
-            if not current.IsEmpty then runs.Add(List.rev current)
-            for run in runs do
-                let indexed = run |> List.indexed
-                let lastIndex = run.Length-1
-                let splitIndices =
-                    indexed
-                    |> List.choose (fun (index,(_,value)) ->
-                        let adjacentPositive =
-                            (index > 0 && snd run[index-1] > tolerance) ||
-                            (index < lastIndex && snd run[index+1] > tolerance)
-                        let checkpoint = checkpointXs |> List.exists (fun checkpointX -> abs (fst run[index]-checkpointX) <= tolerance)
-                        if index = 0 || index = lastIndex || checkpoint || abs value <= tolerance && adjacentPositive then Some index else None)
-                    |> List.distinct
-                    |> List.sort
-                let ranges =
-                    if splitIndices.Length <= 1 then [0,lastIndex]
-                    else splitIndices |> List.pairwise
-                for firstIndex,lastIndex in ranges do
-                    let subrun = run[firstIndex..lastIndex]
-                    let firstX,lastX = fst (List.head subrun),fst (List.last subrun)
-                    let startClosed = if abs (firstX-startValue) < tolerance then segment.StartClosed else true
-                    let endClosed = if abs (lastX-endValue) < tolerance then segment.EndClosed else true
-                    for branchEvaluator in branchEvaluators do
-                        let points = subrun |> List.map (fun (px,value) -> if abs value <= tolerance then px,0. else px,branchEvaluator px)
-                        addPath { Points=points; StartClosed=startClosed; EndClosed=endClosed }
-        rawPaths |> Seq.toList
-
-    let private relationEdges paths =
-        let nodes = ResizeArray<float*float>()
-        let nodeFor point =
-            match nodes |> Seq.tryFindIndex (samePoint point) with
-            | Some index -> index
-            | None ->
-                nodes.Add(point)
-                nodes.Count-1
-        let edges =
-            paths
-            |> List.choose (fun path ->
-                match path.Points with
-                | [] -> None
-                | points -> Some { Curve=path; StartNode=nodeFor (List.head points); EndNode=nodeFor (List.last points) })
-        nodes |> Seq.toArray,edges |> List.toArray
-
-    let private edgeComponents nodeCount (edges: RelationEdge array) =
-        let adjacency = Array.init nodeCount (fun _ -> ResizeArray<int>())
-        edges |> Array.iteri (fun index edge ->
-            adjacency[edge.StartNode].Add(index)
-            if edge.EndNode <> edge.StartNode then adjacency[edge.EndNode].Add(index))
-        let remaining = HashSet<int>([0..edges.Length-1])
-        let components = ResizeArray<int list>()
-        while remaining.Count > 0 do
-            let seed = remaining |> Seq.min
-            let queue = Queue<int>()
-            let visitedNodes = HashSet<int>()
-            let connectedEdges = ResizeArray<int>()
-            queue.Enqueue(edges[seed].StartNode)
-            while queue.Count > 0 do
-                let node = queue.Dequeue()
-                if visitedNodes.Add(node) then
-                    for edgeIndex in adjacency[node] do
-                        if remaining.Remove(edgeIndex) then
-                            connectedEdges.Add(edgeIndex)
-                            queue.Enqueue(edges[edgeIndex].StartNode)
-                            queue.Enqueue(edges[edgeIndex].EndNode)
-            components.Add(connectedEdges |> Seq.toList)
-        components |> Seq.toList
-
-    let private eulerRoute nodeCount (nodes: (float*float) array) (edges: RelationEdge array) connectedEdges preferredTarget =
-        let degree = Array.zeroCreate<int> nodeCount
-        for edgeIndex in connectedEdges do
-            let edge = edges[edgeIndex]
-            if edge.StartNode = edge.EndNode then degree[edge.StartNode] <- degree[edge.StartNode]+2
+                    let evaluate,_ = Piecewise.compileNumeric x branch.Expression
+                    branch.Family,(fun value ->
+                        let result=evaluate value
+                        if abs result < tolerance then 0. else checkedPreviewValue result))
+            if genericRounding then
+                let schemas = heightSquaredBranchSchema.Value |> List.map (fun branch -> branch.Family,branch.Expression.Compile([|relationRhs|]))
+                for path in sampledRoundingPaths sampleXs evaluator do
+                    if path.Points |> List.forall (fun (_,value) -> value>=0.) then
+                        for family,compiled in schemas do
+                            addPath family {path with Points=path.Points |> List.map (fun (px,value) -> px,compiled.Call([|Complex(value,0.)|]).Real)}
             else
-                degree[edge.StartNode] <- degree[edge.StartNode]+1
-                degree[edge.EndNode] <- degree[edge.EndNode]+1
-        let oddNodes = degree |> Array.indexed |> Array.choose (fun (index,value) -> if value % 2 = 1 then Some index else None)
-        let componentNodes =
-            connectedEdges
-            |> List.collect (fun edgeIndex -> [edges[edgeIndex].StartNode;edges[edgeIndex].EndNode])
-            |> List.distinct
-        let preferredNode =
-            preferredTarget
-            |> Option.bind (fun (targetX,targetY) ->
-                componentNodes
-                |> List.filter (fun node -> abs (fst nodes[node]-targetX) <= 0.000000001)
-                |> List.sortBy (fun node -> abs (snd nodes[node]-targetY),node)
-                |> List.tryHead)
-        // A branched implicit curve has no trail that visits every arm only once.
-        // Repeating its edges produces one continuous tour instead of a spatial jump.
-        // An open trail can only start at an odd vertex; duplicate it as a circuit
-        // when the first authored checkpoint asks to begin at an interior vertex.
-        let preferredNeedsCircuit =
-            match preferredNode with
-            | Some node when oddNodes.Length = 2 && not (oddNodes |> Array.contains node) -> true
-            | _ -> false
-        let duplicateEdges = oddNodes.Length > 2 || preferredNeedsCircuit
-        let instances =
-            connectedEdges
-            |> List.collect (fun edgeIndex -> if duplicateEdges then [edgeIndex;edgeIndex] else [edgeIndex])
-            |> List.toArray
-        let adjacency = Array.init nodeCount (fun _ -> ResizeArray<int>())
-        instances |> Array.iteri (fun instanceIndex edgeIndex ->
-            let edge = edges[edgeIndex]
-            adjacency[edge.StartNode].Add(instanceIndex)
-            adjacency[edge.EndNode].Add(instanceIndex))
-        let startNode =
-            match preferredNode with
-            | Some node when duplicateEdges || oddNodes.Length = 0 || oddNodes |> Array.contains node -> node
-            | _ when oddNodes.Length = 2 && not duplicateEdges -> oddNodes[0]
-            | _ -> edges[instances[0]].StartNode
-        let used = Array.zeroCreate<bool> instances.Length
-        let nodeStack = ResizeArray<int>()
-        let incomingStack = ResizeArray<(int*bool) option>()
-        let reversedRoute = ResizeArray<int*bool>()
-        nodeStack.Add(startNode)
-        incomingStack.Add(None)
-        while nodeStack.Count > 0 do
-            let stackIndex = nodeStack.Count-1
-            let current = nodeStack[stackIndex]
-            match adjacency[current] |> Seq.tryFind (fun instanceIndex -> not used[instanceIndex]) with
-            | Some instanceIndex ->
-                used[instanceIndex] <- true
-                let edgeIndex = instances[instanceIndex]
-                let edge = edges[edgeIndex]
-                let reversed = edge.StartNode <> current
-                let next = if reversed then edge.StartNode else edge.EndNode
-                nodeStack.Add(next)
-                incomingStack.Add(Some (edgeIndex,reversed))
-            | None ->
-                nodeStack.RemoveAt(stackIndex)
-                let incoming = incomingStack[stackIndex]
-                incomingStack.RemoveAt(stackIndex)
-                match incoming with
-                | Some value -> reversedRoute.Add(value)
-                | None -> ()
-        reversedRoute
-        |> Seq.rev
-        |> Seq.map (fun (edgeIndex,reversed) -> if reversed then reversePath edges[edgeIndex].Curve else edges[edgeIndex].Curve)
-        |> Seq.toList
+                let startValue,endValue = Piecewise.toFloat segment.Start,Piecewise.toFloat segment.End
+                let exactRoots =
+                    match polynomialDegree with
+                    | Some degree when degree <= 2 -> rationalQuadraticRoots segment
+                    | _ -> []
+                let baseCandidates =
+                    startValue :: endValue :: exactRoots @
+                        (sampleXs |> List.map Piecewise.toFloat |> List.filter (fun value -> value >= startValue && value <= endValue))
+                    |> List.filter (fun value -> Double.IsFinite(value) && value >= startValue-tolerance && value <= endValue+tolerance)
+                    |> List.map (fun value -> max startValue (min endValue value))
+                    |> approximatelyDistinct tolerance
+                let crossingRoots =
+                    baseCandidates
+                    |> List.pairwise
+                    |> List.choose (fun (left,right) ->
+                        let leftValue,rightValue = evaluator.Evaluate(left),evaluator.Evaluate(right)
+                        if leftValue * rightValue >= 0. || right-left <= tolerance then None
+                        else
+                            let mutable low,high = left,right
+                            let mutable lowValue = leftValue
+                            for _ in 1..52 do
+                                let middle = (low+high)/2.
+                                let middleValue = evaluator.Evaluate(middle)
+                                if lowValue * middleValue <= 0. then high <- middle
+                                else
+                                    low <- middle
+                                    lowValue <- middleValue
+                            Some ((low+high)/2.))
+                let candidates = baseCandidates @ crossingRoots |> approximatelyDistinct tolerance
+                let samples =
+                    candidates
+                    |> List.map (fun px ->
+                        let value = evaluator.Evaluate(px)
+                        px,(if abs value < tolerance then 0. else value))
+                let runs = ResizeArray<(float*float) list>()
+                let mutable current : (float*float) list = []
+                for point in samples do
+                    if snd point >= 0. then current <- point::current
+                    elif not current.IsEmpty then
+                        runs.Add(List.rev current)
+                        current <- []
+                if not current.IsEmpty then runs.Add(List.rev current)
+                for run in runs do
+                    let indexed = run |> List.indexed
+                    let lastIndex = run.Length-1
+                    let splitIndices =
+                        indexed
+                        |> List.choose (fun (index,(_,value)) ->
+                            let adjacentPositive =
+                                (index > 0 && snd run[index-1] > tolerance) ||
+                                (index < lastIndex && snd run[index+1] > tolerance)
+                            let checkpoint = checkpointXs |> List.exists (fun checkpointX -> abs (fst run[index]-checkpointX) <= tolerance)
+                            if index = 0 || index = lastIndex || checkpoint || abs value <= tolerance && adjacentPositive then Some index else None)
+                        |> List.distinct
+                        |> List.sort
+                    let ranges =
+                        if splitIndices.Length <= 1 then [0,lastIndex]
+                        else splitIndices |> List.pairwise
+                    for firstIndex,lastIndex in ranges do
+                        let subrun = run[firstIndex..lastIndex]
+                        let firstX,lastX = fst (List.head subrun),fst (List.last subrun)
+                        let startClosed = if abs (firstX-startValue) < tolerance then segment.StartClosed else true
+                        let endClosed = if abs (lastX-endValue) < tolerance then segment.EndClosed else true
+                        for family,branchEvaluator in branchEvaluators do
+                            let points = subrun |> List.map (fun (px,value) -> if abs value <= tolerance then px,0. else px,branchEvaluator px)
+                            let path={ Points=points; StartClosed=startClosed; EndClosed=endClosed }
+                            addPath family path
+                            // Both signs of a zero piece belong to their respective
+                            // solutions; a completely zero equation is deduplicated below.
+                            if points |> List.forall (fun (_,height) -> height=0.) then
+                                for schema in heightSquaredBranchSchema.Value do addPath schema.Family path
+        rawPaths |> Seq.toList
 
     let private withoutConsecutiveDuplicates points =
         points
@@ -1272,36 +1216,56 @@ module Game =
 
     let private relationCurveData sampleXs checkpointXs preferredTarget polynomialDegree solution =
         let rawPaths = relationRawPaths sampleXs checkpointXs polynomialDegree solution
-        let nodes,edges = relationEdges rawPaths
-        let componentHasPreferred connectedEdges =
-            match preferredTarget with
-            | None -> false
-            | Some (targetX,_) ->
-                connectedEdges
-                |> List.exists (fun edgeIndex ->
-                    let edge = edges[edgeIndex]
-                    abs (fst nodes[edge.StartNode]-targetX) <= 0.000000001 ||
-                    abs (fst nodes[edge.EndNode]-targetX) <= 0.000000001)
-        let components =
-            edgeComponents nodes.Length edges
-            |> List.mapi (fun index connected -> index,connected)
-            |> List.sortBy (fun (index,connected) -> if componentHasPreferred connected then (0,index) else (1,index))
-            |> List.map snd
-        let playbackPaths =
-            components
-            |> List.map (fun connected -> eulerRoute nodes.Length nodes edges connected preferredTarget |> resampleRoute)
-            |> List.filter (not << List.isEmpty)
-            |> List.map (fun points -> { Points=points; StartClosed=true; EndClosed=true })
-        rawPaths |> mergeConnectedPaths,playbackPaths
+        // Keep the solver's height solutions distinct, including through zeros.
+        // Joining arbitrary graph edges would silently switch between solutions.
+        let families =
+            rawPaths |> List.groupBy fst |> List.sortBy fst
+            |> List.map (fun (_,paths) ->
+                paths |> List.map snd |> List.sortBy (fun path -> fst (List.head path.Points))
+                |> mergeConnectedPaths
+                |> List.map (fun path -> if fst (List.head path.Points)>fst (List.last path.Points) then reversePath path else path)
+                |> List.sortBy (fun path -> fst (List.head path.Points)))
+            |> List.distinctBy (fun paths -> paths |> List.map (fun path -> path.Points))
+        let flights =
+            match families with
+            | [ [first]; [second] ] when first.Points.Length>2 && second.Points.Length>2 &&
+                    samePoint (List.head first.Points) (List.head second.Points) &&
+                    samePoint (List.last first.Points) (List.last second.Points) &&
+                    (first.Points |> List.skip 1 |> List.take (first.Points.Length-2) |> List.forall (fun (_,height) -> abs height>0.000000001)) ->
+                // Circles, ovals and leaf-shaped loops can combine their two
+                // branches without retracing or passing an internal junction.
+                let joined=joinPoints first.Points (List.rev second.Points)
+                let openLoop=joined |> List.take (joined.Length-1)
+                let offset=
+                    match preferredTarget with
+                    | Some (x,y) -> openLoop |> List.mapi (fun index (a,b) -> index,(a-x)*(a-x)+(b-y)*(b-y)) |> List.minBy snd |> fst
+                    | None -> 0
+                let rotated=(openLoop |> List.skip offset) @ (openLoop |> List.take offset)
+                [[{ first with Points=rotated @ [List.head rotated] }]]
+            | _ -> families
+        let resampleAnchored path =
+            let points=path.Points
+            let indices=points |> List.mapi (fun index (px,py) -> index,px,py)
+                        |> List.choose (fun (index,px,py) ->
+                            if index=0 || index=points.Length-1 || abs py<0.000000001 ||
+                               checkpointXs |> List.exists (fun x -> abs (x-px)<0.000000001) then Some index else None)
+            let pieces=indices |> List.pairwise |> List.map (fun (first,last) -> {path with Points=points[first..last]})
+            {path with Points=if pieces.IsEmpty then points else resampleRoute pieces}
+        let playbackFlights = flights |> List.map (List.map resampleAnchored)
+        rawPaths |> List.map snd |> List.distinctBy (fun path -> path.Points) |> mergeConnectedPaths,playbackFlights
 
-    let private playbackData paths =
+    let private playbackData flights =
         let playback = ResizeArray<float*float>()
         let breaks = ResizeArray<int>()
-        for path in paths do
-            if not path.Points.IsEmpty then
-                if playback.Count > 0 then breaks.Add(playback.Count)
-                for point in path.Points do playback.Add(point)
-        playback |> Seq.toList,breaks |> Seq.toList
+        let ranges = ResizeArray<int*int>()
+        for flight in flights do
+            let first=playback.Count
+            for path in flight do
+                if not path.Points.IsEmpty then
+                    if playback.Count>0 then breaks.Add(playback.Count)
+                    for point in path.Points do playback.Add(point)
+            if playback.Count>first then ranges.Add(first,playback.Count-1)
+        playback |> Seq.toList,breaks |> Seq.toList,ranges |> Seq.toList
 
     let private segmentedPolynomialResultJson s =
         let stages = piecewiseStages s
@@ -1330,7 +1294,7 @@ module Game =
                         Piecewise.toFloat (Piecewise.parseRational goal.Y))
                 relationCurveData sampleXs checkpointXs preferredTarget finalDegree solution
             | None -> [],[]
-        let playback,breaks = playbackData playbackPaths
+        let playback,breaks,flights = playbackData playbackPaths
         let exactLatexCache = Dictionary<string,string>()
         let exactNumberCache = Dictionary<string,float>()
         let exactEqualityCache = Dictionary<string,bool>()
@@ -1361,19 +1325,24 @@ module Game =
                 let equal = exactEqual left right
                 exactEqualityCache[key] <- equal
                 equal
-        let stageEvaluators = stages |> List.map numericSegments
-        let stagePoints =
-            (stages,stageEvaluators)
-            ||> List.map2 (fun stage evaluators ->
-                sampleXs |> List.map (fun point -> Piecewise.toFloat point,numericAt point stage evaluators))
-        let stagePaths =
-            (stages,stageEvaluators)
-            ||> List.map2 (fun _ evaluators -> piecewisePathsWithEvaluators sampleXs evaluators)
         let stageValues =
             stages
             |> List.map (fun stage ->
                 presentationGoals |> List.map (fun goal ->
                     Piecewise.evaluateAt x (Piecewise.parseRational goal.X) stage))
+        let stageEvaluators =
+            (stages,stageValues) ||> List.map2 (fun stage values ->
+                let known = (presentationGoals,values) ||> List.map2 (fun goal value -> Piecewise.toFloat (Piecewise.parseRational goal.X),exactNumber value) |> Map.ofList
+                numericSegments stage |> List.map (fun evaluator ->
+                    if Piecewise.hasSymbolicRounding evaluator.Segment.Expression then
+                        {evaluator with Evaluate=fun point -> Map.tryFind point known |> Option.defaultWith (fun () -> evaluator.Evaluate point)}
+                    else evaluator))
+        let stagePoints =
+            (stages,stageEvaluators)
+            ||> List.map2 (fun stage evaluators ->
+                sampleXs |> List.map (fun point -> Piecewise.toFloat point,numericAt point stage evaluators))
+        let stagePaths =
+            stageEvaluators |> List.map (piecewisePathsWithEvaluators sampleXs)
         let finalValues = List.last stageValues
         let checkpoints =
             (presentationGoals,finalValues) ||> List.map2 (fun goal actual ->
@@ -1409,7 +1378,10 @@ module Game =
             List.zip stages stagePresentations |> List.mapi (fun index (stage,presentation) ->
                 let points = stagePoints[index] |> List.map (fun (point,height) -> arr [flt point;flt height])
                 let values = stageValues[index]
-                let paths = stagePaths[index] |> List.map pathJson
+                let paths = stagePaths[index] |> List.map (fun path ->
+                    let json=pathJson path
+                    if stage.Segments |> List.exists (fun segment -> Piecewise.hasSymbolicRounding segment.Expression) then json["approximateEnds"]<-boolean true
+                    json)
                 let valueLatex = values |> List.map (exactLatex >> str)
                 let json = obj [
                     "id",str (if index=0 then "source" else s.Nodes[index-1].Id)
@@ -1426,7 +1398,10 @@ module Game =
                         arr [flt (Math.Cos(angle));flt (Math.Sin(angle))]))
                 json)
         let points = List.last stagePoints |> List.map (fun (point,height) -> arr [flt point;flt height])
-        let finalPaths = List.last stagePaths |> List.map pathJson
+        let finalPaths = List.last stagePaths |> List.map (fun path ->
+            let json=pathJson path
+            if final.Segments |> List.exists (fun segment -> Piecewise.hasSymbolicRounding segment.Expression) then json["approximateEnds"]<-boolean true
+            json)
         let startSlope = Piecewise.rightSlopeAtZero x final |> asFloat |> checkedPreviewValue
         let constructed = constructedLatex s
         let result = obj [
@@ -1444,9 +1419,13 @@ module Game =
                 "solvedLines",arr (solution.Lines |> List.map (fun line -> obj [
                     "heightLatex",str line.HeightLatex
                     "conditionLatex",str line.ConditionLatex ]))
-                "paths",arr (relationPaths |> List.map pathJson)
+                "paths",arr (relationPaths |> List.map (fun path ->
+                    let json=pathJson path
+                    if final.Segments |> List.exists (fun segment -> Piecewise.hasSymbolicRounding segment.Expression) then json["approximateEnds"]<-boolean true
+                    json))
                 "playback",arr (playback |> List.map (fun (px,py) -> arr [flt px;flt py]))
-                "breaks",arr (breaks |> List.map num) ]
+                "breaks",arr (breaks |> List.map num)
+                "flights",arr (flights |> List.map (fun (first,last) -> arr [num first;num last])) ]
         elif s.Mode = "puzzle" && s.Source >= 3 then
             let fromGoal = s.Goals |> List.reduce (fun best candidate -> if compareGoalHeight candidate best < 0 then candidate else best)
             let toGoal = s.Goals |> List.reduce (fun best candidate -> if compareGoalHeight candidate best > 0 then candidate else best)

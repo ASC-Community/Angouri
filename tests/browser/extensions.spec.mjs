@@ -82,7 +82,10 @@ test('small symbolic readings display decimal exponents as powers of ten',async(
 test('floor and ceiling draw gaps with explicit endpoint ownership',async({page})=>{
   for(const [id,op] of [[56,'F'],[57,'C']]){
     await ready(page,id);await add(page,op);expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(true);
-    const paths=await page.evaluate(()=>window.angouri.result.paths);expect(paths.length).toBeGreaterThan(3);
+    const {paths,points}=await page.evaluate(()=>window.angouri.result);expect(paths.length).toBeGreaterThan(3);
+    expect(points.slice(1).every((point,index)=>point[0]>points[index][0])).toBe(true);
+    await expect(page.locator('[data-flight-stroke]')).toHaveCount(1);
+    await expect(page.locator('[data-flight-stroke] > [id^="cucumber"]')).toHaveCount(1);
     const d=await page.locator('#trajectory').getAttribute('d');expect(d.match(/M/g).length).toBe(paths.length);
     await expect(page.locator('.path-end.open').first()).toBeVisible();await expect(page.locator('.path-end.closed').first()).toBeVisible();
     await page.locator('#tab-flow').click();
@@ -110,7 +113,7 @@ test('the mixed final garden uses the full chain and finishes only the solved so
   await page.locator('#tab-function').click();await expect(page.locator('.equation-verdict')).toHaveCount(10);await expect(page.locator('.katex-error')).toHaveCount(0);
   await page.locator('#launch').click();await expect(page.locator('#launch')).toHaveText('Finish');
   await expect(page.locator('.equation-verdict[data-status="hit"]')).toHaveCount(10);
-  await page.locator('#launch').click();await expect(page.locator('#ending-dialog')).toBeVisible();await expect(page.locator('#ending-progress')).toHaveText('1 of 56 puzzles complete');
+  await page.locator('#launch').click();await expect(page.locator('#ending-dialog')).toBeVisible();await expect(page.locator('#ending-progress')).toHaveText('1 of 57 puzzles complete');
   await expect(page.locator('#ending-dialog')).toContainText('AngouriMath');
 });
 
@@ -145,10 +148,12 @@ test('floor and ceiling cues put the output on opposite sides of the same input'
   await add(page,'F');expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(true);
 });
 
-test('nine reusable operations remain readable and rejected rounding keeps the recipe',async({page})=>{
+test('nine reusable operations remain readable and exact sine rounding stays editable',async({page})=>{
   await ready(page,50);await page.locator('#menu-open').click();await page.locator('#nav-create').click();await idle(page);
-  await expect(page.locator('.ingredient')).toHaveCount(9);await add(page,'S');const before=await snapshot(page);
-  await add(page,'F');expect(await snapshot(page)).toEqual(before);await expect(page.locator('#feedback')).toContainText(/affine|line|round/i);
+  await expect(page.locator('.ingredient')).toHaveCount(9);await add(page,'S');await add(page,'F');
+  expect(await page.evaluate(()=>window.angouri.state.nodes.map(node=>node.op).join(''))).toBe('SF');
+  expect(await page.evaluate(()=>window.angouri.result.paths.length)).toBeGreaterThan(3);
+  await expect(page.locator('#feedback')).not.toHaveClass(/error/);
   for(const size of [{width:1440,height:900},{width:320,height:568},{width:844,height:390}]){
     await page.setViewportSize(size);expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
     expect(await page.locator('.ingredient').evaluateAll(items=>items.every(el=>el.getBoundingClientRect().width>60))).toBe(true);
@@ -159,9 +164,10 @@ test('nine reusable operations remain readable and rejected rounding keeps the r
 
 test('Notes keep independent reference examples while puzzle sketches require explicit Hints disclosures',async({page})=>{
   test.setTimeout(150000);
-  for(const [id,next] of [[43,44],[48,66],[50,51],[56,57],[64,65]]){
+  for(const [id,next] of [[43,44],[48,68],[50,51],[56,57],[64,65]]){
     await ready(page,id);const before=await snapshot(page);await page.locator('#ideas-open').click();
     await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
+    expect(await page.evaluate(()=>window.angouri.measurements.restarts)).toBe(0);
     await expect(page.locator(`#notes-content [data-reference-lesson="${id}"]`)).toHaveCount(1);
     await expect(page.locator(`#notes-content [data-reference-lesson="${next}"]`)).toHaveCount(0);
     await expect(page.locator('#notes-content [data-note-target]')).toHaveCount(0);

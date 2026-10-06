@@ -22,20 +22,21 @@ function drawStage(stage:Stage,xy:(point:[number,number])=>number[],cls:string) 
   return stagePaths(stage).map(segment=>{
     const d=segment.points.map((point,i)=>`${i?'L':'M'}${xy(point).map(n=>n.toFixed(2)).join(',')}`).join(' ');
     if(!d)return '';
-    const ends=segmented&&segment.points.length?[[segment.points[0],segment.startClosed],[segment.points.at(-1)!,segment.endClosed]] as const:[];
+    const ends=segmented&&!segment.approximateEnds&&segment.points.length?[[segment.points[0],segment.startClosed],[segment.points.at(-1)!,segment.endClosed]] as const:[];
     return `<path d="${d}" class="${cls}"/>${ends.map(([point,closed])=>{const [x,y]=xy(point);return `<circle cx="${x}" cy="${y}" r="2.7" class="note-step-end ${cls==='note-previous'?'previous ':''}${closed?'closed':'open'}"/>`;}).join('')}`;
   }).join('');
 }
-export function relationSketch(result:Result,label:string) {
+export function relationSketch(result:Result,label:string,options:{before?:Result;bounds?:number[]}={}) {
   const relation=result.relation;
   if(!relation)return '';
-  const points=relation.paths.flatMap(path=>path.points);
+  const points=[...relation.paths,...(options.before?.relation?.paths??[])].flatMap(path=>path.points);
   const xs=points.map(point=>point[0]),ys=points.map(point=>point[1]);
-  const left=Math.min(...xs),right=Math.max(...xs),low=Math.min(0,...ys),high=Math.max(0,...ys);
+  const [left,right,low,high]=options.bounds??[Math.min(0,...xs),Math.max(4,...xs),Math.min(0,...ys),Math.max(0,...ys)];
   const pad=Math.max(1,high-low)*.12,min=low-pad,max=high+pad;
   const xy=([x,h]:[number,number])=>[17+(x-left)/Math.max(.001,right-left)*142,99-(h-min)/Math.max(.001,max-min)*84];
   const zero=xy([left,0])[1];
-  const paths=relation.paths.map(path=>`<path d="${path.points.map((point,i)=>`${i?'L':'M'}${xy(point).map(n=>n.toFixed(2)).join(',')}`).join(' ')}" class="note-curve"/>`).join('');
+  const draw=(paths:typeof relation.paths,cls:string)=>paths.map(path=>`<path d="${path.points.map((point,i)=>`${i?'L':'M'}${xy(point).map(n=>n.toFixed(2)).join(',')}`).join(' ')}" class="${cls}"/>`).join('');
+  const paths=draw(options.before?.relation?.paths??[],'note-previous')+draw(relation.paths,'note-curve');
   const formulas=[relation.equationLatex,relation.solvedLatex].filter((formula):formula is string=>Boolean(formula));
   const solutions=solvedHeights(relation);
   return `<figure class="note-relation"><figcaption>${escape(label)}</figcaption>${notePlot(`${label} ${formulas.join(' ')}`,zero,paths)}<div class="note-formula">${tex(relation.equationLatex)}</div>${solutions?`<div class="note-solutions">${solutions}</div>`:relation.solvedLatex?`<div class="note-formula">${tex(relation.solvedLatex)}</div>`:''}</figure>`;

@@ -2366,9 +2366,9 @@ static class ContractTests
     private static void ConstructedEquationContract()
     {
         var ordered = ImportCreation(16, ["H", "A", "N", "Q"]);
-        Equal(@"h = \left(-\left(\left(\frac{1}{2}\left(1\right)\right) + 1\right)\right)^{2}",
+        Equal(@"h = {\left(-\left(\frac{1}{2}+1\right)\right)}^{2}",
             ordered["result"]!["constructedLatex"]!.GetValue<string>(),
-            "constructed equation retains ordered halve, lift, reflect and square grouping");
+            "constructed equation retains ordered operations with precedence-aware grouping");
 
         string derivativeThenIntegral = ImportCreation(5, ["D", "I"])
             ["result"]!["constructedLatex"]!.GetValue<string>();
@@ -2378,6 +2378,11 @@ static class ContractTests
             "constructed derivative uses upright d and the integral's bound variable");
         Contains(derivativeThenIntegral, @"\,\mathrm{d}u_{2}",
             "constructed integral closes its own dummy-variable scope");
+        var derivativeThenIntegralResult = ImportCreation(5, ["D", "I"])["result"]!.AsObject();
+        string evaluatedIntegral = derivativeThenIntegralResult["stages"]!.AsArray()[^1]!["latex"]!.GetValue<string>();
+        Contains(evaluatedIntegral, "x", "evaluated integral result uses the free output variable x");
+        True(!evaluatedIntegral.Contains("u", StringComparison.Ordinal),
+            "evaluated integral result does not leak its construction dummy variable");
 
         string nestedCalculus = ImportCreation(5, ["I", "D", "I"])
             ["result"]!["constructedLatex"]!.GetValue<string>();
@@ -2392,7 +2397,7 @@ static class ContractTests
 
         string maximumRecipe = ImportCreation(16, Enumerable.Repeat("H", 64))
             ["result"]!["constructedLatex"]!.GetValue<string>();
-        Equal(64, CountOccurrences(maximumRecipe, @"\frac{1}{2}"),
+        Equal(64, CountOccurrences(maximumRecipe, @"\frac{"),
             "constructed equation retains every node in a maximum-length recipe");
         True(maximumRecipe.Length < 4096,
             "maximum-length constructed equation grows linearly");
@@ -2422,9 +2427,10 @@ static class ContractTests
             [53] = "SQ", [54] = "SQHA", [55] = "ASQHHA", [56] = "F", [57] = "C",
             [58] = "NF", [59] = "HF", [60] = "AHF", [61] = "FS", [62] = "FSI",
             [63] = "AHFSIQNA", [64] = "DSQHA", [65] = "AHFSINAQNA",
-            [66] = "Q", [67] = "DAHFSINAQNAQ"
+            [66] = "Q", [67] = "DAHFSINAQNAQ", [68] = "A", [69] = "HH",
+            [70] = "N", [71] = "AHHQNAHQ"
         };
-        int[] relationSources = [48, 49, 66, 67];
+        int[] relationSources = [48, 49, 66, 67, 68, 69, 70, 71];
 
         foreach ((int source, string witness) in witnesses)
         {
@@ -2582,6 +2588,91 @@ static class ContractTests
                 "piecewise accumulated offsets meet continuously at thresholds");
         }
 
+        var incremental62 = Level(62);
+        incremental62 = Act(incremental62["state"]!, new JsonObject
+        {
+            ["type"] = "insert", ["id"] = "floor-first", ["op"] = "F", ["index"] = 0
+        });
+        incremental62 = Act(incremental62["state"]!, new JsonObject
+        {
+            ["type"] = "insert", ["id"] = "sine-second", ["op"] = "S", ["index"] = 1
+        });
+        Equal(true, incremental62["result"]!["solved"]!.GetValue<bool>(),
+            "source 62 accepts the intended incremental floor-then-sine construction");
+
+        var sineFirst62 = Act(Level(62)["state"]!, new JsonObject
+        {
+            ["type"] = "insert", ["id"] = "sine-first", ["op"] = "S", ["index"] = 0
+        });
+        var roundedSine62 = Act(sineFirst62["state"]!, new JsonObject
+        {
+            ["type"] = "insert", ["id"] = "floor-after-sine", ["op"] = "F", ["index"] = 1
+        });
+        Equal("0,0,0,0,-1/2,-1,-3/2,-2",
+            string.Join(',', roundedSine62["result"]!["checkpoints"]!.AsArray()
+                .Select(checkpoint => checkpoint!["actual"]!.GetValue<string>())),
+            "source 62 exactly accumulates floor of quarter-turn sine when sine precedes floor");
+
+        var roundedSine = ImportCreation(50, ["S", "F"])["result"]!.AsObject();
+        Equal("0,1,0,-1,0", string.Join(',', roundedSine["checkpoints"]!.AsArray()
+                .Select(checkpoint => checkpoint!["actual"]!.GetValue<string>())),
+            "floor of quarter-turn sine preserves exact integer-phase extrema and zeroes");
+        foreach ((double x, double y) in new[] { (0.5, 0.0), (1.5, 0.0), (2.5, -1.0), (3.5, -1.0) })
+            Equal(y, PointY(roundedSine["points"]!.AsArray(), x),
+                $"floor of quarter-turn sine owns exact lobe interior x={x}");
+
+        var ceilingSine = ImportCreation(50, ["S", "C"])["result"]!.AsObject();
+        foreach ((double x, double y) in new[] { (0.5, 1.0), (1.5, 1.0), (2.5, 0.0), (3.5, 0.0) })
+            Equal(y, PointY(ceilingSine["points"]!.AsArray(), x),
+                $"ceiling of quarter-turn sine owns exact lobe interior x={x}");
+
+        var halfSineFloor = ImportCreation(50, ["S", "H", "F"])["result"]!.AsObject();
+        var halfSineCeiling = ImportCreation(50, ["S", "H", "C"])["result"]!.AsObject();
+        Equal("0,0,0,-1,0", string.Join(',', halfSineFloor["checkpoints"]!.AsArray()
+                .Select(checkpoint => checkpoint!["actual"]!.GetValue<string>())),
+            "scaled quarter-turn sine floor keeps its rational zero cuts");
+        Equal("0,1,0,0,0", string.Join(',', halfSineCeiling["checkpoints"]!.AsArray()
+                .Select(checkpoint => checkpoint!["actual"]!.GetValue<string>())),
+            "scaled quarter-turn sine ceiling keeps its rational zero cuts");
+
+        var squaredSineFloor = ImportCreation(50, ["S", "Q", "F"])["result"]!.AsObject();
+        var squaredSineCeiling = ImportCreation(50, ["S", "Q", "C"])["result"]!.AsObject();
+        Equal("0,1,0,1,0", string.Join(',', squaredSineFloor["checkpoints"]!.AsArray()
+                .Select(checkpoint => checkpoint!["actual"]!.GetValue<string>())),
+            "squared quarter-turn sine floor preserves isolated unit extrema");
+        foreach ((double x, double expectedFloor, double expectedCeiling) in new[]
+                 { (0.5, 0.0, 1.0), (1.5, 0.0, 1.0), (2.5, 0.0, 1.0), (3.5, 0.0, 1.0) })
+        {
+            Equal(expectedFloor, PointY(squaredSineFloor["points"]!.AsArray(), x),
+                $"squared sine floor interior is exact at x={x}");
+            Equal(expectedCeiling, PointY(squaredSineCeiling["points"]!.AsArray(), x),
+                $"squared sine ceiling interior is exact at x={x}");
+        }
+
+        var boundedSquaredSine = ImportCreation(50, ["S", "Q", "H", "F"])["result"]!.AsObject();
+        True(boundedSquaredSine["checkpoints"]!.AsArray().All(checkpoint =>
+                checkpoint!["actual"]!.GetValue<string>() == "0"),
+            "range-proven half squared sine floors to exact constant zero");
+        var boundedSquaredSlope = ImportCreation(50, ["S", "Q", "H", "F", "D"])["result"]!.AsObject();
+        True(boundedSquaredSlope["checkpoints"]!.AsArray().All(checkpoint =>
+                checkpoint!["actual"]!.GetValue<string>() == "0"),
+            "derivative accepts the exact constant produced by bounded squared-sine rounding");
+
+        var negativePhaseFloor = ImportCreation(50, ["N", "S", "F"])["result"]!.AsObject();
+        var reflectedSineFloor = ImportCreation(50, ["S", "N", "F"])["result"]!.AsObject();
+        Equal("0,-1,0,1,0", string.Join(',', negativePhaseFloor["checkpoints"]!.AsArray()
+                .Select(checkpoint => checkpoint!["actual"]!.GetValue<string>())),
+            "quarter-turn sine rounding supports a negative affine phase");
+        foreach (double x in new[] { 0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0 })
+            Equal(PointY(negativePhaseFloor["points"]!.AsArray(), x),
+                PointY(reflectedSineFloor["points"]!.AsArray(), x),
+                $"quarter-turn sine rounding treats reflection as the exact negative phase at x={x}");
+
+        var roundedIntegratedAffine = ImportCreation(56, ["F", "I", "F"])["result"]!.AsObject();
+        Equal("0,0,0,0,4,6", string.Join(',', roundedIntegratedAffine["checkpoints"]!.AsArray()
+                .Select(checkpoint => checkpoint!["actual"]!.GetValue<string>())),
+            "rounding accepts every rational affine segment produced by exact integration");
+
         var rightSlope = ImportCreation(57, ["C", "I"])["result"]!.AsObject();
         Equal(1.0, rightSlope["startSlope"]!.GetValue<double>(),
             "start slope uses the interval immediately to the right of a discontinuous origin");
@@ -2589,15 +2680,65 @@ static class ContractTests
         InvalidContains(new JsonObject
         {
             ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = CreationArtifact(50, ["F", "A", "D"]) }
-        }, "cannot follow Floor or Ceiling", "derivative after transformed rounding is rejected");
+        }, "jump at x = 1", "derivative after transformed rounding identifies its first exact jump");
         InvalidContains(new JsonObject
         {
             ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = CreationArtifact(50, ["F", "I", "D"]) }
-        }, "cannot follow Floor or Ceiling", "derivative after integrated rounding is rejected");
+        }, "corner at x = 1", "derivative after one rounding integral identifies its first exact corner");
+
+        foreach (string round in new[] { "F", "C" })
+        {
+            var roundedConstantDerivative = ImportCreation(50, ["D", round, "D"])["result"]!.AsObject();
+            True(roundedConstantDerivative["checkpoints"]!.AsArray().All(checkpoint =>
+                    checkpoint!["actual"]!.GetValue<string>() == "0"),
+                $"derivative accepts the smooth constant left by D{round}D");
+        }
+        var roundedConstantAfterSine = ImportCreation(50, ["D", "S", "F", "D"])["result"]!.AsObject();
+        True(roundedConstantAfterSine["checkpoints"]!.AsArray().All(checkpoint =>
+                checkpoint!["actual"]!.GetValue<string>() == "0"),
+            "derivative accepts the exact constant left by DSFD");
+        var firstFloorIntegral = ImportCreation(56, ["F", "I"])["result"]!.AsObject();
+        var twiceIntegratedDerivative = ImportCreation(56, ["F", "I", "I", "D"])["result"]!.AsObject();
+        Equal(string.Join(',', firstFloorIntegral["checkpoints"]!.AsArray()
+                .Select(checkpoint => checkpoint!["actual"]!.GetValue<string>())),
+            string.Join(',', twiceIntegratedDerivative["checkpoints"]!.AsArray()
+                .Select(checkpoint => checkpoint!["actual"]!.GetValue<string>())),
+            "a second exact integral smooths rounding corners enough for differentiation");
+        var firstSineFloorIntegral = ImportCreation(50, ["S", "F", "I"])["result"]!.AsObject();
+        var twiceIntegratedSineDerivative = ImportCreation(50, ["S", "F", "I", "I", "D"])["result"]!.AsObject();
+        Equal(string.Join(',', firstSineFloorIntegral["checkpoints"]!.AsArray()
+                .Select(checkpoint => checkpoint!["actual"]!.GetValue<string>())),
+            string.Join(',', twiceIntegratedSineDerivative["checkpoints"]!.AsArray()
+                .Select(checkpoint => checkpoint!["actual"]!.GetValue<string>())),
+            "a second exact integral also smooths rounded-sine corners for differentiation");
+        foreach (var (source, recipe, expected) in new (int, string, string)[]
+        {
+            (50,"QF","0,1,4,9,16"), (50,"QC","0,1,4,9,16"),
+            (50,"IF","0,0,2,4,8"), (50,"IC","0,1,2,5,8"),
+            (1,"F","0,4,0"), (1,"C","0,4,0"),
+            (1,"SF","0,0,0"), (1,"SC","0,0,0"),
+            (1,"QF","0,16,0"), (1,"IF","0,5,10")
+        })
+        {
+            var nonlinear=ImportCreation(source,recipe.Select(ch=>ch.ToString()).ToArray())["result"]!.AsObject();
+            Equal(expected,string.Join(',',nonlinear["checkpoints"]!.AsArray().Select(point=>point!["actual"]!.GetValue<string>())),
+                $"{source}:{recipe} rounds nonlinear exact checkpoint values");
+            True(nonlinear["paths"]!.AsArray().Count>0,$"{source}:{recipe} has compiled preview paths");
+            foreach (var point in nonlinear["checkpoints"]!.AsArray())
+            {
+                double px=double.Parse(point!["x"]!.GetValue<string>(),System.Globalization.CultureInfo.InvariantCulture);
+                var preview=nonlinear["points"]!.AsArray().First(value=>Math.Abs(value![0]!.GetValue<double>()-px)<1e-12);
+                True(Math.Abs(preview![1]!.GetValue<double>()-point["actualNumber"]!.GetValue<double>())<1e-12,
+                    $"{source}:{recipe} drawing retains its known exact target reading");
+            }
+        }
+        var roundedRelation=ImportCreation(48,["Q","F"])["result"]!.AsObject();
+        True(roundedRelation["relation"]!["playback"]!.AsArray().Count>0,
+            "height-squared recipes compile native rounding children without choosing one branch");
         InvalidContains(new JsonObject
         {
-            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = CreationArtifact(50, ["S", "F"]) }
-        }, "straight-line input", "rounding rejects a nonlinear sine operand");
+            ["action"]=new JsonObject { ["type"]="import",["artifact"]=CreationArtifact(50,["Q","F","I"]) }
+        },"exact supported accumulated form","unevaluated nonlinear rounded integral remains an explicit engine limit");
         InvalidContains(new JsonObject
         {
             ["action"] = new JsonObject
@@ -2697,7 +2838,7 @@ static class ContractTests
         Equal("4,1,0,1", string.Join(',', shiftedSquare["checkpoints"]!.AsArray()
                 .Select(checkpoint => checkpoint!["actual"]!.GetValue<string>())),
             "display simplification leaves AQ exact relation heights unchanged");
-        Contains(shiftedSquare["constructedLatex"]!.GetValue<string>(), @"\left(x-2\right) + 1",
+        Contains(shiftedSquare["constructedLatex"]!.GetValue<string>(), @"x-2+1",
             "AQ constructed equation retains the unsimplified operation order");
 
         var multiSegment = ImportCreation(56, ["F", "I", "A", "Q"])["result"]!.AsObject();
@@ -2799,20 +2940,21 @@ static class ContractTests
             "upper and lower targets at one x receive distinct nearest playback phases");
 
         var shiftedRelation = shiftedSquare["relation"]!.AsObject();
-        Equal(0, shiftedRelation["breaks"]!.AsArray().Count,
-            "touching AQ branches stay in one continuous playback component");
+        Equal(1, shiftedRelation["breaks"]!.AsArray().Count,
+            "touching AQ height solutions retain separate flights");
+        CheckHeightFlights(shiftedRelation, 2);
         var shiftedPlayback = shiftedRelation["playback"]!.AsArray();
-        Equal(3.0, shiftedPlayback[0]![0]!.GetValue<double>(),
-            "AQ playback starts at the first authored target x when that slice is real");
+        Equal(0.0, shiftedPlayback[0]![0]!.GetValue<double>(),
+            "an open height solution launches from its left endpoint, not an interior checkpoint");
         True(shiftedPlayback.Any(point =>
                 Math.Abs(point![0]!.GetValue<double>() - 1.0) < 1e-12 &&
                 Math.Abs(point[1]!.GetValue<double>()) < 1e-12),
             "AQ playback joins both solved branches at the exact zero");
         var shiftedChords = PlaybackChordLengths(shiftedRelation);
         True(shiftedChords.All(distance => distance > 1e-9),
-            "AQ playback traverses its repeated arms without pausing at zero");
+            "AQ playback follows each height solution without duplicate samples");
         True(shiftedChords.Max() / shiftedChords.Min() < 1.02,
-            "AQ branched playback remains uniformly paced while retracing required arms");
+            "AQ height solutions remain uniformly paced without retracing");
 
         var empty = PlayExtendedPuzzle(48, "QAN")["result"]!.AsObject();
         Equal(0, empty["relation"]!["paths"]!.AsArray().Count,
@@ -2841,8 +2983,9 @@ static class ContractTests
         Equal(10, mixed["checkpoints"]!.AsArray().Count, "mixed implicit finale checks all ten targets");
         True(mixed["relation"]!["paths"]!.AsArray().Count >= 2,
             "mixed implicit finale retains separated real-locus paths");
-        Equal(0, mixed["relation"]!["breaks"]!.AsArray().Count,
-            "mixed implicit playback joins pieces that meet at exact zeroes");
+        Equal(1, mixed["relation"]!["breaks"]!.AsArray().Count,
+            "mixed implicit playback keeps two solutions instead of retracing their shared zero tails");
+        CheckHeightFlights(mixed["relation"]!.AsObject(), 2);
         string mixedSolvedLatex = mixed["relation"]!["solvedLatex"]!.GetValue<string>();
         Contains(mixedSolvedLatex, @"0 \le x \le 1", "multi-segment solution includes its first exact interval");
         Contains(mixedSolvedLatex, @"1 \le x \le 3", "multi-segment solution includes its central exact interval");
@@ -2852,17 +2995,18 @@ static class ContractTests
         var initialMixedRelation = Level(67)["result"]!["relation"]!.AsObject();
         var initialMixedPlayback = initialMixedRelation["playback"]!.AsArray();
         Equal(0.0, initialMixedPlayback[0]![0]!.GetValue<double>(),
-            "open implicit branches repeat edges as needed to start at the first authored x");
+            "open implicit branches start at their own left endpoint");
         Equal(0.0, initialMixedPlayback[0]![1]!.GetValue<double>(),
             "source 67 opens from its real origin vertex");
 
         var disconnected = PlayExtendedPuzzle(49, "HQNAN")["result"]!["relation"]!.AsObject();
-        Equal(1, disconnected["breaks"]!.AsArray().Count,
-            "a genuinely disconnected real locus retains one playback break");
+        Equal(3, disconnected["breaks"]!.AsArray().Count,
+            "two height solutions each retain their internal real-domain gap");
+        CheckHeightFlights(disconnected, 2);
         int breakIndex = disconnected["breaks"]![0]!.GetValue<int>();
         var disconnectedPlayback = disconnected["playback"]!.AsArray();
-        Equal(3.0, disconnectedPlayback[0]![0]!.GetValue<double>(),
-            "disconnected playback begins in the component containing the first authored x");
+        Equal(0.0, disconnectedPlayback[0]![0]!.GetValue<double>(),
+            "a disconnected height solution starts at its first real-domain endpoint");
         True(Math.Abs(disconnectedPlayback[breakIndex]![0]!.GetValue<double>() -
                       disconnectedPlayback[breakIndex - 1]![0]!.GetValue<double>()) > 1.0,
             "disconnected playback does not draw across its negative-height-squared gap");
@@ -2912,6 +3056,32 @@ static class ContractTests
 
     private static double PointY(JsonArray points, double x) =>
         points.Single(point => Math.Abs(point![0]!.GetValue<double>() - x) < 1e-12)![1]!.GetValue<double>();
+
+    private static void CheckHeightFlights(JsonObject relation, int count)
+    {
+        var points=relation["playback"]!.AsArray();
+        var flights=relation["flights"]!.AsArray();
+        Equal(count,flights.Count,"kernel groups playback by height solution");
+        int next=0;
+        foreach(var flight in flights)
+        {
+            int start=flight![0]!.GetValue<int>(),end=flight[1]!.GetValue<int>();
+            Equal(next,start,"height flights partition the shared clock without omissions");
+            int sign=0;
+            for(int index=start;index<=end;index++)
+            {
+                double x=points[index]![0]!.GetValue<double>(),height=points[index]![1]!.GetValue<double>();
+                if(index>start)True(x+1e-9>=points[index-1]![0]!.GetValue<double>(),"one height solution never bounces back along x");
+                if(Math.Abs(height)>1e-9)
+                {
+                    if(sign==0)sign=Math.Sign(height);
+                    Equal(sign,Math.Sign(height),"one cucumber never switches its solved height branch at a zero");
+                }
+            }
+            next=end+1;
+        }
+        Equal(points.Count,next,"all playback belongs to a height solution");
+    }
 
     private static List<double> PlaybackChordLengths(JsonObject relation)
     {

@@ -1,15 +1,15 @@
 import katex from 'katex';
 import { decimalTex, fraction, isRelationSource, OPS, type Checkpoint, type CurvePath, type Point, type Op, type Result, type State } from './types';
 import { icon } from './icons';
-import { drawnPaths, flightPoints, heightsAt } from './geometry';
+import { drawnPaths, flightStrokes, heightsAt } from './geometry';
 import { stationScene, updateStationScene } from './station-scene';
 export type Camera = { min: number; max: number; minX?:number; maxX?:number };
 export type Flight = { phase:'ready'|'releasing'|'flying'|'landed'; position:number; release?:number };
 /** Keep the loaded artwork and its interactive grip on the same projected tangent. */
-export function launcherPose(state:State,camera:Camera,origin:[number,number],tangent:[number,number]) {
+export function launcherPose(state:State,camera:Camera,origin:[number,number],tangent:[number,number],scale=1) {
   const start=transform(state,camera,origin),ahead=transform(state,camera,[origin[0]+tangent[0],origin[1]+tangent[1]]);
   const angle=Math.atan2(ahead[1]-start[1],ahead[0]-start[0]),degrees=angle*180/Math.PI;
-  return {start,angle,degrees,transform:`translate(${start[0]} ${start[1]}) rotate(${degrees}) translate(-40 12)`,grip:[start[0]-58*Math.cos(angle)-10*Math.sin(angle),start[1]-58*Math.sin(angle)+10*Math.cos(angle)]};
+  return {start,angle,degrees,transform:`translate(${start[0]} ${start[1]}) rotate(${degrees}) scale(${scale}) translate(-40 12)`,grip:[start[0]-58*Math.cos(angle)-10*Math.sin(angle),start[1]-58*Math.sin(angle)+10*Math.cos(angle)]};
 }
 const mathCache=new Map<string,string>();
 export const tex=(latex:string)=>{
@@ -112,6 +112,7 @@ function pathEnds(paths:CurvePath[]|undefined,project:(p:Point)=>number[]) {
   if(!paths||paths.length<2)return '';
   const same=(a:Point|undefined,b:Point)=>!!a&&Math.abs(a[0]-b[0])<1e-8&&Math.abs(a[1]-b[1])<1e-8;
   return paths.flatMap((p,i)=>{
+    if(p.approximateEnds)return [];
     const ends:[Point,boolean,boolean][]=[[p.points[0],p.startClosed,i>0&&!same(paths[i-1]?.points.at(-1),p.points[0])],[p.points.at(-1)!,p.endClosed,i<paths.length-1&&!same(paths[i+1]?.points[0],p.points.at(-1)!)]];
     return ends.filter(([, ,show])=>show).map(([point,closed])=>{const [x,y]=project(point);return `<circle class="path-end ${closed?'closed':'open'}" cx="${x}" cy="${y}" r="2.6"/>`;});
   }).join('');
@@ -143,7 +144,7 @@ export function flightView(state:State,result:Result,camera:Camera,flight:Flight
     const [x]=transform(state,camera,[i,0]);
     return `<path class="flight-grid" d="M${x} ${top}V${bottom}" stroke="#dce6d0" stroke-dasharray="2 8"/>`;
   }).join('');
-  const [startX,startY]=transform(state,camera,flightPoints(result)[0]??[0,0]),[zeroX,zeroY]=transform(state,camera,[0,0]);
+  const [zeroX,zeroY]=transform(state,camera,[0,0]);
   const annotations=circular?`${flightMath('0',zeroX-13,zeroY,24,'zero-label',15)}${flightMath('h',zeroX,25,28)}${flightMath('x',575,zeroY,26,'',15)}`:`${Array.from({length:(state.sourceId===5?2:4)+1},(_,i)=>flightMath(String(i),transform(state,camera,[i,0])[0],height-25)).join('')}${flightMath('0',64,zeroY,24,'zero-label')}${flightMath('h',zeroX,Math.max(16,top-12),28)}${flightMath('x',width-20,height-25,26)}`;
   return `<div class="flight-diagram"><svg id="flight-svg" ${result.relation?'data-relation="true"':''} viewBox="${circular?'132 0 496 414':`0 0 ${width} ${height}`}" role="img" aria-label="${result.circle?'A complete circle, travelled counterclockwise from the rightmost point. ':result.relation?'Both real heights of the equation. ':''}${state.mode==='remix'?'Your cucumber’s flight path.':`Your cucumber's flight path through ${result.checkpoints.length} targets.`}">
     <defs><clipPath id="plot-clip"><rect x="16" y="0" width="${width-32}" height="${height-38}" rx="12"/></clipPath></defs>
@@ -153,11 +154,18 @@ export function flightView(state:State,result:Result,camera:Camera,flight:Flight
       <path id="target-leaders" class="target-leaders" d=""/><path id="trajectory" d="${drawnPaths(result).map(p=>path(p.points,state,camera)).join(' ')}"/>
       <g class="flight-path-ends">${pathEnds(result.relation?.paths??result.paths,p=>transform(state,camera,p))}</g>
       <path id="flight-trail" d=""/>
-      <g id="launcher" transform="translate(${startX-40} ${startY+12})" aria-hidden="true"><ellipse cx="0" cy="28" rx="18" ry="3" fill="#dce5ce"/><path d="m-2 25 1-15-10-18m10 18 13-18" fill="none" stroke="#8c7955" stroke-width="7" stroke-linecap="round"/><path d="m-3 24 1-14-9-17m10 17 11-17" fill="none" stroke="#b4a078" stroke-width="2" stroke-linecap="round"/><path id="band-back" class="slingshot-band"/><path id="band-front" class="slingshot-band"/></g>
+      ${flightStrokes(result).map((_,i)=>flightRig(i)).join('')}
       ${rings}
-      <g id="cucumber" aria-hidden="true"><g id="flight-motion"><path class="speed-lines" d="M-32-8h-14m13 8h-21m22 8h-13"/></g><g id="flight-spin"><image href="./cucumber.svg" x="-29" y="-29" width="58" height="58"/></g></g>
-      <g id="launcher-front" transform="translate(${startX-40} ${startY+12})" aria-hidden="true"><path id="slingshot-pouch" d="M3-8Q-5 0 3 8"/></g>
     </g></svg><div class="flight-annotations"><div id="target-labels">${targetLabels}</div><div id="axis-labels">${annotations}</div></div></div>`;
+}
+/** One rig per non-retracing implicit trail; stepped height graphs retain one. */
+function flightRig(index:number) {
+  const id=(name:string)=>index?`${name}-${index}`:name;
+  return `<g data-flight-stroke="${index}">
+    <g id="${id('launcher')}" aria-hidden="true"><ellipse cx="0" cy="28" rx="18" ry="3" fill="#dce5ce"/><path d="m-2 25 1-15-10-18m10 18 13-18" fill="none" stroke="#8c7955" stroke-width="7" stroke-linecap="round"/><path d="m-3 24 1-14-9-17m10 17 11-17" fill="none" stroke="#b4a078" stroke-width="2" stroke-linecap="round"/><path id="${id('band-back')}" class="slingshot-band"/><path id="${id('band-front')}" class="slingshot-band"/></g>
+    <g id="${id('cucumber')}" aria-hidden="true"><g id="${id('flight-motion')}"><path class="speed-lines" d="M-32-8h-14m13 8h-21m22 8h-13"/></g><g id="${id('flight-spin')}"><image href="./cucumber.svg" x="-29" y="-29" width="58" height="58"/></g></g>
+    <g id="${id('launcher-front')}" aria-hidden="true"><path id="${id('slingshot-pouch')}" class="slingshot-pouch" d="M3-8Q-5 0 3 8"/></g>
+  </g>`;
 }
 // These are reading aids for exact kernel values, never inputs to validation.
 const decimalMatches=(exact:string,decimal:string)=>{

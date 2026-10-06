@@ -128,8 +128,8 @@ test('pickup previews legal gaps and cancelling keeps the acknowledged recipe',a
 
 test('chapter selection groups puzzles without changing the construction until a puzzle is chosen',async({page})=>{
   await ready(page,'/#level=4&view=flight');await place(page,'H');const before=await snapshot(page);
-  await menu(page,'puzzles-open');await expect(page.locator('.chapter-group:not(.extra-puzzles)')).toHaveCount(11);
-  await expect(page.locator('#level-nav .challenge-label')).toHaveCount(11);await expect(puzzleOption(page,11)).toContainText('Chapter challenge');await expect(puzzleOption(page,67)).toContainText('Final challenge');
+  await menu(page,'puzzles-open');await expect(page.locator('.chapter-group:not(.extra-puzzles)')).toHaveCount(10);
+  await expect(page.locator('#level-nav .challenge-label')).toHaveCount(10);await expect(puzzleOption(page,71)).toContainText('Chapter challenge');await expect(puzzleOption(page,67)).toContainText('Final challenge');
   await expect(page.locator('.chapter-group[open]')).toHaveCount(1);await expect(page.locator('.chapter-group[open]>summary')).toContainText('Squaring');
   const reflection=page.locator('.chapter-group').nth(1).locator('summary');await reflection.focus();await page.keyboard.press('Enter');
   await expect(page.locator('.parallel-lesson,.parallel-options,#puzzle-variations')).toHaveCount(0);
@@ -248,7 +248,7 @@ test('the main menu opens community destinations and the version log, keeping Se
     await expect(page.locator('#menu-dialog')).toBeVisible();
   }
   await expect(page.locator('#menu-version')).toContainText(`v${appVersion}`);await page.locator('#menu-version').click();
-  await expect(page.locator('#releases-dialog')).toContainText(releaseHeading);await expect(page.locator('#releases-dialog')).toContainText('eleven chapters');
+  await expect(page.locator('#releases-dialog')).toContainText(releaseHeading);await expect(page.locator('#releases-dialog')).toContainText('ten chapters');
   await page.getByRole('button',{name:'Back to menu',exact:true}).click();await expect(page.locator('#menu-dialog')).toBeVisible();await expect(page.locator('#menu-version')).toBeFocused();
   await page.locator('#settings-open').click();await expect(page.getByRole('checkbox',{name:/Skip animation/})).toBeVisible();await expect(page.locator('#settings-dialog .community-links,#settings-dialog .version-button')).toHaveCount(0);
   await page.keyboard.press('Escape');await expect(page.locator('#menu-open')).toBeFocused();
@@ -260,7 +260,7 @@ test('minimal openings hide notes, while later puzzles scope them and Create sho
   const openNotes=async()=>{await page.locator('#ideas-open').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');};
   const closeNotes=()=>page.getByRole('button',{name:'Back to puzzle',exact:true}).click();
   await expect(page.locator('#ideas-open')).toBeHidden();await choosePuzzle(page,2);await expect(page.locator('#ideas-open')).toBeHidden();
-  const chapters=[[1,2,3,24,25],[6,8,9,26],[7,10,4,27,28],[12,13,29,30,31,11],[32,33,34,35,36],[37,38,39,40,41,42],[43,44,45,46,47],[48,66,49],[50,51,52,53,54,55],[56,57,58,59,60,61,62,63],[64,65,67]];
+  const chapters=[[1,2,3,24,25],[6,8,9,26],[7,10,4,27,28],[12,13,29,30,31,11],[32,33,34,35,36],[37,38,39,40,41,42],[43,44,48,68,69,70,66,49,71],[50,51,52,53,54,55],[56,57,58,59,60,61,62,63],[64,65,67]];
   const route=chapters.flat();
   for(const level of route.slice(2)) {
     await choosePuzzle(page,level);const before=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history,save:localStorage.getItem('angouri:vine:v1:progress')}));
@@ -283,8 +283,8 @@ test('minimal openings hide notes, while later puzzles scope them and Create sho
   await choosePuzzle(page,1);await expect(page.locator('#ideas-open')).toBeHidden();
   await choosePuzzle(page,6);await place(page,'N');await throwIt(page);await choosePuzzle(page,1);
   await page.reload();await page.waitForFunction(()=>window.angouri?.state);await expect(page.locator('#ideas-open')).toBeHidden();
-  await menu(page,'nav-create');await idle(page);await page.setViewportSize({width:320,height:568});await openNotes();await expect(page.locator('[data-note]')).toHaveCount(11);
-  for(let topic=0;topic<11;topic++) {
+  await menu(page,'nav-create');await idle(page);await page.setViewportSize({width:320,height:568});await openNotes();await expect(page.locator('[data-note]')).toHaveCount(10);
+  for(let topic=0;topic<10;topic++) {
     await page.locator(`[data-note="${topic}"]`).click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
     await expect(page.locator('#notes-content details')).toHaveCount(0);
     const overflow=await page.locator('.note-formula').evaluateAll(formulas=>formulas.filter(el=>el.getClientRects().length&&(el.scrollWidth>el.clientWidth+1||el.scrollHeight>el.clientHeight+1)).map(el=>({formula:el.textContent,box:[el.clientWidth,el.clientHeight],content:[el.scrollWidth,el.scrollHeight]})));
@@ -505,14 +505,13 @@ test('all mathematical notation is KaTeX, and all three views reflect the same t
   await expect(page.locator('#scene [data-part],#scene button')).toHaveCount(0);await expect(page.locator('.katex-error')).toHaveCount(0);
 });
 
-test('eleven chapters cover 56 puzzles, then end with a chapter record and AngouriMath credit',async({page})=>{
+test('ten chapters cover 57 puzzles, then end with a chapter record and AngouriMath credit',async({page})=>{
   test.setTimeout(300000);
   await ready(page);
-  const chapters=[[[1,'H'],[2,'A'],[3,'AH'],[24,'AHAH'],[25,'AHHAHA']],[[6,'N'],[8,'NA'],[9,'NHA'],[26,'NAHAHAH']],[[7,'Q'],[10,'HQ'],[4,'HQNA'],[27,'AQ'],[28,'AHQNAH']],[[12,'Q'],[13,'QNA'],[29,'Q'],[30,'QNA'],[31,'HHQQNA'],[11,'QHQNAA']],[[32,'DA'],[33,'QD'],[34,'AQD'],[35,'QD'],[36,'HHNAQDA']],[[37,'AI'],[38,'AI'],[39,'NAI'],[40,'HIA'],[41,'DI'],[42,'HHNAINA']],[[43,{x:'2',y:'0',radius:'1'}],[44,{x:'3/2',y:'1/2',radius:'1'}],[45,{x:'2',y:'1/2',radius:'5/4'}],[46,{x:'9/4',y:'1/4',radius:'5/4'}],[47,{x:'5/4',y:'-1/2',radius:'5/2'}]]];
-  chapters.push([[48,'QNA'],[66,'Q'],[49,'HAQNAAAA']]);
+  const chapters=[[[1,'H'],[2,'A'],[3,'AH'],[24,'AHAH'],[25,'AHHAHA']],[[6,'N'],[8,'NA'],[9,'NHA'],[26,'NAHAHAH']],[[7,'Q'],[10,'HQ'],[4,'HQNA'],[27,'AQ'],[28,'AHQNAH']],[[12,'Q'],[13,'QNA'],[29,'Q'],[30,'QNA'],[31,'HHQQNA'],[11,'QHQNAA']],[[32,'DA'],[33,'QD'],[34,'AQD'],[35,'QD'],[36,'HHNAQDA']],[[37,'AI'],[38,'AI'],[39,'NAI'],[40,'HIA'],[41,'DI'],[42,'HHNAINA']],[[43,{x:'2',y:'0',radius:'1'}],[44,{x:'3/2',y:'1/2',radius:'1'}],[48,'QNA'],[68,'A'],[69,'HH'],[70,'N'],[66,'Q'],[49,'HAQNAAAA'],[71,'AHHQNAHQ']]];
   chapters.push([[50,'S'],[51,'AS'],[52,'HS'],[53,'SQ'],[54,'SQHA'],[55,'ASHQA']],[[56,'F'],[57,'C'],[58,'NF'],[59,'HF'],[60,'AHF'],[61,'FS'],[62,'FSI'],[63,'AHFSIQNA']],[[64,'DSQHA'],[65,'AHFSINAQNA'],[67,'DAHFSINAQNAQ']]);
   const lessons=chapters.flatMap((levels,chapter)=>levels.map(([level,recipe],step)=>({level,recipe,chapter:chapter+1,step:step+1,total:levels.length})));
-  expect(lessons).toHaveLength(56);
+  expect(lessons).toHaveLength(57);
   for(const [index,{level,recipe,chapter,step,total}] of lessons.entries()) {
     if(index){await page.locator('#launch').click();await idle(page);}
     expect((await snapshot(page)).sourceId).toBe(level);
@@ -522,14 +521,14 @@ test('eleven chapters cover 56 puzzles, then end with a chapter record and Angou
     expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(true);await throwIt(page);
     if([1,2].includes(level)) {await expect(page.locator('#success')).toBeHidden();await expect(page.locator('.view-tabs')).toBeHidden();}
     else {const choice=(await snapshot(page)).limit===1;await expect(page.locator('#success')).toBeVisible({visible:!choice});for(const view of ['function','flow','flight']){await changeView(page,view);await expect(page.locator('#success')).toBeVisible({visible:!choice});}}
-    if(step===total&&chapter<11)await expect(page.locator('#launch')).toHaveText('Next chapter');
-    if(step===total-1)await expect(page.locator('#launch')).toHaveText(chapter===11?'Final challenge':'Chapter challenge');
+    if(step===total&&chapter<10)await expect(page.locator('#launch')).toHaveText('Next chapter');
+    if(step===total-1)await expect(page.locator('#launch')).toHaveText(chapter===10?'Final challenge':'Chapter challenge');
   }
   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual(lessons.map(({level})=>level));
   await expect(page.locator('#launch')).toHaveText('Finish');await expect(page.locator('#level-category')).toContainText('TOGETHER');
   const finalRecipe=await snapshot(page),history=await page.evaluate(()=>window.angouri.history);
   await page.locator('#launch').click();await expect(page.locator('#ending-dialog')).toBeVisible();await expect(page.locator('#ending-title')).toHaveText('A whole garden of ideas.');
-  await expect(page.locator('.ending-chapter.complete')).toHaveCount(11);await expect(page.locator('#ending-progress')).toHaveText('56 of 56 puzzles complete');
+  await expect(page.locator('.ending-chapter.complete')).toHaveCount(10);await expect(page.locator('#ending-progress')).toHaveText('57 of 57 puzzles complete');
   const credit=page.locator('.ending-credit a');await expect(credit).toContainText('AngouriMath');await expect(credit).toHaveAttribute('href','https://github.com/asc-community/AngouriMath');expect(await credit.locator('img').evaluate(img=>img.complete&&img.naturalWidth>0)).toBe(true);
   expect(await snapshot(page)).toEqual(finalRecipe);expect(await page.evaluate(()=>window.angouri.history)).toEqual(history);
   await page.locator('#ending-create').click();await expect(page.locator('#leave-dialog')).toBeVisible();await discardNavigation(page);await idle(page);expect((await snapshot(page)).mode).toBe('remix');expect((await snapshot(page)).circle).toEqual(finalRecipe.circle);
@@ -540,7 +539,7 @@ test('eleven chapters cover 56 puzzles, then end with a chapter record and Angou
 test('finishing after jumping ahead celebrates that flight without claiming unfinished chapters',async({page})=>{
   await ready(page,'/#level=67&view=flight');await placeRecipe(page,'DAHFSINAQNAQ');await throwIt(page);
   await expect(page.locator('#launch')).toHaveText('Finish');await page.locator('#launch').click();await expect(page.locator('#ending-title')).toHaveText('Your garden, shaped.');
-  await expect(page.locator('#ending-progress')).toHaveText('1 of 56 puzzles complete');await expect(page.locator('.ending-chapter.complete')).toHaveCount(0);
+  await expect(page.locator('#ending-progress')).toHaveText('1 of 57 puzzles complete');await expect(page.locator('.ending-chapter.complete')).toHaveCount(0);
   const finalRecipe=await snapshot(page);await page.locator('#ending-create').click();await expect(page.locator('#leave-dialog')).toBeVisible();
   await page.locator('#leave-cancel').click();expect(await snapshot(page)).toEqual(finalRecipe);await page.locator('#launch').click();
   for(const viewport of [{width:1440,height:900},{width:390,height:844},{width:320,height:568},{width:844,height:390}]) {

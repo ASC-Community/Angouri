@@ -13,12 +13,12 @@ export interface State {
   circle?: Circle;
 }
 export type Point = [number,number];
-export interface CurvePath { points:Point[]; startClosed:boolean; endClosed:boolean }
+export interface CurvePath { points:Point[]; startClosed:boolean; endClosed:boolean; approximateEnds?:boolean }
 export interface Stage { id: string; expression: string; latex: string; values: string[]; valueLatex?:string[]; points: Point[]; paths?:CurvePath[]; projection?:Point[] }
 export interface Checkpoint { x: string; target: string; actual: string; actualLatex?:string; actualNumber?:number; hit: boolean; y: number; phase?:number; lhs?:string; rhs?:string; dx?:string; dy?:string; dxSquared?:string; dySquared?:string }
 export interface CircleResult { equationLatex:string; radiusSquared:string; centre:[number,number]; radius:number; editable:(keyof Circle)[]; bounds:{minX:number;maxX:number;minY:number;maxY:number}; tangent:[number,number]; initial:Circle }
 export interface HeightGuide { fromX:string; toX:string; target:string; actual:string; actualLatex?:string; hit:boolean; stages:{from:string;to:string;gap:string;fromLatex?:string;toLatex?:string;gapLatex?:string;fromNumber?:number;toNumber?:number;gapNumber?:number}[] }
-export interface RelationResult { kind:'height-squared'; equationLatex:string; solvedLatex?:string; solvedLines?:{heightLatex:string;conditionLatex:string}[]; paths:CurvePath[]; playback:Point[]; breaks:number[] }
+export interface RelationResult { kind:'height-squared'; equationLatex:string; solvedLatex?:string; solvedLines?:{heightLatex:string;conditionLatex:string}[]; paths:CurvePath[]; playback:Point[]; breaks:number[]; flights?:[number,number][] }
 export interface Result { constructedLatex: string; stages: Stage[]; checkpoints: Checkpoint[]; points: Point[]; paths?:CurvePath[]; startSlope: number; solved: boolean; heightGuide?:HeightGuide; circle?:CircleResult; relation?:RelationResult }
 export interface Artifact { schema: number; rules: string; engine: string; type: string; sourceId: number; view: View; nodes?: Part[]; goals?: Goal[]; inventory?: Partial<Record<Op,number>>; limit?: number; circle?:Circle }
 export interface Response { status: 'ok' | 'invalid' | 'error'; state?: State; result?: Result; message?: string; artifact?: Artifact }
@@ -92,8 +92,7 @@ export const CHAPTERS = [
   { name:'Repeated squaring', idea:'Familiar moves, new silhouettes', color:'peach', zero:30, before:'M3 4Q18 56 33 4', after:'M3 4C7 29 11 30 18 30C25 30 29 29 33 4', levels:[12,13,29,30,31,11] },
   { name:'Slopes', idea:'Shape what changes', color:'gold', zero:23, before:'M3 3Q18 43 33 3', after:'M3 32L33 14', levels:[32,33,34,35,36] },
   { name:'Accumulation', idea:'Shape what builds up', color:'teal', zero:29, before:'M3 18H33', after:'M3 29L33 7', levels:[37,38,39,40,41,42] },
-  { name:'Circle geometry', idea:'Find the centre. Fit the reach.', color:'blue', zero:18, before:'M4 18A14 14 0 0 1 32 18', after:'M32 18A14 14 0 1 1 4 18A14 14 0 1 1 32 18', levels:[43,44,45,46,47] },
-  { name:'Two heights', idea:'Build an equation. Discover both sides.', color:'lilac', zero:18, before:'M4 18Q18-10 32 18', after:'M32 18A14 14 0 1 1 4 18A14 14 0 1 1 32 18', levels:[48,66,49] },
+  { name:'Loops', idea:'One equation. Both sides.', color:'lilac', zero:18, before:'M4 18Q18-10 32 18', after:'M32 18A14 14 0 1 1 4 18A14 14 0 1 1 32 18', levels:[43,44,48,68,69,70,66,49,71] },
   { name:'Waves', idea:'A circle unfolds', color:'blue', zero:18, before:'M3 32L33 4', after:'M3 18C8-1 13-1 18 18S28 37 33 18', levels:[50,51,52,53,54,55] },
   { name:'Steps', idea:'Shape the jumps and what builds up', color:'peach', zero:30, before:'M3 30L33 3', after:'M3 30H13M13 20H23M23 10H33', levels:[56,57,58,59,60,61,62,63] },
   { name:'Together', idea:'Build in parts. Bring them together.', color:'teal', zero:18, before:'M3 18H10V4H26V18H33', after:'M3 18H8Q18-8 28 18Q18 44 8 18M28 18H33', levels:[64,65,67] }
@@ -101,6 +100,8 @@ export const CHAPTERS = [
 export const PUZZLE_ORDER = CHAPTERS.flatMap(chapter=>chapter.levels);
 // Earlier authored puzzles retain their IDs and rules in a small optional collection.
 export const EXTRA_PUZZLES = [14,5,15,22,16,19,17,20,21,18,23];
+export const GEOMETRY_PUZZLES = [45,46,47];
+export const OPTIONAL_PUZZLES = [...EXTRA_PUZZLES,...GEOMETRY_PUZZLES];
 export const chapterIndex=(sourceId:number)=>CHAPTERS.findIndex(chapter=>chapter.levels.includes(sourceId));
 export const isCapstone=(sourceId:number)=>CHAPTERS.some(chapter=>chapter.levels.at(-1)===sourceId);
 export const puzzleLabel=(sourceId:number)=>{const chapter=chapterIndex(sourceId);return chapter<0?'Bonus':`${chapter+1}.${CHAPTERS[chapter].levels.indexOf(sourceId)+1}`;};

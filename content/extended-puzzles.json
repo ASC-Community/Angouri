@@ -31,7 +31,7 @@
     "relation": "height-squared",
     "name": "The roof becomes a loop",
     "hint": "Shape one squared height; both vertical sides must satisfy the same equation.",
-    "chapter": 8
+    "chapter": 7
   },
   {
     "id": 49,
@@ -70,7 +70,7 @@
     "relation": "height-squared",
     "name": "Build the whole circle",
     "hint": "Fit the squared height at the centre and edge, then check both halves of the loop.",
-    "chapter": 8
+    "chapter": 7
   },
   {
     "id": 50,
@@ -106,7 +106,7 @@
     "limit": 1,
     "name": "A quarter turn",
     "hint": "One input unit advances one quarter-turn around sine's repeating cycle.",
-    "chapter": 9
+    "chapter": 8
   },
   {
     "id": 51,
@@ -147,7 +147,7 @@
     },
     "name": "Move the wave",
     "hint": "Changing the input before sine shifts where its zeroes and peaks appear.",
-    "chapter": 9
+    "chapter": 8
   },
   {
     "id": 52,
@@ -180,7 +180,7 @@
     },
     "name": "Stretch the wave",
     "hint": "Scaling the input before sine changes the horizontal period.",
-    "chapter": 9
+    "chapter": 8
   },
   {
     "id": 53,
@@ -222,7 +222,7 @@
     },
     "name": "Fold both lobes",
     "hint": "Squaring after sine folds the negative lobe above zero.",
-    "chapter": 9
+    "chapter": 8
   },
   {
     "id": 54,
@@ -273,7 +273,7 @@
     },
     "name": "Set height and baseline",
     "hint": "Operations after sine set the wave's amplitude and baseline.",
-    "chapter": 9
+    "chapter": 8
   },
   {
     "id": 55,
@@ -324,7 +324,7 @@
     "limit": 8,
     "name": "Place the repeating pattern",
     "hint": "Plan phase and period first, then fit the repeated shape's height.",
-    "chapter": 9
+    "chapter": 8
   },
   {
     "id": 56,
@@ -364,7 +364,7 @@
     "limit": 1,
     "name": "Round down",
     "hint": "Floor keeps each input on the step below until the next integer.",
-    "chapter": 10
+    "chapter": 9
   },
   {
     "id": 57,
@@ -404,7 +404,7 @@
     "limit": 1,
     "name": "Round up",
     "hint": "Ceiling moves a non-integer input to the step above.",
-    "chapter": 10
+    "chapter": 9
   },
   {
     "id": 58,
@@ -457,7 +457,7 @@
     },
     "name": "Reverse the thresholds",
     "hint": "A reflection before rounding changes the order and ownership of the steps.",
-    "chapter": 10
+    "chapter": 9
   },
   {
     "id": 59,
@@ -506,7 +506,7 @@
     },
     "name": "Widen each step",
     "hint": "Scaling the input before floor changes every step's width.",
-    "chapter": 10
+    "chapter": 9
   },
   {
     "id": 60,
@@ -555,7 +555,7 @@
     "limit": 3,
     "name": "Move and widen",
     "hint": "Move the thresholds and set their spacing before rounding.",
-    "chapter": 10
+    "chapter": 9
   },
   {
     "id": 61,
@@ -609,7 +609,7 @@
     },
     "name": "Project the steps",
     "hint": "Sine maps integer step levels onto a repeating sequence of heights.",
-    "chapter": 10
+    "chapter": 9
   },
   {
     "id": 62,
@@ -663,7 +663,7 @@
     },
     "name": "Accumulate signed steps",
     "hint": "Positive and negative step widths add to the anchored accumulated height.",
-    "chapter": 10
+    "chapter": 9
   },
   {
     "id": 63,
@@ -717,7 +717,7 @@
     "limit": 10,
     "name": "Shape the staircase area",
     "hint": "Build the signed step area as a subgoal, then shape its accumulated path.",
-    "chapter": 10
+    "chapter": 9
   },
   {
     "id": 64,
@@ -769,7 +769,7 @@
     "limit": 8,
     "name": "Uneven wave spacing",
     "hint": "A changing input can wind the circle by unequal amounts. Find the bowl hidden in the starting curve.",
-    "chapter": 11
+    "chapter": 10
   },
   {
     "id": 65,
@@ -823,7 +823,7 @@
     "limit": 12,
     "name": "Build a gate",
     "hint": "First accumulate a finite step pulse, then shape the resulting ramp and plateau.",
-    "chapter": 11
+    "chapter": 10
   },
   {
     "id": 66,
@@ -872,7 +872,7 @@
     "relation": "height-squared",
     "name": "Both sides of a roof",
     "hint": "The squared-height equation asks one roof to account for matching upper and lower points.",
-    "chapter": 8
+    "chapter": 7
   },
   {
     "id": 67,
@@ -936,6 +936,170 @@
     "relation": "height-squared",
     "name": "The whole garden",
     "hint": "Connect a slope, thresholds, a repeating projection, signed area and a two-sided final shape.",
-    "chapter": 11
+    "chapter": 10
+  },
+  {
+    "id": 68,
+    "source": "3-(x-2)^2",
+    "degree": 2,
+    "endpoint": 4,
+    "targets": [
+      {
+        "x": "0",
+        "y": "0"
+      },
+      {
+        "x": "4/5",
+        "y": "8/5"
+      },
+      {
+        "x": "2",
+        "y": "2"
+      },
+      {
+        "x": "2",
+        "y": "-2"
+      },
+      {
+        "x": "4",
+        "y": "0"
+      }
+    ],
+    "inventory": {
+      "A": 1,
+      "H": 1
+    },
+    "limit": 1,
+    "relation": "height-squared",
+    "name": "Grow both sides",
+    "hint": "The block changes squared height. Watch both halves of the loop.",
+    "chapter": 7
+  },
+  {
+    "id": 69,
+    "source": "4-(x-2)^2",
+    "degree": 2,
+    "endpoint": 4,
+    "targets": [
+      {
+        "x": "0",
+        "y": "0"
+      },
+      {
+        "x": "4/5",
+        "y": "4/5"
+      },
+      {
+        "x": "2",
+        "y": "1"
+      },
+      {
+        "x": "2",
+        "y": "-1"
+      },
+      {
+        "x": "4",
+        "y": "0"
+      }
+    ],
+    "inventory": {
+      "H": 2,
+      "A": 1,
+      "Q": 1
+    },
+    "limit": 2,
+    "relation": "height-squared",
+    "name": "Half the height",
+    "hint": "Compare halving the right side once with halving it twice.",
+    "chapter": 7
+  },
+  {
+    "id": 70,
+    "source": "(x-2)^2-1",
+    "degree": 2,
+    "endpoint": 4,
+    "targets": [
+      {
+        "x": "1",
+        "y": "0"
+      },
+      {
+        "x": "2",
+        "y": "1"
+      },
+      {
+        "x": "2",
+        "y": "-1"
+      },
+      {
+        "x": "3",
+        "y": "0"
+      }
+    ],
+    "inventory": {
+      "N": 1,
+      "Q": 1,
+      "A": 1
+    },
+    "limit": 1,
+    "relation": "height-squared",
+    "name": "Where heights exist",
+    "hint": "A negative right side has no real height. Change which regions can appear.",
+    "chapter": 7
+  },
+  {
+    "id": 71,
+    "source": "2*x-4",
+    "degree": 1,
+    "endpoint": 4,
+    "targets": [
+      {
+        "x": "0",
+        "y": "7/32"
+      },
+      {
+        "x": "0",
+        "y": "-7/32"
+      },
+      {
+        "x": "3/2",
+        "y": "1/2"
+      },
+      {
+        "x": "3/2",
+        "y": "-1/2"
+      },
+      {
+        "x": "5/2",
+        "y": "3/8"
+      },
+      {
+        "x": "5/2",
+        "y": "-3/8"
+      },
+      {
+        "x": "7/2",
+        "y": "0"
+      },
+      {
+        "x": "4",
+        "y": "9/32"
+      },
+      {
+        "x": "4",
+        "y": "-9/32"
+      }
+    ],
+    "inventory": {
+      "H": 3,
+      "A": 3,
+      "N": 2,
+      "Q": 3
+    },
+    "limit": 9,
+    "relation": "height-squared",
+    "name": "A loop and its echoes",
+    "hint": "Use a signed roof as an intermediate shape, then account for both heights and the region beyond its zero.",
+    "chapter": 7
   }
 ]

@@ -34,7 +34,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 .playground:not([data-phase=flying]) .speed-lines { opacity: 0; }
 .speed-lines { stroke: #90ac5c; stroke-width: 2; stroke-linecap: round; fill: none; opacity: .7; }
 .slingshot-band { fill: none; stroke: #66784a; stroke-width: 2.5; stroke-linecap: round; }
-#slingshot-pouch { fill: none; stroke: #8e6748; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.slingshot-pouch { fill: none; stroke: #8e6748; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
 #trajectory { stroke: #96af6d; stroke-width: 2.5; stroke-dasharray: 2 9; stroke-linecap: round; fill: none; }
 #flight-trail { stroke: #668c3b; stroke-width: 3.5; stroke-linejoin: round; stroke-linecap: round; fill: none; }
 .ring { --target-color: var(--hit); --target-fill: #e5eed155; --target-inner: #a0bb7b; }
@@ -157,6 +157,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 .rethrow-button { width: 42px; height: 42px; }
 .feedback { display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 11px; color: #7d8e6c; text-align: center; line-height: 1.4; padding: 3px 4px; }
 .feedback.error { padding: 7px 10px; background: #f8e9e1; color: #94563c; border-radius: 7px; }
+.discovery-feedback { color: #526c42; max-width: 400px; text-align: left; }
+.discovery-operation { display: grid; place-items: center; flex: none; min-width: 28px; min-height: 28px; border-radius: 8px; background: #e8efdb; padding: 2px 5px; }
 .success { display: flex; align-items: center; gap: 16px; padding: 4px 0; }
 .success-medal { display: flex; align-items: center; gap: 9px; color: #4c703a; font-size: 12px; }
 .success-medal>svg { width: 31px; height: 31px; padding: 6px; border-radius: 50%; background: #e6efda; border: 1px solid #a7bc87; }

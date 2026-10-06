@@ -33,6 +33,7 @@ test('an explicit 4.5 hint sketch compares fourth and eighth powers with exact a
 });
 
 test('explicit calculus hint sketches connect shifted zeros and signed input through to the station output',async({page})=>{
+  test.setTimeout(120000); // Six independent page/kernel boots; individual UI waits stay bounded.
   await open(page,34);
   const slopes=page.getByRole('region',{name:'Where does the slope change sign?'});
   await expect(visiblePanel(slopes).locator('.note-reading annotation')).toHaveText(['\\left.h\\right|_{x=1}=-2','\\left.h\\right|_{x=2}=0']);
@@ -53,16 +54,7 @@ test('explicit calculus hint sketches connect shifted zeros and signed input thr
   for(const id of [36,42]){await open(page,id);await expect(page.locator('#hint-sketch>.note-strip [data-note-target]')).toHaveCount(5);}
 });
 
-test('explicit circle hint sketches compare the missing geometric relationships without completing the final construction',async({page})=>{
-  await open(page,43);
-  const radius=page.getByRole('region',{name:'One centre. Two different reaches.'});
-  const centre=await visiblePanel(radius).locator('.note-midpoint').evaluate(el=>[el.getAttribute('cx'),el.getAttribute('cy')]);
-  await radius.getByRole('button',{name:'Larger radius'}).click();
-  expect(await visiblePanel(radius).locator('.note-midpoint').evaluate(el=>[el.getAttribute('cx'),el.getAttribute('cy')])).toEqual(centre);await expect(visiblePanel(radius).locator('.note-previous')).toHaveCount(1);
-  await expect(page.locator('#hint-sketch')).not.toContainText('Move the centre.');
-  await open(page,44);const translation=page.getByRole('region',{name:'Move the centre, or change the radius?'});
-  const oldRadius=await visiblePanel(translation).locator('.note-radius').evaluate(el=>el.getTotalLength());
-  await translation.getByRole('button',{name:'Moved centre'}).click();expect(await visiblePanel(translation).locator('.note-radius').evaluate(el=>el.getTotalLength())).toBeCloseTo(oldRadius,2);
+test('optional geometry hints compare missing relationships without completing the final construction',async({page})=>{
   await open(page,45);await expect(page.locator('#hint-sketch>.note-circle-diagram .note-leg-x')).toHaveCount(1);await expect(page.locator('#hint-sketch>.note-circle-diagram .note-leg-h')).toHaveCount(1);
   await expect(page.locator('.note-distance-example annotation')).toHaveText('(\\frac{3}{4})^2+(1)^2=\\frac{25}{16}=r^2');
   await open(page,46);const pairs=page.getByRole('region',{name:'One pair narrows it down. Two pairs locate it.'});const before=await construction(page);
@@ -72,7 +64,7 @@ test('explicit circle hint sketches compare the missing geometric relationships 
 });
 
 test('bonus calculus hints use the current starting curve and targets',async({page})=>{
-  for(const id of [14,16]) {
+  for(const id of [15,17]) {
     await open(page,id);const before=await construction(page);
     const input=await page.evaluate(()=>window.angouri.result.stages[0].latex);
     await expect(page.locator('#hint-sketch .note-stage').first().locator('annotation').last()).toHaveText(input);
@@ -84,11 +76,11 @@ test('bonus calculus hints use the current starting curve and targets',async({pa
 });
 
 test('hint sketch math labels stay on their zero lines through narrow reflow and comparison changes',async({page})=>{
-  for(const id of [31,46,66]) {
+  for(const id of [31,46,71]) {
     await open(page,id);
     for(const viewport of [{width:1440,height:900},{width:320,height:568},{width:844,height:390}]) {
       await page.setViewportSize(viewport);
-      if(id!==66){const button=page.getByRole('button',{name:id===31?'Square again':'Two pairs',exact:true});await button.click();}
+      if(id!==71){const button=page.getByRole('button',{name:id===31?'Square again':'Two pairs',exact:true});await button.click();}
       await expect(page.locator('#hint-sketch foreignObject')).toHaveCount(0);
       const offsets=await page.locator('.note-plot-frame:visible,.note-circle-diagram:visible').evaluateAll(frames=>frames.map(frame=>{
         const svg=frame.querySelector('svg'),axis=svg.querySelector('.note-zero-line'),m=svg.getScreenCTM(),point=axis.getPointAtLength(0),label=frame.querySelector('.note-zero .katex-html,.circle-note-zero .katex-html').getBoundingClientRect();

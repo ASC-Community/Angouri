@@ -1,6 +1,6 @@
 import type { Result } from './types';
 import { heightAtFormula, rationalTex, tex } from './views';
-import { circleSketch, compare, diagramChoices, lesson, move, recall, strip, viewButton } from './note-diagrams';
+import { circleSketch, compare, diagramChoices, lesson, move, recall, relationSketch, strip, viewButton } from './note-diagrams';
 
 export interface ReferenceExamples {
   example(sourceId:number,ops:string):Promise<Result>;
@@ -18,10 +18,12 @@ export async function renderReference(topic:number,known:Set<number>,examples:Re
   if(topic===3)return powerReference(known,examples);
   if(topic===4)return slopeReference(known,examples);
   if(topic===5)return areaReference(known,examples);
-  if(topic===6)return circleReference(known,examples);
-  if(topic===7)return relationReference(known,examples);
-  if(topic===8)return waveReference(known,examples);
-  if(topic===9)return stepReference(known,examples);
+  if(topic===6) {
+    const geometry=await circleReference(known,examples);
+    return known.has(48)?await relationReference(known,examples)+recall([43,44],'Centre and reach',geometry):geometry;
+  }
+  if(topic===7)return waveReference(known,examples);
+  if(topic===8)return stepReference(known,examples);
   return togetherReference(known,examples);
 }
 
@@ -106,9 +108,9 @@ async function squareReference(known:Set<number>,examples:ReferenceExamples) {
 
 async function powerReference(known:Set<number>,examples:ReferenceExamples) {
   const [small,second,fourth,eighth,sixth,raised,raisedSquared,negatedFourth,negatedSixth]=await Promise.all([
-    examples.example(50,'HH'),examples.example(50,'HHQ'),examples.example(50,'HHQQ'),
-    examples.example(50,'HHQQQ'),examples.example(5,'HHHHHHQ'),examples.example(50,'HHA'),
-    examples.example(50,'HHAQ'),examples.example(50,'HHQQN'),examples.example(5,'HHHHHHQN')
+    examples.example(4,'H'),examples.example(8,''),examples.example(8,'Q'),
+    examples.example(8,'QQ'),examples.example(29,'Q'),examples.example(4,'HA'),
+    examples.example(4,'HAQ'),examples.example(8,'QN'),examples.example(29,'QN')
   ]);
   const flatter='<p>For magnitudes between zero and one, squaring moves heights closer to zero while keeping zero and one fixed.</p>'+strip([second.stages.at(-1)!,fourth.stages.at(-1)!],['Squared input','Squared again'],[move('Q')])+`<p>${tex('0<|u|<1\\;\\Longrightarrow\\;u^2<|u|')}</p>`+tag(12);
   const orientation='<p>An even power supplies a nonnegative shape. Negation reverses that shape without changing its zeros.</p>'+strip([fourth.stages.at(-1)!,negatedFourth.stages.at(-1)!],['Even power','Negated even power'],[move('N')])+tag(13);
@@ -225,30 +227,41 @@ async function circleReference(known:Set<number>,examples:ReferenceExamples) {
 }
 
 async function relationReference(known:Set<number>,examples:ReferenceExamples) {
-  const [circle,paired]=await Promise.all([examples.circleExample('1','1','3/4'),examples.circleExample('1','0','3/4')]);
-  const sketch=circleSketch([circle],{centre:true,spoke:true,bounds:[-1,3,-1,3]});
-  const equation=`<p>A squared-height equation can describe both branches at once.</p>${sketch}<p>${tex('(h-1)^2=\\frac9{16}-(x-1)^2')}</p><p>${tex('h=1\\pm\\sqrt{\\frac9{16}-(x-1)^2}')}</p>`+tag(48);
-  const magnitudes=`<p>At one position, a squared magnitude has matching positive and negative heights.</p>${circleSketch([paired],{centre:true,spoke:true,bounds:[-1,3,-2,2]})}<p>${tex('h^2=u^2')} ${tex('\\Longrightarrow')} ${tex('h=\\pm u')} ${tex('\\quad(u\\ge0)')}</p>`+tag(66);
-  const geometry='<p>In a centred squared-height equation, the horizontal midpoint comes from the circle centre. The horizontal edges are zeros of the right side, and its maximum equals the squared radius.</p>'+sketch+`<p>${tex('(h-b)^2=r^2-(x-a)^2')}</p>`+tag(49);
-  if(known.has(49))return current('Circle geometry and squared height describe the same loop.',geometry)+recall([66],'One magnitude, two signs',magnitudes)+recall([48],'Both branches in one equation',equation);
-  if(known.has(66))return current('A squared magnitude produces paired heights.',magnitudes)+recall([48],'Both branches in one equation',equation);
-  return current('One equation can contain two heights.',equation);
+  const [base,lift,half,quarter,turned,squared]=await Promise.all(['HH','HHA','HHH','HHHH','HHN','HHQ'].map(ops=>examples.example(68,ops)));
+  const diagram=(result:Result,label:string)=>relationSketch(result,label,{before:base,bounds:[0,4,-2,2]});
+  const equation='<p>The right side is squared height. At each position, a positive value gives two heights, zero gives one, and a negative value gives no real height.</p>'+diagram(base,'One equation, both heights')+`<p>${tex('h^2=a')} ${tex('\\Longrightarrow')} ${tex('h=\\pm\\sqrt a\\quad(a\\ge0)')}</p>`+tag(48);
+  const growth='<p>Adding one on the right increases squared height. The upper branch rises and the lower branch falls; the middle stays fixed. The change in height is not one.</p>'+diagramChoices('The same centre line, a different reach.',[{label:'Before',html:diagram(base,'Before')},{label:'Add one',html:diagram(lift,'Add to squared height')}])+tag(68);
+  const scale='<p>Halving squared height scales each height by the square root of one half. Two halves of squared height make one half of height. The horizontal zeros stay fixed.</p>'+diagramChoices('One halve or two?',[
+    {label:'Before',html:diagram(base,'Before')},{label:'One halve',html:diagram(half,'Heights scale by one over the square root of two')},{label:'Two halves',html:diagram(quarter,'Heights are halved')}
+  ])+`<p>${tex('h^2=a/4\\quad\\Longrightarrow\\quad h=\\pm\\sqrt a/2')}</p>`+tag(69);
+  const regions='<p>Negation exchanges the positive and negative regions of the right side. A height can exist only in a nonnegative region. It does not simply turn the visible loop upside down.</p>'+diagramChoices('Change the sign. Change where heights exist.',[{label:'Before',html:diagram(base,'Heights inside the zeros')},{label:'Negate',html:diagram(turned,'Heights outside the zeros')}])+tag(70);
+  const magnitudes='<p>Squaring the right side makes every value nonnegative. Solving then returns both signs of its magnitude, including where the unsquared input was negative.</p>'+diagramChoices('Squaring can restore missing parts.',[{label:'Before',html:diagram(base,'Only the nonnegative input region')},{label:'Square',html:diagram(squared,'Both heights of the incoming magnitude')}])+`<p>${tex('h^2=a^2\\quad\\Longrightarrow\\quad h=\\pm|a|')}</p>`+tag(66);
+  const geometry='<p>The zeros of a circular roof locate the loop’s horizontal edges. Its maximum is the squared radius. Scaling height while keeping those zeros creates a different loop, rather than simply resizing a circle.</p>'+tag(49);
+  const synthesis='<p>Several visible pieces may come from one signed shape. Track its zeros, its scale, and which operation makes negative regions visible again.</p>'+tag(71);
+  const lessons:[number,string,string][]=[[48,'Positive, zero or negative',equation],[68,'Adding to squared height',growth],[69,'Squared height and scale',scale],[70,'Where real heights exist',regions],[66,'Two signs of a magnitude',magnitudes],[49,'Geometry and the right side',geometry],[71,'Read a loop in parts',synthesis]];
+  const visible=lessons.filter(([id])=>known.has(id));
+  const currentLesson=visible.pop()!;
+  return current(currentLesson[1],currentLesson[2])+visible.reverse().map(([id,title,body])=>recall([id],title,body)).join('');
 }
 
 async function waveReference(known:Set<number>,examples:ReferenceExamples) {
-  const [input,wave,phase,baseline,period,amplitude,folded]=await Promise.all([
-    examples.example(4,'H'),examples.example(4,'HS'),examples.example(4,'HAS'),examples.example(4,'HSA'),
-    examples.example(4,'HHS'),examples.example(4,'HSH'),examples.example(4,'HSQ')
-  ]);
-  const cycle='<p>Sine reads its input as quarter-turns around a circle.</p>'+strip([input.stages.at(-1)!,wave.stages.at(-1)!],['Scaled input','Circular height'],[move('S')])+`<p>${tex('S(u)=\\sin\\!\\left(\\frac{\\pi u}{2}\\right)')} ${tex('\\qquad')} ${tex('0,1,0,-1,0')}</p>`+tag(50);
+  // Hidden future lessons must not delay the reference the player opened.
+  const wave=await examples.example(4,'HS');
+  const cycle='<p>Sine reads its input as quarter-turns around a circle.</p>'+strip([wave.stages.at(-2)!,wave.stages.at(-1)!],['Scaled input','Circular height'],[move('S')])+`<p>${tex('S(u)=\\sin\\!\\left(\\frac{\\pi u}{2}\\right)')} ${tex('\\qquad')} ${tex('0,1,0,-1,0')}</p>`+tag(50);
+  if(!known.has(51))return current('Sine turns input height into circular height.',cycle);
+  const [phase,baseline]=await Promise.all([examples.example(4,'HAS'),examples.example(4,'HSA')]);
   const phaseLesson='<p>An input lift changes phase. An output lift changes the baseline while leaving the horizontal peak positions unchanged.</p>'+compare('Phase or baseline?',[
     {label:'Lift input',stage:phase.stages.at(-1)!,before:wave.stages.at(-1)!},
     {label:'Lift output',stage:baseline.stages.at(-1)!,before:wave.stages.at(-1)!}
   ])+tag(51);
+  if(!known.has(52))return current('Input and output lifts have different effects.',phaseLesson)+recall([50],'Quarter-turn projection',cycle);
+  const [period,amplitude]=await Promise.all([examples.example(4,'HHS'),examples.example(4,'HSH')]);
   const scaleLesson='<p>Input scale changes period. Output scale changes amplitude.</p>'+compare('Period or amplitude?',[
     {label:'Halve input',stage:period.stages.at(-1)!,before:wave.stages.at(-1)!},
     {label:'Halve output',stage:amplitude.stages.at(-1)!,before:wave.stages.at(-1)!}
   ])+tag(52);
+  if(!known.has(53))return current('Input and output scale have different effects.',scaleLesson)+recall([51],'Phase and baseline',phaseLesson)+recall([50],'Quarter-turn projection',cycle);
+  const folded=await examples.example(4,'HSQ');
   const fold='<p>Squaring a sine output folds negative lobes upward while keeping every zero fixed.</p>'+strip([wave.stages.at(-1)!,folded.stages.at(-1)!],['Signed wave','Squared wave'],[move('Q')])+tag(53);
   const range='<p>Output scaling changes peak-to-trough range. Output lifting changes the middle height.</p>'+compare('Range or middle height?',[
     {label:'Smaller amplitude',stage:amplitude.stages.at(-1)!,before:wave.stages.at(-1)!},
@@ -257,10 +270,7 @@ async function waveReference(known:Set<number>,examples:ReferenceExamples) {
   const roles='<p>Upstream changes control horizontal phase and period. Downstream changes control folding, amplitude and baseline. The distinctions in the earlier comparisons remain valid when several operations are present.</p>'+tag(55);
   if(known.has(55))return current('Input and output changes control different wave features.',roles)+recall([54],'Amplitude and baseline',range)+recall([53],'Folding lobes',fold)+recall([52,51],'Period and phase',scaleLesson+phaseLesson)+recall([50],'Quarter-turn projection',cycle);
   if(known.has(54))return current('Amplitude and baseline are separate.',range)+recall([53],'Folding lobes',fold)+recall([52,51],'Period and phase',scaleLesson+phaseLesson)+recall([50],'Quarter-turn projection',cycle);
-  if(known.has(53))return current('Squaring folds signed lobes.',fold)+recall([52],'Period and amplitude',scaleLesson)+recall([51],'Phase and baseline',phaseLesson)+recall([50],'Quarter-turn projection',cycle);
-  if(known.has(52))return current('Input and output scale have different effects.',scaleLesson)+recall([51],'Phase and baseline',phaseLesson)+recall([50],'Quarter-turn projection',cycle);
-  if(known.has(51))return current('Input and output lifts have different effects.',phaseLesson)+recall([50],'Quarter-turn projection',cycle);
-  return current('Sine turns input height into circular height.',cycle);
+  return current('Squaring folds signed lobes.',fold)+recall([52],'Period and amplitude',scaleLesson)+recall([51],'Phase and baseline',phaseLesson)+recall([50],'Quarter-turn projection',cycle);
 }
 
 async function stepReference(known:Set<number>,examples:ReferenceExamples) {
