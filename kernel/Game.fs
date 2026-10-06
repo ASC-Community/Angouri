@@ -31,11 +31,14 @@ module Game =
     type Station = { Id: string; Op: string; Before: int; After: int }
     type Goal = { X: string; Y: string }
     type Circle = { X: string; Y: string; Radius: string }
+    type Crop = { From: string; To: string }
     type CircleDefinition = { Initial: Circle; Editable: string list }
     [<CLIMutable>]
     type ExtendedGoal = { x: string; y: string }
     [<CLIMutable>]
     type ExtendedStation = { id: string; op: string; before: int; after: int }
+    [<CLIMutable>]
+    type ExtendedCrop = { from: string; ``to``: string; targetFrom: string; targetTo: string }
     [<CLIMutable>]
     type ExtendedPuzzle = {
         id: int
@@ -47,6 +50,8 @@ module Game =
         limit: int
         station: ExtendedStation
         relation: string
+        crop: ExtendedCrop
+        outline: string
     }
     type State = {
         Source: int
@@ -57,6 +62,7 @@ module Game =
         Limit: int
         Station: Station option
         Circle: Circle option
+        Crop: Crop option
     }
     let private baseSources = [|
         "x * (4 - x)"; "x * (4 - x) / 2"; "x * (4 - x)"; "x - 2"; "x^3"
@@ -191,6 +197,15 @@ module Game =
                           after=(required stationElement "after").GetInt32() }
                     else Unchecked.defaultof<ExtendedStation>
                 let mutable relationElement = Unchecked.defaultof<JsonElement>
+                let mutable cropElement = Unchecked.defaultof<JsonElement>
+                let crop =
+                    if element.TryGetProperty("crop",&cropElement) then
+                        { from=(required cropElement "from").GetString()
+                          ``to``=(required cropElement "to").GetString()
+                          targetFrom=(required cropElement "targetFrom").GetString()
+                          targetTo=(required cropElement "targetTo").GetString() }
+                    else Unchecked.defaultof<ExtendedCrop>
+                let mutable outlineElement = Unchecked.defaultof<JsonElement>
                 { id=(required element "id").GetInt32()
                   source=(required element "source").GetString()
                   degree=(required element "degree").GetInt32()
@@ -198,7 +213,9 @@ module Game =
                   targets=targets; inventory=inventory
                   limit=(required element "limit").GetInt32()
                   station=station
-                  relation=(if element.TryGetProperty("relation",&relationElement) then relationElement.GetString() else null) })
+                  relation=(if element.TryGetProperty("relation",&relationElement) then relationElement.GetString() else null)
+                  crop=crop
+                  outline=(if element.TryGetProperty("outline",&outlineElement) then outlineElement.GetString() else null) })
             |> Seq.toArray
     do
         for index,puzzle in extendedPuzzles |> Array.indexed do
@@ -216,6 +233,23 @@ module Game =
                 puzzle.station.before < 0 || puzzle.station.after < 0 ||
                 puzzle.station.before + puzzle.station.after + 1 > maxNodes) then
                 invalidOp (sprintf "Invalid embedded station for puzzle %d." expectedId)
+            if not (obj.ReferenceEquals(puzzle.crop,null)) then
+                let endpoint = Piecewise.ofInt puzzle.endpoint
+                let values = [puzzle.crop.from;puzzle.crop.``to``;puzzle.crop.targetFrom;puzzle.crop.targetTo]
+                match values |> List.map Piecewise.tryParseRational with
+                | [Some initialFrom;Some initialTo;Some targetFrom;Some targetTo]
+                    when Piecewise.compareRational initialFrom Piecewise.zero >= 0 &&
+                         Piecewise.compareRational initialFrom initialTo < 0 &&
+                         Piecewise.compareRational initialTo endpoint <= 0 &&
+                         Piecewise.compareRational targetFrom Piecewise.zero >= 0 &&
+                         Piecewise.compareRational targetFrom targetTo < 0 &&
+                         Piecewise.compareRational targetTo endpoint <= 0 -> ()
+                | _ -> invalidOp (sprintf "Invalid embedded crop for puzzle %d." expectedId)
+            if not (isNull puzzle.outline) then
+                if String.IsNullOrWhiteSpace(puzzle.outline) || puzzle.outline.Length > 1024 then
+                    invalidOp (sprintf "Invalid embedded outline for puzzle %d." expectedId)
+                try MathS.FromString(puzzle.outline) |> ignore
+                with _ -> invalidOp (sprintf "Invalid embedded outline for puzzle %d." expectedId)
             for target in puzzle.targets do
                 if obj.ReferenceEquals(target,null) || Option.isNone (Piecewise.tryParseRational target.x) || String.IsNullOrWhiteSpace(target.y) then
                     invalidOp (sprintf "Invalid embedded target for puzzle %d." expectedId)
@@ -232,6 +266,20 @@ module Game =
         let original = Array.create baseSourceCount 4
         original[4] <- 2
         Array.append original (extendedPuzzles |> Array.map (fun puzzle -> puzzle.endpoint))
+    let cropDefinitions =
+        extendedPuzzles
+        |> Array.choose (fun puzzle ->
+            if obj.ReferenceEquals(puzzle.crop,null) then None
+            else Some (puzzle.id,
+                ({ From=Piecewise.rationalText (Piecewise.parseRational puzzle.crop.from)
+                   To=Piecewise.rationalText (Piecewise.parseRational puzzle.crop.``to``) },
+                 { From=Piecewise.rationalText (Piecewise.parseRational puzzle.crop.targetFrom)
+                   To=Piecewise.rationalText (Piecewise.parseRational puzzle.crop.targetTo) })))
+        |> Map.ofArray
+    let outlineDefinitions =
+        extendedPuzzles
+        |> Array.choose (fun puzzle -> if isNull puzzle.outline then None else Some (puzzle.id,puzzle.outline))
+        |> Map.ofArray
     let private baseStationDefinitions = Map [
         32,{ Id="station"; Op="D"; Before=1; After=1 }
         33,{ Id="station"; Op="D"; Before=1; After=1 }
@@ -292,6 +340,12 @@ module Game =
             let mutable value = 0
             if v.TryGetValue<int>(&value) then value else invalidInput key ("Invalid integer field: " + key)
         | _ -> invalidInput key ("Invalid integer field: " + key)
+    let boolField n key =
+        match field n key with
+        | :? JsonValue as v ->
+            let mutable value = false
+            if v.TryGetValue<bool>(&value) then value else invalidInput key ("Invalid Boolean field: " + key)
+        | _ -> invalidInput key ("Invalid Boolean field: " + key)
     let keys (n: JsonNode) (allowed: string list) =
         match n with
         | :? JsonObject as o ->
@@ -351,6 +405,7 @@ module Game =
     let nodesJson (nodes: Node seq) = nodes |> Seq.map (fun n -> obj [ "id",str n.Id; "op",str n.Op ]) |> arr
     let inventoryJson inventory = inventory |> Map.toList |> List.map (fun (k,v) -> k,num v) |> obj
     let circleJson (circle: Circle) = obj [ "x",str circle.X; "y",str circle.Y; "radius",str circle.Radius ]
+    let cropJson (crop: Crop) = obj [ "from",str crop.From; "to",str crop.To ]
     let stationJson (station: Station) = obj [
         "id",str station.Id; "op",str station.Op; "before",num station.Before; "after",num station.After ]
     let stateJson (s: State) =
@@ -364,6 +419,9 @@ module Game =
         match s.Circle with
         | Some circle -> json["circle"] <- circleJson circle
         | None -> ()
+        match s.Crop with
+        | Some crop -> json["crop"] <- cropJson crop
+        | None -> ()
         json
     let initial source mode =
         if source < 1 || source > sources.Length then invalidInput "source" "Choose an available source curve."
@@ -375,11 +433,12 @@ module Game =
         let goals =
             if isCircleSource source && mode = "remix" then []
             else targets[source-1] |> List.map (fun (x,y) -> { X=x; Y=y })
+        let crop = if mode = "puzzle" then cropDefinitions |> Map.tryFind source |> Option.map fst else None
         { Source=source; Mode=mode; Nodes=nodes
           Goals=goals
           Inventory=(if mode="remix" || isCircleSource source then Map.empty else inventories[source-1])
           Limit=(if mode="remix" || isCircleSource source then 0 else limits[source-1])
-          Station=station; Circle=circle }
+          Station=station; Circle=circle; Crop=crop }
     let readNodes n =
         let ns = array n
         if ns.Length > maxNodes then invalidInput "nodes" "The preview supports at most 64 parts."
@@ -399,7 +458,29 @@ module Game =
         if not (exactInRange "1/4" "6" radius) then
             invalidInput "circle" "Circle radius must stay between 1/4 and 6."
         { X=x.ToString(); Y=y.ToString(); Radius=radius.ToString() }
-    let readGoals source allowSymbolic n =
+    let readCrop source n =
+        keys n [ "from"; "to" ]
+        if isCircleSource source then invalidInput "crop" "Circle sources do not support Crop."
+        let fromPoint =
+            Piecewise.tryParseRational (stringField n "from")
+            |> Option.defaultWith (fun () -> invalidInput "crop" "Crop bounds must be exact rational numbers.")
+        let toPoint =
+            Piecewise.tryParseRational (stringField n "to")
+            |> Option.defaultWith (fun () -> invalidInput "crop" "Crop bounds must be exact rational numbers.")
+        let endpoint = Piecewise.ofInt sourceEndpoints[source-1]
+        if Piecewise.compareRational fromPoint Piecewise.zero < 0 ||
+           Piecewise.compareRational fromPoint toPoint >= 0 ||
+           Piecewise.compareRational toPoint endpoint > 0 then
+            invalidInput "crop" "Crop must be a non-empty interval inside the source domain."
+        { From=Piecewise.rationalText fromPoint; To=Piecewise.rationalText toPoint }
+    let private goalIsInsideCrop crop (goalX: string) =
+        match crop with
+        | None -> true
+        | Some crop ->
+            let point = Piecewise.parseRational goalX
+            Piecewise.compareRational point (Piecewise.parseRational crop.From) >= 0 &&
+            Piecewise.compareRational point (Piecewise.parseRational crop.To) <= 0
+    let readGoals source allowSymbolic cropTargets crop n =
         let gs = array n
         if isCircleSource source then
             if gs.Length < 3 || gs.Length > 8 then invalidInput "goals" "Circle challenges require between three and eight targets."
@@ -410,11 +491,14 @@ module Game =
                     invalidInput "goals" "Circle target coordinates must stay between -10 and 14."
                 { X=x.ToString(); Y=y.ToString() })
         else
-            if gs.Length <> targets[source-1].Length then invalidInput "goals" "This source has a fixed set of checkpoint positions."
+            let expectedTargets =
+                targets[source-1]
+                |> List.filter (fun (goalX,_) -> not cropTargets || goalIsInsideCrop crop goalX)
+            if gs.Length <> expectedTargets.Length then invalidInput "goals" "This source has a fixed set of checkpoint positions."
             gs |> List.mapi (fun i n ->
                 keys n [ "x"; "y" ]
                 let x,y = stringField n "x",stringField n "y"
-                if rational x <> rational (fst (targets.[source-1].[i])) then invalidInput "goals" "Checkpoint positions do not match the source."
+                if rational x <> rational (fst expectedTargets[i]) then invalidInput "goals" "Checkpoint positions do not match the source."
                 if allowSymbolic then exactConstant "goals" y |> ignore
                 else
                     let height = asFloat (rational y)
@@ -490,6 +574,12 @@ module Game =
         if s.Nodes.Length > maxNodes then invalidInput "parts" "The preview supports at most 64 parts."
         if (s.Nodes |> List.map (fun n -> n.Id) |> Set.ofList |> Set.count) <> s.Nodes.Length then invalidInput "identity" "Part identities must be unique."
         validateCircle s
+        match s.Mode,(cropDefinitions |> Map.tryFind s.Source),s.Crop with
+        | "puzzle",None,None -> ()
+        | "puzzle",None,Some _ -> invalidInput "crop" "This authored puzzle does not use Crop."
+        | "puzzle",Some _,None -> invalidInput "crop" "This authored puzzle requires Crop."
+        | _,_,Some crop -> readCrop s.Source (cropJson crop) |> ignore
+        | _ -> ()
         validateStation s
         if not (isCircleSource s.Source) then polynomialDegree s |> ignore
         s
@@ -508,16 +598,27 @@ module Game =
             s
         else validateConstrained s
     let readState (n: JsonNode) =
-        keys n [ "schema"; "rules"; "engine"; "sourceId"; "mode"; "nodes"; "goals"; "inventory"; "limit"; "station"; "circle" ]
+        keys n [ "schema"; "rules"; "engine"; "sourceId"; "mode"; "nodes"; "goals"; "inventory"; "limit"; "station"; "circle"; "crop" ]
         if intField n "schema" <> 1 || stringField n "rules" <> rules || stringField n "engine" <> engine then
             invalidInput "version" "This save uses an unsupported schema, ruleset or engine."
         let source,mode = intField n "sourceId",stringField n "mode"
         if not (List.contains mode [ "puzzle"; "remix"; "challenge" ]) then invalidInput "mode" "Unknown play mode."
         let baseState = initial source mode
+        let suppliedCrop =
+            match n with
+            | :? JsonObject as stateObject when stateObject.ContainsKey("crop") ->
+                if isNull stateObject["crop"] then invalidInput "crop" "Invalid Crop interval."
+                Some (readCrop source stateObject["crop"])
+            | _ -> None
+        let crop =
+            match mode,suppliedCrop,baseState.Crop with
+            | "puzzle",Some supplied,_ -> Some supplied
+            | "puzzle",None,derived -> derived
+            | _,supplied,_ -> supplied
         let goalData = field n "goals"
         let goals =
             if mode = "remix" && (array goalData).IsEmpty then []
-            else readGoals source (mode = "puzzle") goalData
+            else readGoals source (mode = "puzzle") (mode = "challenge") crop goalData
         let inventory = readInventory (field n "inventory")
         let limit = intField n "limit"
         let suppliedStation =
@@ -551,6 +652,7 @@ module Game =
                 Inventory=inventory
                 Limit=limit
                 Circle=circle
+                Crop=crop
         }
         match mode with
         | "puzzle" ->
@@ -1381,19 +1483,186 @@ module Game =
             if playback.Count>first then ranges.Add(first,playback.Count-1)
         playback |> Seq.toList,breaks |> Seq.toList,ranges |> Seq.toList
 
-    let private segmentedPolynomialResultJson s =
+    type private OutlineTarget = { Function: Piecewise.Function; Paths: NumericCurvePath list }
+    let private outlineTargetCache = Dictionary<int,OutlineTarget>()
+    let private outlineTargetOrder = Queue<int>()
+    let private outlineHitCache = Dictionary<string,bool>()
+    let private outlineHitOrder = Queue<string>()
+    let private outlineCacheGate = System.Object()
+    let private boundedCached (cache: Dictionary<'key,'value>) (order: Queue<'key>) key create =
+        match lock outlineCacheGate (fun () -> match cache.TryGetValue(key) with | true,value -> Some value | _ -> None) with
+        | Some value -> value
+        | None ->
+            let value = create()
+            lock outlineCacheGate (fun () ->
+                match cache.TryGetValue(key) with
+                | true,cached -> cached
+                | _ ->
+                    if cache.Count >= 256 then cache.Remove(order.Dequeue()) |> ignore
+                    cache[key] <- value
+                    order.Enqueue(key)
+                    value)
+    let private outlineTarget (source: int) (relation: bool) =
+        boundedCached outlineTargetCache outlineTargetOrder source (fun () ->
+            let outlineText = outlineDefinitions[source]
+            let target =
+                match Piecewise.fromExpression x maxSegments sourceEndpoints[source-1] (MathS.FromString(outlineText)) with
+                | Ok fn -> fn
+                | Error message -> invalidInput "outline" message
+            let fromPoint,toPoint =
+                cropDefinitions
+                |> Map.tryFind source
+                |> Option.map snd
+                |> Option.map (fun required -> Piecewise.parseRational required.From,Piecewise.parseRational required.To)
+                |> Option.defaultValue (Piecewise.zero,Piecewise.ofInt sourceEndpoints[source-1])
+            let target = Piecewise.crop fromPoint toPoint target
+            let goals = targets[source-1] |> List.map (fun (goalX,goalY) -> { X=goalX;Y=goalY })
+            let samples = piecewiseSampleXs goals [target] sourceEndpoints[source-1]
+                          |> List.filter (fun point -> Piecewise.compareRational point fromPoint >= 0 && Piecewise.compareRational point toPoint <= 0)
+            let paths =
+                if relation then
+                    let solution = solveHeightSquaredRelation (Piecewise.presentation target).Simplified
+                    relationCurveData samples [] None None solution |> fst
+                else piecewisePathsWithEvaluators samples (numericSegments target)
+            { Function=target; Paths=paths })
+
+    let private cachedOutlineHit (source: int) (fromPoint: Piecewise.Rational) (toPoint: Piecewise.Rational)
+                                 (actual: Piecewise.Function) (target: Piecewise.Function) =
+        let segmentKey (segment: Piecewise.Segment) =
+            String.concat "\u001f" [Piecewise.rationalText segment.Start;Piecewise.rationalText segment.End;
+                                     string segment.StartClosed;string segment.EndClosed;segment.Expression.ToString()]
+        let key =
+            String.concat "\u001e" ([string source;Piecewise.rationalText fromPoint;Piecewise.rationalText toPoint] @
+                                     (actual.Segments |> List.map segmentKey))
+        boundedCached outlineHitCache outlineHitOrder key (fun () -> Piecewise.exactlyEqualOn x fromPoint toPoint actual target)
+
+    type private ExactOutputRange = (Piecewise.Rational*Piecewise.Rational) option
+    type private SegmentedBaseEvaluation = {
+        Stages: Piecewise.Function list
+        FinalDegree: int option
+        FinalRange: ExactOutputRange
+        PresentationGoals: Goal list
+        SampleXs: Piecewise.Rational list
+        StagePresentations: Piecewise.Presentation list
+        StageValues: Entity list list
+        StageEvaluators: NumericSegment list list
+        StagePoints: (float*float) list list
+        StagePaths: NumericCurvePath list list
+        StageJsonTemplates: JsonNode list
+        ConstructedLatex: string
+    }
+    let private segmentedBaseCache = Dictionary<string,SegmentedBaseEvaluation>()
+    let private segmentedBaseOrder = Queue<string>()
+    let private segmentedBaseGate = System.Object()
+    let private segmentedBaseKey s =
+        let goals = s.Goals |> List.map (fun goal -> goal.X+"\u001f"+goal.Y) |> String.concat "\u001e"
+        let nodes = s.Nodes |> List.map (fun node -> node.Id+"\u001f"+node.Op) |> String.concat "\u001e"
+        String.concat "\u001d" [string s.Source;s.Mode;goals;nodes]
+    let private buildSegmentedBase s =
         let stages = piecewiseStages s
-        let final = List.last stages
-        let finalDegree = polynomialDegree s |> fst
-        let finalRange = exactOutputRange s.Nodes
-        let relation = isHeightSquaredSource s.Source
         let presentationGoals : Goal list =
             if s.Mode = "remix" && List.isEmpty s.Goals then
                 targets[s.Source-1] |> List.map (fun (goalX,_) -> { X=goalX; Y="0" })
             else s.Goals
         let sampleXs = piecewiseSampleXs presentationGoals stages sourceEndpoints[s.Source-1]
+        let stageValues =
+            stages
+            |> List.map (fun stage ->
+                presentationGoals |> List.map (fun goal ->
+                    Piecewise.evaluateAt x (Piecewise.parseRational goal.X) stage))
+        let stageEvaluators =
+            (stages,stageValues) ||> List.map2 (fun stage values ->
+                let known =
+                    (presentationGoals,values)
+                    ||> List.map2 (fun goal value ->
+                        Piecewise.toFloat (Piecewise.parseRational goal.X),value |> asFloat |> checkedPreviewValue)
+                    |> Map.ofList
+                numericSegments stage |> List.map (fun evaluator ->
+                    if Piecewise.hasSymbolicRounding evaluator.Segment.Expression then
+                        { evaluator with Evaluate=fun point -> Map.tryFind point known |> Option.defaultWith (fun () -> evaluator.Evaluate point) }
+                    else evaluator))
+        let stagePoints =
+            (stages,stageEvaluators)
+            ||> List.map2 (fun stage evaluators ->
+                sampleXs |> List.map (fun point -> Piecewise.toFloat point,numericAt point stage evaluators))
         let stagePresentations = stages |> List.map Piecewise.presentation
-        let finalPresentation = List.last stagePresentations
+        let stagePaths = stageEvaluators |> List.map (piecewisePathsWithEvaluators sampleXs)
+        let stageJsonTemplates =
+            List.zip stages stagePresentations |> List.mapi (fun index (stage,presentation) ->
+                let points = stagePoints[index] |> List.map (fun (point,height) -> arr [flt point;flt height])
+                let values = stageValues[index]
+                let paths = stagePaths[index] |> List.map (fun path ->
+                    let json=pathJson path
+                    if stage.Segments |> List.exists (fun segment -> Piecewise.hasSymbolicRounding segment.Expression) then
+                        json["approximateEnds"]<-boolean true
+                    json)
+                let json = obj [
+                    "id",str (if index=0 then "source" else s.Nodes[index-1].Id)
+                    "expression",str presentation.ExpressionText; "latex",str presentation.Latex
+                    "points",arr points
+                    "paths",arr paths
+                    "values",arr (values |> List.map (fun value -> str (value.ToString())))
+                    "valueLatex",arr (values |> List.map (fun value -> str (value.Latexize()))) ]
+                if index > 0 && s.Nodes[index-1].Op = "S" then
+                    let incoming = stages[index-1]
+                    let incomingEvaluators = stageEvaluators[index-1]
+                    json["projection"] <- arr (sampleXs |> List.map (fun point ->
+                        let angle = Math.PI * numericAt point incoming incomingEvaluators / 2.
+                        arr [flt (Math.Cos(angle));flt (Math.Sin(angle))]))
+                json)
+        { Stages=stages
+          FinalDegree=polynomialDegree s |> fst
+          FinalRange=exactOutputRange s.Nodes
+          PresentationGoals=presentationGoals
+          SampleXs=sampleXs
+          StagePresentations=stagePresentations
+          StageValues=stageValues
+          StageEvaluators=stageEvaluators
+          StagePoints=stagePoints
+          StagePaths=stagePaths
+          StageJsonTemplates=stageJsonTemplates
+          ConstructedLatex=constructedLatex s }
+    let private segmentedBaseEvaluation s =
+        let key = segmentedBaseKey s
+        match lock segmentedBaseGate (fun () ->
+            match segmentedBaseCache.TryGetValue(key) with | true,value -> Some value | _ -> None) with
+        | Some cached -> cached
+        | None ->
+            let computed = buildSegmentedBase s
+            lock segmentedBaseGate (fun () ->
+                match segmentedBaseCache.TryGetValue(key) with
+                | true,cached -> cached
+                | _ ->
+                    if segmentedBaseCache.Count >= 64 then segmentedBaseCache.Remove(segmentedBaseOrder.Dequeue()) |> ignore
+                    segmentedBaseCache[key] <- computed
+                    segmentedBaseOrder.Enqueue(key)
+                    computed)
+
+    let private segmentedPolynomialResultJson s =
+        let baseEvaluation = segmentedBaseEvaluation s
+        let stages = baseEvaluation.Stages
+        let final = List.last stages
+        let cropBounds =
+            s.Crop |> Option.map (fun crop -> Piecewise.parseRational crop.From,Piecewise.parseRational crop.To)
+        let outputFinal =
+            match cropBounds with
+            | Some (fromPoint,toPoint) -> Piecewise.crop fromPoint toPoint final
+            | None -> final
+        let finalDegree = baseEvaluation.FinalDegree
+        let finalRange = baseEvaluation.FinalRange
+        let relation = isHeightSquaredSource s.Source
+        let presentationGoals = baseEvaluation.PresentationGoals
+        let sampleXs = baseEvaluation.SampleXs
+        let outputSampleXs =
+            match cropBounds with
+            | None -> sampleXs
+            | Some (fromPoint,toPoint) ->
+                fromPoint :: toPoint :: Piecewise.boundaries outputFinal @ sampleXs
+                |> List.filter (fun point -> Piecewise.compareRational point fromPoint >= 0 && Piecewise.compareRational point toPoint <= 0)
+                |> List.distinct
+                |> List.sortWith Piecewise.compareRational
+        let stagePresentations = baseEvaluation.StagePresentations
+        let finalPresentation = Piecewise.presentation outputFinal
         let relationSolution =
             if relation then Some (solveHeightSquaredRelation finalPresentation.Simplified) else None
         let relationPaths,playbackPaths =
@@ -1406,7 +1675,7 @@ module Game =
                     |> Option.map (fun goal ->
                         Piecewise.toFloat (Piecewise.parseRational goal.X),
                         Piecewise.toFloat (Piecewise.parseRational goal.Y))
-                relationCurveData sampleXs checkpointXs preferredTarget finalDegree solution
+                relationCurveData outputSampleXs checkpointXs preferredTarget finalDegree solution
             | None -> [],[]
         let playback,breaks,flights = playbackData playbackPaths
         let exactLatexCache = Dictionary<string,string>()
@@ -1439,91 +1708,144 @@ module Game =
                 let equal = exactEqual left right
                 exactEqualityCache[key] <- equal
                 equal
-        let stageValues =
-            stages
-            |> List.map (fun stage ->
-                presentationGoals |> List.map (fun goal ->
-                    Piecewise.evaluateAt x (Piecewise.parseRational goal.X) stage))
-        let stageEvaluators =
-            (stages,stageValues) ||> List.map2 (fun stage values ->
-                let known = (presentationGoals,values) ||> List.map2 (fun goal value -> Piecewise.toFloat (Piecewise.parseRational goal.X),exactNumber value) |> Map.ofList
-                numericSegments stage |> List.map (fun evaluator ->
-                    if Piecewise.hasSymbolicRounding evaluator.Segment.Expression then
-                        {evaluator with Evaluate=fun point -> Map.tryFind point known |> Option.defaultWith (fun () -> evaluator.Evaluate point)}
-                    else evaluator))
-        let stagePoints =
-            (stages,stageEvaluators)
-            ||> List.map2 (fun stage evaluators ->
-                sampleXs |> List.map (fun point -> Piecewise.toFloat point,numericAt point stage evaluators))
-        let stagePaths =
-            stageEvaluators |> List.map (piecewisePathsWithEvaluators sampleXs)
+        let stageValues = baseEvaluation.StageValues
+        let stageEvaluators = baseEvaluation.StageEvaluators
+        let stagePoints = baseEvaluation.StagePoints
+        let stagePaths = baseEvaluation.StagePaths
         let finalValues = List.last stageValues
         let checkpoints =
             (presentationGoals,finalValues) ||> List.map2 (fun goal actual ->
                 let point = Piecewise.parseRational goal.X
                 let authoredTarget = exactConstant "goals" goal.Y
                 let expected = if relation then authoredTarget.Pow(rational "2").InnerSimplified else authoredTarget
-                let actualNumber = exactNumber actual
-                let actualLatex = exactLatex actual
-                let hit =
-                    if rangeProvesMismatch finalRange expected then false
-                    else cachedExactEqual actual expected
-                let y = if relation then authoredTarget |> asFloat |> checkedPreviewValue else actualNumber
-                let checkpoint = obj [
-                    "x",str goal.X; "target",str goal.Y; "actual",str (actual.ToString())
-                    "actualLatex",str actualLatex; "actualNumber",flt actualNumber
-                    "hit",boolean hit
-                    "y",flt y ]
+                let defined = Piecewise.isDefinedAt point outputFinal
+                let checkpoint =
+                    if not defined then
+                        obj [ "x",str goal.X; "target",str goal.Y; "actual",str "undefined"
+                              "actualLatex",str "\\varnothing"; "defined",boolean false
+                              "hit",boolean false; "y",flt (authoredTarget |> asFloat |> checkedPreviewValue) ]
+                    else
+                        let actualNumber = exactNumber actual
+                        let actualLatex = exactLatex actual
+                        let hit =
+                            if rangeProvesMismatch finalRange expected then false
+                            else cachedExactEqual actual expected
+                        let y = if relation then authoredTarget |> asFloat |> checkedPreviewValue else actualNumber
+                        obj [ "x",str goal.X; "target",str goal.Y; "actual",str (actual.ToString())
+                              "actualLatex",str actualLatex; "actualNumber",flt actualNumber
+                              "defined",boolean true; "hit",boolean hit; "y",flt y ]
+                match cropBounds with
+                | Some (fromPoint,toPoint) ->
+                    let phase =
+                        if not defined then 1.
+                        else
+                            let numerator = Piecewise.subtract point fromPoint
+                            let denominator = Piecewise.subtract toPoint fromPoint
+                            Piecewise.divide numerator denominator |> Piecewise.toFloat |> max 0. |> min 1.
+                    checkpoint["phase"] <- flt phase
+                | None -> ()
                 if relation then
                     checkpoint["lhs"] <- str (expected.ToString())
-                    checkpoint["rhs"] <- str (actual.ToString())
-                    let targetX,targetY = Piecewise.toFloat point,authoredTarget |> asFloat
-                    let phase =
-                        if playback.IsEmpty then 0.
-                        else
-                            playback
-                            |> List.mapi (fun index (px,py) -> index,(px-targetX)*(px-targetX)+(py-targetY)*(py-targetY))
-                            |> List.minBy snd
-                            |> fst
-                            |> fun index -> if playback.Length <= 1 then 0. else float index / float (playback.Length-1)
-                    checkpoint["phase"] <- flt phase
+                    checkpoint["rhs"] <- str (if defined then actual.ToString() else "undefined")
+                    if defined then
+                        let targetX,targetY = Piecewise.toFloat point,authoredTarget |> asFloat
+                        let phase =
+                            if playback.IsEmpty then 1.
+                            else
+                                playback
+                                |> List.mapi (fun index (px,py) -> index,(px-targetX)*(px-targetX)+(py-targetY)*(py-targetY))
+                                |> List.minBy snd
+                                |> fst
+                                |> fun index -> if playback.Length <= 1 then 1. else float index / float (playback.Length-1)
+                        checkpoint["phase"] <- flt phase
+                    else
+                        // A target outside the kept interval is confirmed as a
+                        // miss when the cropped flight finishes.
+                        checkpoint["phase"] <- flt 1.
                 checkpoint)
-        let stageJson =
-            List.zip stages stagePresentations |> List.mapi (fun index (stage,presentation) ->
-                let points = stagePoints[index] |> List.map (fun (point,height) -> arr [flt point;flt height])
-                let values = stageValues[index]
-                let paths = stagePaths[index] |> List.map (fun path ->
-                    let json=pathJson path
-                    if stage.Segments |> List.exists (fun segment -> Piecewise.hasSymbolicRounding segment.Expression) then json["approximateEnds"]<-boolean true
-                    json)
-                let valueLatex = values |> List.map (exactLatex >> str)
-                let json = obj [
-                    "id",str (if index=0 then "source" else s.Nodes[index-1].Id)
-                    "expression",str presentation.ExpressionText; "latex",str presentation.Latex
-                    "points",arr points
-                    "paths",arr paths
-                    "values",arr (values |> List.map (fun value -> str (value.ToString())))
-                    "valueLatex",arr valueLatex ]
-                if index > 0 && s.Nodes[index-1].Op = "S" then
-                    let incoming = stages[index-1]
-                    let incomingEvaluators = stageEvaluators[index-1]
-                    json["projection"] <- arr (sampleXs |> List.map (fun point ->
-                        let angle = Math.PI * numericAt point incoming incomingEvaluators / 2.
-                        arr [flt (Math.Cos(angle));flt (Math.Sin(angle))]))
-                json)
-        let points = List.last stagePoints |> List.map (fun (point,height) -> arr [flt point;flt height])
-        let finalPaths = List.last stagePaths |> List.map (fun path ->
+        let stageJson = baseEvaluation.StageJsonTemplates |> List.map (fun template -> template.DeepClone())
+        let finalKnown =
+            (presentationGoals,finalValues)
+            ||> List.map2 (fun goal value -> Piecewise.toFloat (Piecewise.parseRational goal.X),exactNumber value)
+            |> Map.ofList
+        let finalBaseEvaluators = List.last baseEvaluation.StageEvaluators
+        let outputEvaluators =
+            outputFinal.Segments
+            |> List.map (fun segment ->
+                finalBaseEvaluators
+                |> List.tryFind (fun evaluator -> evaluator.Segment.Expression = segment.Expression)
+                |> Option.map (fun evaluator -> { evaluator with Segment=segment })
+                |> Option.defaultWith (fun () -> numericSegments { outputFinal with Segments=[segment] } |> List.head))
+            |> List.map (fun evaluator ->
+                if Piecewise.hasSymbolicRounding evaluator.Segment.Expression then
+                    { evaluator with Evaluate=fun point -> Map.tryFind point finalKnown |> Option.defaultWith (fun () -> evaluator.Evaluate point) }
+                else evaluator)
+        let outputPoints =
+            outputSampleXs
+            |> List.choose (fun point ->
+                if Piecewise.isDefinedAt point outputFinal then Some (Piecewise.toFloat point,numericAt point outputFinal outputEvaluators)
+                else None)
+        let points = outputPoints |> List.map (fun (point,height) -> arr [flt point;flt height])
+        let outputPaths = piecewisePathsWithEvaluators outputSampleXs outputEvaluators
+        let finalPaths = outputPaths |> List.map (fun path ->
             let json=pathJson path
-            if final.Segments |> List.exists (fun segment -> Piecewise.hasSymbolicRounding segment.Expression) then json["approximateEnds"]<-boolean true
+            if outputFinal.Segments |> List.exists (fun segment -> Piecewise.hasSymbolicRounding segment.Expression) then json["approximateEnds"]<-boolean true
             json)
-        let startSlope = Piecewise.rightSlopeAtZero x final |> asFloat |> checkedPreviewValue
-        let constructed = constructedLatex s
+        let startPoint = cropBounds |> Option.map fst |> Option.defaultValue Piecewise.zero
+        let startSlope = Piecewise.rightSlopeAt x startPoint outputFinal |> asFloat |> checkedPreviewValue
+        let cropHit,requiredBounds =
+            if s.Mode <> "puzzle" then true,None
+            else
+                match (cropDefinitions |> Map.tryFind s.Source),s.Crop with
+                | Some (_,required),Some current ->
+                    let hit = Piecewise.parseRational current.From = Piecewise.parseRational required.From &&
+                              Piecewise.parseRational current.To = Piecewise.parseRational required.To
+                    hit,Some (Piecewise.parseRational required.From,Piecewise.parseRational required.To)
+                | Some _,None -> false,None
+                | None,_ -> true,None
+        let outlineData =
+            if s.Mode <> "puzzle" then None
+            else
+                outlineDefinitions |> Map.tryFind s.Source |> Option.map (fun _ ->
+                    let cached = outlineTarget s.Source relation
+                    let fromPoint,toPoint =
+                        requiredBounds |> Option.defaultValue (Piecewise.zero,Piecewise.ofInt sourceEndpoints[s.Source-1])
+                    let coversRequired =
+                        Piecewise.compareRational outputFinal.DomainStart fromPoint <= 0 &&
+                        Piecewise.compareRational outputFinal.DomainEnd toPoint >= 0
+                    let hit = coversRequired && cachedOutlineHit s.Source fromPoint toPoint outputFinal cached.Function
+                    cached.Paths,hit)
+        let outlineHit = outlineData |> Option.map snd |> Option.defaultValue true
+        let constructed =
+            match cropBounds with
+            | None -> baseEvaluation.ConstructedLatex
+            | Some (fromPoint,toPoint) ->
+                sprintf "%s \\quad \\text{for} \\quad %s"
+                    baseEvaluation.ConstructedLatex (Piecewise.intervalConditionLatex fromPoint toPoint)
         let result = obj [
             "constructedLatex",str constructed
             "stages",arr stageJson; "checkpoints",arr checkpoints; "points",arr points
             "paths",arr finalPaths
             "startSlope",flt startSlope
-            "solved",boolean (s.Mode<>"remix" && checkpoints |> List.forall (fun checkpoint -> checkpoint["hit"].GetValue<bool>())) ]
+            "solved",boolean (s.Mode<>"remix" && cropHit && outlineHit && checkpoints |> List.forall (fun checkpoint -> checkpoint["hit"].GetValue<bool>())) ]
+        match s.Crop with
+        | Some crop ->
+            let fromPoint,toPoint = Piecewise.parseRational crop.From,Piecewise.parseRational crop.To
+            let cropResult = obj [
+                "from",str crop.From; "to",str crop.To
+                "fromNumber",flt (Piecewise.toFloat fromPoint); "toNumber",flt (Piecewise.toFloat toPoint)
+                "editable",boolean (s.Mode <> "challenge"); "hit",boolean cropHit ]
+            match requiredBounds with
+            | Some (requiredFrom,requiredTo) ->
+                cropResult["required"] <- obj ["from",str (Piecewise.rationalText requiredFrom);"to",str (Piecewise.rationalText requiredTo)]
+            | None -> ()
+            result["crop"] <- cropResult
+            result["equationLatex"] <- str (sprintf "%s = %s" (if relation then "h^{2}" else "h") (Piecewise.providedLatex finalPresentation.Simplified))
+        | None -> ()
+        match outlineData with
+        | Some (paths,hit) ->
+            result["outline"] <- obj ["paths",arr (paths |> List.map pathJson);"hit",boolean hit]
+        | None -> ()
         if relation then
             let solution = relationSolution.Value
             result["relation"] <- obj [
@@ -1565,7 +1887,7 @@ module Game =
         result
 
     let polynomialResultJson s =
-        if isHeightSquaredSource s.Source || s.Nodes |> List.exists (fun node -> List.contains node.Op ["S";"F";"C"])
+        if Option.isSome s.Crop || isHeightSquaredSource s.Source || s.Nodes |> List.exists (fun node -> List.contains node.Op ["S";"F";"C"])
         then segmentedPolynomialResultJson s
         else continuousPolynomialResultJson s
 
@@ -1662,26 +1984,30 @@ module Game =
         match s.Circle with
         | Some circle -> circleResultJson s circle
         | None -> polynomialResultJson s
-    let importArtifact n =
-        keys n [ "schema"; "rules"; "engine"; "type"; "sourceId"; "nodes"; "view"; "goals"; "inventory"; "limit"; "circle" ]
+    let importArtifact (n: JsonNode) =
+        keys n [ "schema"; "rules"; "engine"; "type"; "sourceId"; "nodes"; "view"; "goals"; "inventory"; "limit"; "circle"; "crop" ]
         if intField n "schema" <> 1 || stringField n "rules" <> rules || stringField n "engine" <> engine then invalidInput "version" "Unsupported file version."
         if not (isNull n["view"]) && not (List.contains (stringField n "view") ["flight";"function";"flow"]) then invalidInput "view" "Unknown presentation."
         let source = intField n "sourceId"
         let s = initial source "remix"
+        let artifactCrop =
+            match n with
+            | :? JsonObject as artifact when artifact.ContainsKey("crop") -> Some (readCrop source artifact["crop"])
+            | _ -> None
         match stringField n "type" with
         | "creation" ->
             if isCircleSource source then
                 keys n [ "schema"; "rules"; "engine"; "type"; "sourceId"; "nodes"; "view"; "circle" ]
                 { s with Nodes=readNodes (field n "nodes"); Circle=Some (readCircle (field n "circle")) } |> validate
             else
-                keys n [ "schema"; "rules"; "engine"; "type"; "sourceId"; "nodes"; "view" ]
-                { s with Nodes=readNodes (field n "nodes") } |> validate
+                keys n [ "schema"; "rules"; "engine"; "type"; "sourceId"; "nodes"; "view"; "crop" ]
+                { s with Nodes=readNodes (field n "nodes"); Crop=artifactCrop } |> validate
         | "challenge" ->
-            keys n [ "schema"; "rules"; "engine"; "type"; "sourceId"; "view"; "goals"; "inventory"; "limit" ]
-            { s with Mode="challenge"; Goals=readGoals source false (field n "goals")
-                     Inventory=readInventory (field n "inventory"); Limit=intField n "limit" } |> validate
+            keys n [ "schema"; "rules"; "engine"; "type"; "sourceId"; "view"; "goals"; "inventory"; "limit"; "crop" ]
+            { s with Mode="challenge"; Goals=readGoals source false true artifactCrop (field n "goals")
+                     Inventory=readInventory (field n "inventory"); Limit=intField n "limit"; Crop=artifactCrop } |> validate
         | _ -> invalidInput "type" "Choose a creation or challenge file."
-    let command s a =
+    let command s (a: JsonNode) =
         match stringField a "type" with
         | "evaluate" | "export" -> s
         | "level" -> initial (intField a "sourceId") (stringField a "mode")
@@ -1694,11 +2020,15 @@ module Game =
                 { s with Circle=Some resetCircle }
             | None ->
                 let nodes = s.Station |> Option.map (fun station -> [{ Id=station.Id; Op=station.Op }]) |> Option.defaultValue []
-                { s with Nodes=nodes }
+                let crop =
+                    if s.Mode = "puzzle" then (initial s.Source "puzzle").Crop
+                    elif s.Mode = "challenge" then s.Crop
+                    else None
+                { s with Nodes=nodes; Crop=crop }
         | "remix" ->
             match s.Circle with
             | Some circle -> { initial s.Source "remix" with Circle=Some circle; Goals=[] }
-            | None -> { initial s.Source "remix" with Nodes=s.Nodes }
+            | None -> { initial s.Source "remix" with Nodes=s.Nodes; Crop=s.Crop }
         | "source" ->
             if s.Mode <> "remix" then invalidInput "mode" "Starting curves can only be changed in creation mode."
             let source = intField a "sourceId"
@@ -1707,12 +2037,36 @@ module Game =
                 let next = initial source "remix"
                 { next with Circle=(s.Circle |> Option.orElse next.Circle); Nodes=[]; Goals=[] }
             else
-                { initial source "remix" with Nodes=s.Nodes; Goals=[] }
+                let next = initial source "remix"
+                let crop =
+                    match s.Crop with
+                    | None -> None
+                    | Some current ->
+                        let fromPoint,toPoint = Piecewise.parseRational current.From,Piecewise.parseRational current.To
+                        let endpoint = Piecewise.ofInt sourceEndpoints[source-1]
+                        if Piecewise.compareRational fromPoint endpoint >= 0 then None
+                        else
+                            let clippedTo = if Piecewise.compareRational toPoint endpoint > 0 then endpoint else toPoint
+                            Some { From=Piecewise.rationalText fromPoint; To=Piecewise.rationalText clippedTo }
+                { next with Nodes=s.Nodes; Goals=[]; Crop=crop }
         | "circle" ->
             if not (isCircleSource s.Source) then invalidInput "circle" "The current source is not a circle."
             keys a [ "type"; "x"; "y"; "radius" ]
             let circle = readCircle (obj [ "x",str (stringField a "x"); "y",str (stringField a "y"); "radius",str (stringField a "radius") ])
             { s with Circle=Some circle }
+        | "crop" ->
+            if isCircleSource s.Source then invalidInput "crop" "Circle sources do not support Crop."
+            if s.Mode = "challenge" then invalidInput "crop" "A shared challenge keeps its Crop interval fixed."
+            if s.Mode = "puzzle" && not (cropDefinitions |> Map.containsKey s.Source) then
+                invalidInput "crop" "This authored puzzle does not use Crop."
+            match a with
+            | :? JsonObject as action when action.ContainsKey("clear") && boolField a "clear" ->
+                keys a [ "type"; "clear" ]
+                if s.Mode <> "remix" then invalidInput "crop" "Authored Crop intervals cannot be removed."
+                { s with Crop=None }
+            | _ ->
+                keys a [ "type"; "from"; "to" ]
+                { s with Crop=Some (readCrop s.Source (obj ["from",str (stringField a "from");"to",str (stringField a "to")])) }
         | "insert" ->
             let index = intField a "index"
             if index < 0 || index > s.Nodes.Length then invalidInput "position" "Invalid insertion position."
@@ -1738,11 +2092,12 @@ module Game =
         if not (List.contains view ["flight";"function";"flow"]) then invalidInput "view" "Unknown presentation."
         let artifactSource = if kind = "challenge" && Option.isSome s.Circle then 43 else s.Source
         let common = [ "schema",num 1; "rules",str rules; "engine",str engine; "type",str kind; "sourceId",num artifactSource; "view",str view ]
+        let cropFields = s.Crop |> Option.map (fun crop -> ["crop",cropJson crop]) |> Option.defaultValue []
         match kind with
         | "creation" ->
             match s.Circle with
             | Some circle -> obj (common @ ["nodes",nodesJson s.Nodes;"circle",circleJson circle])
-            | None -> obj (common @ ["nodes",nodesJson s.Nodes])
+            | None -> obj (common @ ["nodes",nodesJson s.Nodes] @ cropFields)
         | "challenge" ->
             // The evaluated legal construction is the witness. Its solution is never exported.
             let goals,inventory,limit =
@@ -1764,8 +2119,9 @@ module Game =
                     if resultCheckpoints.Length <> referenceGoals.Length then
                         invalidInput "export" "This height-squared construction does not have the required authored checkpoint positions."
                     let generated =
-                        (resultCheckpoints,referenceGoals)
-                        ||> List.map2 (fun checkpoint referenceGoal ->
+                        List.zip resultCheckpoints referenceGoals
+                        |> List.filter (fun (_,referenceGoal) -> goalIsInsideCrop s.Crop referenceGoal.X)
+                        |> List.map (fun (checkpoint,referenceGoal) ->
                             let squaredHeight =
                                 Piecewise.tryParseRational (stringField checkpoint "actual")
                                 |> Option.defaultWith (fun () ->
@@ -1782,7 +2138,9 @@ module Game =
                     generated,(s.Nodes |> List.countBy (fun node -> node.Op) |> Map.ofList),s.Nodes.Length
                 | None ->
                     let generated : Goal list =
-                        result["checkpoints"] |> array |> List.map (fun checkpoint ->
+                        result["checkpoints"] |> array
+                        |> List.filter (fun checkpoint -> goalIsInsideCrop s.Crop (stringField checkpoint "x"))
+                        |> List.map (fun checkpoint ->
                             let exact =
                                 Piecewise.tryParseRational (stringField checkpoint "actual")
                                 |> Option.defaultWith (fun () ->
@@ -1793,7 +2151,7 @@ module Game =
                         if not (Double.IsFinite(height)) || abs height > maxTargetMagnitude then
                             invalidInput "export" "This construction's checkpoint values exceed the supported challenge target range."
                     generated,(s.Nodes |> List.countBy (fun node -> node.Op) |> Map.ofList),s.Nodes.Length
-            let artifact = obj (common @ ["goals",goalsJson goals;"inventory",inventoryJson inventory;"limit",num limit])
+            let artifact = obj (common @ ["goals",goalsJson goals;"inventory",inventoryJson inventory;"limit",num limit] @ cropFields)
             // Keep export and import contracts locked together so no successful export can make a broken link.
             try importArtifact artifact |> ignore
             with :? ArgumentException ->

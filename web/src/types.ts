@@ -5,22 +5,24 @@ export interface Part { id: string; op: Op }
 export interface Station { id: string; op: Op; before: number; after: number }
 export interface Goal { x: string; y: string }
 export interface Circle { x:string; y:string; radius:string }
+export interface Crop { from:string; to:string }
 export interface State {
   schema: 1; rules: 'vine-1'; engine: 'AngouriMath-2.5.0'; sourceId: number;
   mode: 'puzzle' | 'remix' | 'challenge'; nodes: Part[]; goals: Goal[];
   inventory: Partial<Record<Op, number>>; limit: number;
   station?: Station;
   circle?: Circle;
+  crop?: Crop;
 }
 export type Point = [number,number];
 export interface CurvePath { points:Point[]; startClosed:boolean; endClosed:boolean; approximateEnds?:boolean }
 export interface Stage { id: string; expression: string; latex: string; values: string[]; valueLatex?:string[]; points: Point[]; paths?:CurvePath[]; projection?:Point[] }
-export interface Checkpoint { x: string; target: string; actual: string; actualLatex?:string; actualNumber?:number; hit: boolean; y: number; phase?:number; lhs?:string; rhs?:string; dx?:string; dy?:string; dxSquared?:string; dySquared?:string }
+export interface Checkpoint { x: string; target: string; actual: string; actualLatex?:string; actualNumber?:number; defined?:boolean; hit: boolean; y: number; phase?:number; lhs?:string; rhs?:string; dx?:string; dy?:string; dxSquared?:string; dySquared?:string }
 export interface CircleResult { equationLatex:string; radiusSquared:string; centre:[number,number]; radius:number; editable:(keyof Circle)[]; bounds:{minX:number;maxX:number;minY:number;maxY:number}; tangent:[number,number]; initial:Circle }
 export interface HeightGuide { fromX:string; toX:string; target:string; actual:string; actualLatex?:string; hit:boolean; stages:{from:string;to:string;gap:string;fromLatex?:string;toLatex?:string;gapLatex?:string;fromNumber?:number;toNumber?:number;gapNumber?:number}[] }
 export interface RelationResult { kind:'height-squared'; equationLatex:string; solvedLatex?:string; solvedLines?:{heightLatex:string;conditionLatex:string}[]; paths:CurvePath[]; playback:Point[]; breaks:number[]; flights?:[number,number][] }
-export interface Result { constructedLatex: string; stages: Stage[]; checkpoints: Checkpoint[]; points: Point[]; paths?:CurvePath[]; startSlope: number; solved: boolean; heightGuide?:HeightGuide; circle?:CircleResult; relation?:RelationResult }
-export interface Artifact { schema: number; rules: string; engine: string; type: string; sourceId: number; view: View; nodes?: Part[]; goals?: Goal[]; inventory?: Partial<Record<Op,number>>; limit?: number; circle?:Circle }
+export interface Result { constructedLatex: string; equationLatex?:string; stages: Stage[]; checkpoints: Checkpoint[]; points: Point[]; paths?:CurvePath[]; startSlope: number; solved: boolean; heightGuide?:HeightGuide; circle?:CircleResult; relation?:RelationResult; crop?:Crop & {fromNumber:number;toNumber:number;editable:boolean;required?:Crop;hit:boolean}; outline?:{paths:CurvePath[];hit:boolean} }
+export interface Artifact { schema: number; rules: string; engine: string; type: string; sourceId: number; view: View; nodes?: Part[]; goals?: Goal[]; inventory?: Partial<Record<Op,number>>; limit?: number; circle?:Circle; crop?:Crop }
 export interface Response { status: 'ok' | 'invalid' | 'error'; state?: State; result?: Result; message?: string; artifact?: Artifact }
 export type Action = { type: string; [key: string]: unknown };
 export const OPS: Record<Op, { name: string; formula: string; description: string; color: string }> = {
@@ -28,11 +30,11 @@ export const OPS: Record<Op, { name: string; formula: string; description: strin
   A: { name: 'Add one', formula: '\\square + 1', description: 'Add one to the input.', color: 'peach' },
   N: { name: 'Negate', formula: '-\\square', description: 'Reverse the input’s sign.', color: 'blue' },
   Q: { name: 'Square', formula: '\\square^{2}', description: 'Multiply the input by itself.', color: 'lilac' },
-  D: { name: 'Find slope', formula: '\\frac{\\mathrm{d}\\square}{\\mathrm{d}x}', description: 'Take the input’s slope at each position.', color: 'gold' },
+  D: { name: 'Find slope', formula: '\\frac{\\mathrm{d}\\square}{\\mathrm{d}x}', description: 'Take the input’s slope at each position.', color: 'sea' },
   I: { name: 'Accumulate', formula: '\\int_0^x\\!\\square', description: 'Accumulate signed area from zero to this position. The result starts at zero.', color: 'teal' },
-  S: { name: 'Sine', formula: '\\sin\\!\\left(\\frac{\\pi\\square}{2}\\right)', description: 'Turn each input unit a quarter of a circle. Read its height.', color: 'blue' },
-  F: { name: 'Floor', formula: '\\lfloor\\square\\rfloor', description: 'Round down to the next whole number. Exact whole numbers stay put.', color: 'peach' },
-  C: { name: 'Ceiling', formula: '\\lceil\\square\\rceil', description: 'Round up to the next whole number. Exact whole numbers stay put.', color: 'gold' }
+  S: { name: 'Sine', formula: '\\sin\\!\\left(\\frac{\\pi\\square}{2}\\right)', description: 'Turn each input unit a quarter of a circle. Read its height.', color: 'rose' },
+  F: { name: 'Floor', formula: '\\lfloor\\square\\rfloor', description: 'Round down to the next whole number. Exact whole numbers stay put.', color: 'slate' },
+  C: { name: 'Ceiling', formula: '\\lceil\\square\\rceil', description: 'Round up to the next whole number. Exact whole numbers stay put.', color: 'sky' }
 };
 export const LEVELS = [
   { name: 'Lower the arc', hint: 'Which move keeps the ends at zero?', y: [-0.8,5.2] },
@@ -90,12 +92,12 @@ export const CHAPTERS = [
   { name:'Reflection', idea:'Turn, then place', color:'blue', zero:18, before:'M3 18Q18 46 33 18', after:'M3 18Q18-10 33 18', levels:[6,8,9,26] },
   { name:'Bowls and arches', idea:'Build in parts', color:'lilac', zero:23, before:'M3 33L33 13', after:'M3 3Q18 43 33 3', levels:[7,10,4,27,28] },
   { name:'Flat tops', idea:'Familiar moves, new silhouettes', color:'peach', zero:30, before:'M3 4Q18 56 33 4', after:'M3 4C7 29 11 30 18 30C25 30 29 29 33 4', levels:[12,13,29,30,31,11] },
-  { name:'Slopes', idea:'Shape what changes', color:'gold', zero:23, before:'M3 3Q18 43 33 3', after:'M3 32L33 14', levels:[32,33,34,35,36] },
+  { name:'Slopes', idea:'Shape what changes', color:'sea', zero:23, before:'M3 3Q18 43 33 3', after:'M3 32L33 14', levels:[32,33,34,35,36] },
   { name:'Accumulation', idea:'Shape what builds up', color:'teal', zero:29, before:'M3 18H33', after:'M3 29L33 7', levels:[37,38,39,40,41,42] },
   { name:'Loops', idea:'One equation. Both sides.', color:'lilac', zero:18, before:'M4 18Q18-10 32 18', after:'M32 18A14 14 0 1 1 4 18A14 14 0 1 1 32 18', levels:[43,44,48,68,69,70,66,49,71] },
-  { name:'Waves', idea:'A circle unfolds', color:'blue', zero:18, before:'M3 32L33 4', after:'M3 18C8-1 13-1 18 18S28 37 33 18', levels:[50,51,52,53,54,55] },
-  { name:'Steps', idea:'Shape the jumps and what builds up', color:'peach', zero:30, before:'M3 30L33 3', after:'M3 30H13M13 20H23M23 10H33', levels:[56,57,58,59,60,61,62,63] },
-  { name:'Together', idea:'Build in parts. Bring them together.', color:'teal', zero:18, before:'M3 18H10V4H26V18H33', after:'M3 18H8Q18-8 28 18Q18 44 8 18M28 18H33', levels:[64,65,67] }
+  { name:'Waves', idea:'A circle unfolds', color:'rose', zero:18, before:'M3 32L33 4', after:'M3 18C8-1 13-1 18 18S28 37 33 18', levels:[50,51,52,53,54,55] },
+  { name:'Steps', idea:'Shape the jumps and what builds up', color:'slate', zero:30, before:'M3 30L33 3', after:'M3 30H13M13 20H23M23 10H33', levels:[56,57,58,59,60,61,62,63] },
+  { name:'The shape garden', idea:'Make a picture. Master the connections.', color:'teal', zero:18, before:'M3 18H10V4H26V18H33', after:'M3 18H8Q18-8 28 18Q18 44 8 18M28 18H33', levels:[72,73,74,75,76,77,64,65,67] }
 ];
 export const PUZZLE_ORDER = CHAPTERS.flatMap(chapter=>chapter.levels);
 // Earlier authored puzzles retain their IDs and rules in a small optional collection.
@@ -104,6 +106,8 @@ export const GEOMETRY_PUZZLES = [45,46,47];
 export const OPTIONAL_PUZZLES = [...EXTRA_PUZZLES,...GEOMETRY_PUZZLES];
 export const chapterIndex=(sourceId:number)=>CHAPTERS.findIndex(chapter=>chapter.levels.includes(sourceId));
 export const isCapstone=(sourceId:number)=>CHAPTERS.some(chapter=>chapter.levels.at(-1)===sourceId);
+export const isMastery=(sourceId:number)=>[64,65,67].includes(sourceId);
+export const isPicture=(sourceId:number)=>sourceId>=72&&sourceId<=77;
 export const puzzleLabel=(sourceId:number)=>{const chapter=chapterIndex(sourceId);return chapter<0?'Bonus':`${chapter+1}.${CHAPTERS[chapter].levels.indexOf(sourceId)+1}`;};
 export const CURVES = [
   { id:1, name:'Arch', latex:'x(4-x)', path:'M3 29Q18-16 33 29' },

@@ -63,7 +63,7 @@ export class ShapeNotes {
     this.content.innerHTML='<p class="notes-loading">Opening the sketches…</p>';
     try {
       const sketches=new LessonSketches(this.kernel,this.source,this.known,this.examples);
-      const html=await renderReference(topic,this.known,{example:(source,ops)=>sketches.example(source,ops),circleExample:(x,y,radius,goals)=>sketches.circleExample(x,y,radius,goals)});
+      const html=await renderReference(topic,this.known,{example:(source,ops)=>sketches.example(source,ops),circleExample:(x,y,radius,goals)=>sketches.circleExample(x,y,radius,goals),cropExample:(from,to)=>sketches.cropExample(from,to)});
       if(version!==this.version)return;
       const prompt=this.source&&topic===chapterIndex(this.source)?`<aside class="note-question"><strong>${lesson(this.source)}</strong></aside>`:'';
       this.content.innerHTML=prompt+html;
@@ -102,6 +102,23 @@ class LessonSketches {
         const state={...initial.state,nodes:[...ops].map((op,i)=>({id:`note-${i}`,op:op as Op}))};
         const reply=await this.kernel.run(state,{type:'evaluate'});
         if(reply.status!=='ok'||!reply.result)throw new Error('Example unavailable');
+        return reply.result;
+      })();
+      this.examples.set(key,cached);
+      void cached.catch(()=>this.examples.delete(key));
+    }
+    return cached;
+  }
+
+  cropExample(from:string,to:string) {
+    const key=`crop:${from}:${to}`;
+    let cached=this.examples.get(key);
+    if(!cached) {
+      cached=(async()=>{
+        const initial=await this.kernel.run(undefined,{type:'level',sourceId:72,mode:'remix'});
+        if(initial.status!=='ok'||!initial.state)throw new Error('Crop example unavailable');
+        const reply=await this.kernel.run({...initial.state,crop:{from,to}},{type:'evaluate'});
+        if(reply.status!=='ok'||!reply.result?.crop)throw new Error('Crop example unavailable');
         return reply.result;
       })();
       this.examples.set(key,cached);
@@ -276,12 +293,12 @@ class LessonSketches {
     const roof=await this.circleRoofLesson();
     if(!this.known.has(66))return '<h3>Build an equation with two heights.</h3>'+roof+recall([43,44],'From centre and radius to a roof',await this.geometryEquationConnection());
     const paired=await this.pairedRoofLesson();
-    if(!this.known.has(49))return '<h3>One roof. Matching heights above and below.</h3>'+paired+recall([48],'A roof becomes a loop',roof)+recall([43,44],'Geometry behind the equation',await this.geometryEquationConnection());
+    if(!this.known.has(49))return '<h3>The right side chooses rounded or pointed ends.</h3>'+paired+recall([48],'A roof becomes a loop',roof)+recall([43,44],'Geometry behind the equation',await this.geometryEquationConnection());
     const final=await this.kernel.run(undefined,{type:'level',sourceId:49,mode:'puzzle'});
     if(!final.result)throw new Error('Two-height targets unavailable');
     const targets=final.result.checkpoints.map(point=>[fraction(point.x),fraction(point.target)] as [number,number]);
     const geometry=circleSketch([],{targets,bounds:[-2,4,-3,3]});
-    return '<h3>Infer the loop. Then build its equation.</h3><p>The matching heights above and below zero share a horizontal position. That widest pair locates the circle\u2019s centre and radius. A target on zero locates one horizontal edge.</p>'+geometry+'<p class="note-takeaway">Use '+viewButton('function')+' to compare squared heights. In '+viewButton('flow')+', build a roof whose maximum is the squared radius and whose zeros are the circle\u2019s edges. Its scale and block order remain yours to find.</p>'+recall([66],'A roof can make paired parabolas',paired)+recall([48],'How one roof supplies two heights',roof);
+    return '<h3>Infer the loop. Then build its equation.</h3><p>The matching heights above and below zero share a horizontal position. That widest pair locates the circle\u2019s centre and radius. A target on zero locates one horizontal edge.</p>'+geometry+'<p class="note-takeaway">Use '+viewButton('function')+' to compare squared heights. In '+viewButton('flow')+', build a roof whose maximum is the squared radius and whose zeros are the circle\u2019s edges. Its scale and block order remain yours to find.</p>'+recall([66],'Rounded or pointed ends',paired)+recall([48],'How one roof supplies two heights',roof);
   }
 
   private async circleRoofLesson() {
@@ -291,9 +308,12 @@ class LessonSketches {
   }
 
   private async pairedRoofLesson() {
-    const doubled=await this.example(66,'Q');
-    if(!doubled.relation?.solvedLatex)throw new Error('Solved relation unavailable');
-    return '<p>The supplied roof already has the desired parabolic shape. Squaring it on the right of the squared-height equation makes the solved heights equal to the positive and negative copies of that roof.</p>'+compare('Roof or squared roof?', [{label:'Provided roof',stage:doubled.stages[0]},{label:'Squared right-hand side',stage:doubled.stages.at(-1)!,before:doubled.stages[0]}])+relationSketch(doubled,'The kernel solves the equation into two parabolic heights.')+'<p class="note-takeaway">This is the algebraic version of equal distance above and below a centre line: one magnitude, two signs.</p>';
+    const [rounded,pointed]=await Promise.all([this.example(66,''),this.example(66,'Q')]);
+    if(!rounded.relation?.solvedLatex||!pointed.relation?.solvedLatex)throw new Error('Solved relation unavailable');
+    return '<p>With the roof itself on the right, solving for height takes its square root. The two branches bend into rounded ends. Squaring the roof first changes the solved heights to positive and negative copies of the roof, which meet in pointed ends.</p>'+diagramChoices('Same roof. Rounded or pointed ends.',[
+      {label:'Roof',html:relationSketch(rounded,'Square-root branches have rounded ends.')},
+      {label:'Roof squared',html:relationSketch(pointed,'Copied roof branches meet in points.',{before:rounded})}
+    ])+`<p>${tex('h^2=a\\ \\Longrightarrow\\ h=\\pm\\sqrt a')} ${tex('\\qquad')} ${tex('h^2=a^2\\ \\Longrightarrow\\ h=\\pm a\\quad(a\\ge0)')}</p>`+'<p class="note-takeaway">The zeros still locate the ends. The last square on the right side decides whether those ends are rounded or pointed.</p>';
   }
 
   private async geometryEquationConnection() {
@@ -362,14 +382,58 @@ class LessonSketches {
   }
 
   private async togetherNotes():Promise<string> {
+    const [fullWave,keptLobe]=await Promise.all([this.cropExample('0','4'),this.cropExample('0','2')]);
+    const reference=(id:number)=>`<p class="note-reference">${lesson(id)}</p>`;
+    const finalDrawing=(result:Result):Result['stages'][number]=>({...result.stages.at(-1)!,points:result.points,paths:result.paths});
+    const cropLesson='<p>Crop keeps a chosen horizontal interval and removes the rest of the drawing. It does not move the curve or change any retained height.</p>'+strip([finalDrawing(fullWave),finalDrawing(keptLobe)],['Whole wave: 0 to 4','Kept lobe: 0 to 2'],['<strong>Crop</strong>'])+`<p>${tex('0\\le x\\le2')}</p>`+reference(72);
+    const artLessons:[number,string,string][]=[[72,'Crop changes extent, not height',cropLesson]];
+    if(this.known.has(73)) {
+      const anchored=await this.example(37,'I');
+      const body='<p>Accumulation is still anchored at zero before the finished curve is cropped. The crop changes which part is drawn; it does not restart the accumulated amount at its left edge.</p>'+strip(anchored.stages,['Input','Area accumulated from zero'],[move('I')])+`<p>${tex('F(x)=\\int_0^x h(u)\\,\\mathrm{d}u')}</p>`+reference(73);
+      artLessons.push([73,'Cropping does not move the area anchor',body]);
+    }
+    if(this.known.has(74)) {
+      const moon=await this.example(68,'HH');
+      const body="<p>The zeros of the right side set a loop's horizontal edges. Its maximum squared height sets its thickness, so a smaller maximum makes a thinner loop without moving those zeros. At one position, call the right-side value "+tex('a')+'.</p>'+relationSketch(moon,'Zeros set the edges; squared height sets the reach.')+`<p>${tex('h^2=a\\qquad h=\\pm\\sqrt a')}</p>`+reference(74);
+      artLessons.push([74,'Zeros and squared height size a loop',body]);
+    }
+    if(this.known.has(75)) {
+      const leaf=await this.example(66,'Q');
+      const body='<p>A line can first become a nonnegative roof with two zeros. When the squared-height equation uses the square of that roof, its solved branches are positive and negative copies that meet at those zeros.</p>'+relationSketch(leaf,'Copied roof branches make a pointed outline.')+reference(75);
+      artLessons.push([75,'Build a pointed leaf from a roof',body]);
+    }
+    if(this.known.has(76)) {
+      const ripple=await this.example(54,'S');
+      const body='<p>Changes before sine set phase and period. Changes afterward set amplitude and baseline. Crop then keeps the useful part without changing those fitted heights.</p>'+strip([ripple.stages.at(-2)!,ripple.stages.at(-1)!],['Input phase','Wave height'],[move('S')])+reference(76);
+      artLessons.push([76,'Fit a wave before framing it',body]);
+    }
+    if(this.known.has(77)) {
+      const [arch,broad,rounded,pointed]=await Promise.all([this.example(8,'NA'),this.example(13,'QNA'),this.example(66,''),this.example(66,'Q')]);
+      const roofs=compare('A flatter bowl makes a broader roof.',[
+        {label:'Familiar arch',stage:arch.stages.at(-1)!},
+        {label:'Broader roof',stage:broad.stages.at(-1)!,before:arch.stages.at(-1)!}
+      ],[],['Familiar arch','Broader roof']);
+      const ends=diagramChoices('The final right side chooses the cap shape.',[
+        {label:'Roof',html:relationSketch(rounded,'Square-root branches round the caps.')},
+        {label:'Roof squared',html:relationSketch(pointed,'Copied branches meet in points.',{before:rounded})}
+      ]);
+      const body='<p>A flatter bowl can become a broader roof after turning and lifting. That controls the body. Separately, leaving a roof unsquared on the right of a squared-height equation makes square-root branches with rounded caps; squaring that final roof would make pointed ends.</p>'+roofs+ends+`<p>At one position, if the right-side roof has value ${tex('a')}, then ${tex('h^2=\\frac a4\\quad\\Longrightarrow\\quad |h|=\\frac{\\sqrt a}{2}')}. The square root belongs to the squared-height relation itself.</p>`+reference(77);
+      artLessons.push([77,'Broadness, rounded caps and thickness are separate',body]);
+    }
+    const visibleArt=artLessons.filter(([id])=>this.known.has(id));
+    if(!this.known.has(64)) {
+      const current=visibleArt.pop()!;
+      return `<h3>${current[1]}.</h3>${current[2]}${visibleArt.reverse().map(([id,title,body])=>recall([id],title,body)).join('')}`;
+    }
+    const artRecall=visibleArt.reverse().map(([id,title,body])=>recall([id],title,body)).join('');
     const [direct,wave]=await Promise.all([this.example(64,'S'),this.example(64,'DS')]);
     const shaped='<p>The cubic input winds around sine’s circle at an uneven rate. Its slope is a bowl, so differentiating first produces a quadratic phase whose heights still reach the circle at unequal horizontal intervals.</p>'+strip(wave.stages,['Cubic input','Slope hidden inside','Wave from that phase'],[move('D'),move('S')])+compare('Which input controls the peak spacing?',[{label:'Cubic phase directly',stage:direct.stages.at(-1)!},{label:'Slope phase',stage:wave.stages.at(-1)!}])+'<p class="note-takeaway">Use '+viewButton('flow')+' to connect each phase height with its place on the circle. Folding and fitting the resulting wave are later jobs.</p>';
-    if(!this.known.has(65))return '<h3>Shape the phase before making the wave.</h3>'+shaped+recall([53,54],'Fold and fit a wave',await this.waveRecall())+recall([66],'How one magnitude supplies two heights',await this.pairedRoofLesson());
+    if(!this.known.has(65))return '<h3>Shape the phase before making the wave.</h3>'+shaped+recall([53,54],'Fold and fit a wave',await this.waveRecall())+recall([66],'How one magnitude supplies two heights',await this.pairedRoofLesson())+artRecall;
     const window=await this.example(65,'AHFSI');
     const building='<p>A shifted and widened floor can isolate one middle region. Sine turns those integer levels into zero, positive, then zero heights; accumulation turns that window into a continuous change.</p>'+strip(window.stages.slice(-4),['Input phase and width','Phased steps','Positive window','Accumulated window'],[move('F'),move('S'),move('I')])+'<p class="note-takeaway">Look for the positive window before accumulating it. Centre and fold the accumulated shape only after that subgoal is visible.</p>';
-    if(!this.known.has(67))return '<h3>Build a window, then build from it.</h3>'+building+recall([64],'Shape a sine phase',shaped)+recall([61,62],'Steps, projection and signed area',await this.stepRecall())+recall([66],'A squared roof makes two branches',await this.pairedRoofLesson());
+    if(!this.known.has(67))return '<h3>Build a window, then build from it.</h3>'+building+recall([64],'Shape a sine phase',shaped)+recall([61,62],'Steps, projection and signed area',await this.stepRecall())+recall([66],'Rounded or pointed ends',await this.pairedRoofLesson())+artRecall;
     const start=await this.example(67,'');
-    return '<h3>Plan the hidden intermediate shapes.</h3><p>The outside regions must become zero while one inside window stays positive. Follow the accumulated total as its value goes from '+tex('0')+' to '+tex('2')+'. Its midpoint value '+tex('1')+' occurs at the symmetry position '+tex('x=2')+'; centre the accumulated values around '+tex('1')+', then fold them.</p>'+strip([start.stages[0]],['Starting curve and required heights'],[],false,start.checkpoints)+'<p class="note-takeaway">At the final relation, distinguish the built height from its square. The squared-height equation asks for both signs of the same magnitude. Work through the subgoals in '+viewButton('flow')+'; the complete block chain remains hidden.</p>'+recall([65],'Window, area, centre and fold',building)+recall([64],'Shape the sine phase',shaped)+recall([66],'A squared roof makes two branches',await this.pairedRoofLesson())+recall([61,62],'Steps and signed accumulation',await this.stepRecall());
+    return '<h3>Plan the hidden intermediate shapes.</h3><p>The outside regions must become zero while one inside window stays positive. Follow the accumulated total as its value goes from '+tex('0')+' to '+tex('2')+'. Its midpoint value '+tex('1')+' occurs at the symmetry position '+tex('x=2')+'; centre the accumulated values around '+tex('1')+', then fold them.</p>'+strip([start.stages[0]],['Starting curve and required heights'],[],false,start.checkpoints)+'<p class="note-takeaway">At the final relation, distinguish the built height from its square. The squared-height equation asks for both signs of the same magnitude. Work through the subgoals in '+viewButton('flow')+'; the complete block chain remains hidden.</p>'+recall([65],'Window, area, centre and fold',building)+recall([64],'Shape the sine phase',shaped)+recall([66],'Rounded or pointed ends',await this.pairedRoofLesson())+recall([61,62],'Steps and signed accumulation',await this.stepRecall())+artRecall;
   }
 
   private async waveRecall() {

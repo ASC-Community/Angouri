@@ -113,7 +113,7 @@ test('the mixed final garden uses the full chain and finishes only the solved so
   await page.locator('#tab-function').click();await expect(page.locator('.equation-verdict')).toHaveCount(10);await expect(page.locator('.katex-error')).toHaveCount(0);
   await page.locator('#launch').click();await expect(page.locator('#launch')).toHaveText('Finish');
   await expect(page.locator('.equation-verdict[data-status="hit"]')).toHaveCount(10);
-  await page.locator('#launch').click();await expect(page.locator('#ending-dialog')).toBeVisible();await expect(page.locator('#ending-progress')).toHaveText('1 of 57 puzzles complete');
+  await page.locator('#launch').click();await expect(page.locator('#ending-dialog')).toBeVisible();await expect(page.locator('#ending-progress')).toHaveText('1 of 63 puzzles complete');
   await expect(page.locator('#ending-dialog')).toContainText('AngouriMath');
 });
 
@@ -135,6 +135,11 @@ test('paired targets have a readable stable opening frame and explicit Fit inclu
   await page.locator('#undo').click();await idle(page);const before=await snapshot(page);
   await page.locator('#circle-fit').click();expect(await snapshot(page)).toEqual(before);
   await expect(page.locator('#circle-fit')).not.toHaveClass(/needs-fit/);expect(await positions()).not.toEqual(initial);
+  await expect(page.locator('#circle-fit')).toHaveAttribute('aria-pressed','true');
+  await page.locator('#tab-flow').click();await expect(page.locator('#circle-fit')).toBeHidden();
+  await page.locator('#tab-flight').click();await page.locator('#circle-fit').click();
+  await expect(page.locator('#circle-fit')).toHaveAttribute('aria-pressed','false');
+  expect(await positions()).toEqual(initial);expect(await snapshot(page)).toEqual(before);
 });
 
 test('floor and ceiling cues put the output on opposite sides of the same input',async({page})=>{

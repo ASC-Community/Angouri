@@ -4,7 +4,7 @@ No participant session has been run. This sheet prepares the plan’s small form
 
 ## Current hypothesis
 
-The main progression has 57 puzzles across ten chapters, including direct and recipe-built loops, waves, steps, and a combined finale. Three geometry puzzles and eleven earlier calculus combinations remain optional with stable rules, for 71 playable sources in total. Fixed calculus stations replace the old derivative-first and integral-first combinations. The change follows an exact audit: the old source-22 challenge allowed 90 solutions and none required squaring before differentiation; the old source-23 challenge likewise did not require squaring before integration. Those combinations did not test the intended new decision.
+The main progression has 63 puzzles across ten chapters, including direct and recipe-built loops, waves, steps, and a combined finale. Three geometry puzzles and eleven earlier calculus combinations remain optional with stable rules, for 77 playable sources in total. Fixed calculus stations replace the old derivative-first and integral-first combinations. The change follows an exact audit: the old source-22 challenge allowed 90 solutions and none required squaring before differentiation; the old source-23 challenge likewise did not require squaring before integration. Those combinations did not test the intended new decision.
 
 Observe whether players distinguish the Input and Output zones and predict where a move belongs. Fixing a station is not sufficient on its own: new tasks must need their inputs. Motion and signed-amount sketches in Flow explain the station while Flight remains the reward. See [game-design.md](game-design.md) for implementation and extension boundaries, including equation-based curves with complete circle relations alongside the polynomial engine.
 
@@ -91,7 +91,7 @@ The main progression uses ten chapters. Each introduces an idea in a small space
 | 7.4 Loops | Grow both sides (68) | Adding one to squared height moves both actual heights away from zero | Which height rises, and which falls? |
 | 7.5 Loops | Half the height (69) | Two halvings of `h²` halve the actual height magnitude | Why is one right-side halve not one actual-height halve? |
 | 7.6 Loops | Where heights exist (70) | Negation changes the regions where the right side is nonnegative | Which intervals will have real heights? |
-| 7.7 Loops | Both sides of a roof (66) | A squared roof yields positive and negative copies | What is being squared: the height or the recipe? |
+| 7.7 Loops | Round or pointed? (66) | A squared roof yields positive and negative copies | What is being squared: the height or the recipe? |
 | 7.8 Loops | Build the whole circle (49) | Infer the circle, then construct its squared-height roof | How do centre and radius determine the roof? |
 | 7.9 Loops | A loop and its echoes (71) | Combine zero placement, scaling, signed regions and a squared-height finish | Which intermediate signed roof accounts for the inner loop and outer echoes? |
 | 8.1 Waves | A quarter turn (50) | Sine reads each input unit as one quarter-turn | Which cycle height comes next? |
@@ -108,15 +108,15 @@ The main progression uses ten chapters. Each introduces an idea in a small space
 | 9.6 Steps | Project the steps (61) | Sine maps integer levels through `0,1,0,-1` | Which signed height follows each step? |
 | 9.7 Steps | Accumulate signed steps (62) | Positive, zero and negative steps make rise, flat and fall | Where will the accumulated path turn? |
 | 9.8 Steps | Shape the staircase area (63) | Shape the signed steps, then the continuous accumulated path | Which intermediate path should exist before the final blocks? |
-| 10.1 Together | Uneven wave spacing (64) | A derivative supplies a nonuniform phase | Where will the wave compress or spread? |
-| 10.2 Together | Build a gate (65) | A finite positive step window accumulates into a ramp and plateau | Which regions should rise or stay flat? |
-| 10.3 Together | The whole garden (67) | Combine slope, thresholds, projection, signed area and paired heights | Which intermediate goal will you build first? |
+| 10.7 Mastery | Uneven wave spacing (64) | A derivative supplies a nonuniform phase | Where will the wave compress or spread? |
+| 10.8 Mastery | Build a gate (65) | A finite positive step window accumulates into a ramp and plateau | Which regions should rise or stay flat? |
+| 10.9 Mastery | One curve, many ideas (67) | Combine slope, thresholds, projection, signed area and paired heights | Which intermediate goal will you build first? |
 
 For adjacent puzzles that reuse a relationship, observe whether the added work feels like a meaningful increase in complexity. Ask what changed from the previous construction and whether that change requires a new planning step. If players experience the second task as repetition, revise its targets or role rather than granting completion through the earlier source.
 
 The last direct-geometry puzzle is optional source 47, with target centre `(5/4,-1/2)` and radius `5/2` (facilitator reference only). Ask for a useful target pair and a predicted direction of centre movement before the edit. After solving, use a creation with a translated or differently sized constellation to probe transfer. The available quarter-step parameter grid is not a difficulty metric; direct manipulation and the chord guide should support a geometric plan. Its Notes should expose the circle prerequisites without revealing future block-built loop lessons. Distinguish a misunderstood perpendicular bisector from a difficult drag, unreadable fraction or missed Equation/Flow view.
 
-The provided-bowl lesson precedes scaling that roof while holding its peak, and both precede the raised-bowl challenge. Chapter lengths are 5, 4, 5, 6, 5, 6, 9, 6, 8 and 3 puzzles. The extension transfer matrix below covers Loops through Together. Each chapter ends with a transfer challenge. The optional collection remains available from the same puzzle menu. In Repeated squaring, compare source 31's provided-bowl summit with source 11's later requirement to construct that bowl; ask players to name the additional planning job rather than treating the two as interchangeable presentations.
+The provided-bowl lesson precedes scaling that roof while holding its peak, and both precede the raised-bowl challenge. Chapter lengths are 5, 4, 5, 6, 5, 6, 9, 6, 8 and 9 puzzles. The extension transfer matrix below covers Loops through Together. Each chapter ends with a transfer challenge. The optional collection remains available from the same puzzle menu. In Repeated squaring, compare source 31's provided-bowl summit with source 11's later requirement to construct that bowl; ask players to name the additional planning job rather than treating the two as interchangeable presentations.
 
 Shape notes offer a visible, optional reference, limited to the current and preceding lessons even when replaying after later completions. Create provides the full reference. Height shows source 24 after `AHH` to explain a quarter lift without completing the puzzle. Reflection shows how `N` carries the raised baseline below zero. Squaring gives the complete `AQ` introduction, then connects its shifted fold to the earlier arch. Slopes names input turns and output placement as separate jobs. Accumulation names input signs and zeros, net change and starting amount. Discovery puzzles show a finding after the accepted move and hide Hints. Notes never contain an active-puzzle plan; capstone Notes name relationships without showing a whole witness. They do not insert blocks or alter the current recipe. See [shape-notes.md](shape-notes.md) for each lesson's information boundary.
 
@@ -146,7 +146,7 @@ The independent exact oracle enumerates all **2,154 legal constructions across t
 
 These counts establish exact legality and solution multiplicity, not how a player searches. A large finite space does not prove that brute-force play is impossible, and a solve does not prove the intended decomposition. Ask for predictions and intermediate goals to distinguish reasoning from enumeration or luck. Chapter 6 integration means signed accumulated area `F(x) = ∫₀ˣ h(u) du`, written with an upright differential d, anchored at zero and without a free constant.
 
-Observe the ending after The whole garden as part of the experience: does Finish feel earned after the last throw, do the chapter badges communicate what was completed, and does the player choose to stop, revisit, create or open Picture Garden? The AngouriMath credit should offer a route to the underlying project without interrupting the payoff. In the optional hands-on coda, observe whether players understand curve stamps and complete Moonlight, Garden and Angouri before the final cucumber drawing animates into the canonical wordmark. Opening or completing source 67 or Picture Garden must not award skipped puzzles; partial progress must remain partial in the ending record.
+Observe the ending after One curve, many ideas as part of the experience: does Finish feel earned after the last throw, do the chapter badges communicate what was completed, and does the player choose to stop, revisit, create or open Picture Garden? The AngouriMath credit should offer a route to the underlying project without interrupting the payoff. In Chapter 10, observe whether the framed lobe teaches domain-only cropping, the stem retains its zero anchor, and the leaf/cucumber constructions transfer loop and flat-roof understanding. Does the assembled picture make these builds feel worthwhile before the Mastery challenges? Opening or completing source 67 or Picture Garden must not award skipped puzzles; partial progress must remain partial in the ending record.
 
 The final challenge is optional: offer stop, an earlier puzzle, refinement or creation without treating any choice as failure. Do not impose an attempt limit or timer. Before an unaided move, invite one brief prediction about a point, zero, sign, symmetry, scale or accumulated area. Use the next chapter combination or changed targets to check transfer; do not count a replayed familiar task as fresh transfer. Log whether a prompt itself revealed the idea; a prompted solution is different evidence from a spontaneous plan. Do not use a low attempt count alone as evidence: a small inventory can be exhausted quickly without understanding.
 
@@ -166,7 +166,7 @@ Recruitment and sending invitations are separate actions requiring user authoriz
 
 ### Transfer into the combined garden
 
-The current route has 57 main puzzles and fourteen optional sources. Observe these connections before judging the finale:
+The current route has 63 main puzzles and fourteen optional sources. Observe these connections before judging the finale:
 
 | Discovery | Prediction before a move | Transfer to look for |
 | --- | --- | --- |
@@ -183,3 +183,9 @@ At 67, ask for the first useful intermediate goal, not the full recipe. A player
 The independent oracle (`py -3 tests/extended_puzzles_oracle.py`, optionally `--shortcuts`) checks the authored witnesses and rational targets without AngouriMath. It accepts the shorter equivalent at 55. The revised 64 rejects the earlier direct linear-wave bypass; 687 shorter candidates were exactly evaluable and missed, while 256 fall outside that oracle's symbolic subset. All 20,160 witness-multiset permutations at 63 were checked; 65 has valid linearity equivalents among its 302,400 permutations. Only 76 local deletion/swap/substitution neighbours at 67 were checked; its 19,958,400 witness-multiset permutations were not enumerated. For source 71, the exact rational search covers all 92,124 legal recipes through its nine-block limit, finds eight solutions, and finds `AHHQNAHQ` as the unique shortest solution at length eight. These are bounded shortcut audits, not evidence that guessing is impossible or that people will find the game satisfying.
 
 Design reference: [The Level Design Book on pacing](https://book.leveldesignbook.com/process/preproduction/pacing) describes alternating intensity and teach/test/twist patterns. This chapter structure is a design hypothesis for Angouri, not a validated difficulty curve or a claim that every game must follow that pattern.
+
+## Picture and mastery transfer checks
+
+At 10.1, move a crop edge and ask whether any retained height should change. At 10.2, ask where the area anchor stays before changing the crop. At 10.3–10.6, ask for a prediction about zeros, thickness or phase before a block move. After the picture is built, observe whether players identify intermediate subgoals in 10.7–10.9 and choose to continue. Mastery labels and large search spaces are not evidence of understanding or fun.
+
+For the leaf/cucumber transfer, ask which outline will have rounded caps before the 7.7 move, and why. At 10.6, ask which earlier idea controls the broad body separately from its endpoints. If a player needs the target recipe from Hints before distinguishing these properties, revisit the rounded/pointed comparison; do not infer understanding from a successful three-square experiment.

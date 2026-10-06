@@ -2,8 +2,11 @@
 .circle-game .palette { display: none; }
 .circle-game .scene[data-view=flight] { min-height: 290px; }
 .circle-game .flight-diagram { max-width: 860px; margin: auto; overflow: clip; }
-.circle-fit { width: 30px; height: 30px; border: 1px solid #cbd8c1; border-radius: 8px; color: #6c8058; }
+.circle-fit { width: auto; min-height: 34px; height: 34px; padding: 4px 8px; gap: 5px; border: 1px solid #cbd8c1; border-radius: 8px; color: #6c8058; font-size: 11px; white-space: nowrap; }
+.circle-fit svg { width: 16px; height: 16px; }
 .circle-fit:hover { background: #eef3e5; }.circle-fit.needs-fit { border-color: #7a9cb2; color: #416c88; background: #e4eff5; }
+.circle-fit[aria-pressed=true] { background: #dae8cd; color: #355b31; border-color: #6c8a56; box-shadow: inset 0 1px 3px #42694025; }
+.scene-toolbar:has(.circle-fit:not([hidden])) { flex-wrap: wrap; }
 .circle-game .construction { overflow: visible; }
 .circle-recipe { display: flex; align-items: center; gap: 24px; min-height: 86px; padding: 9px 4px; }
 .circle-recipe-source { flex: 1; min-width: 0; text-align: center; font-size: 16px; }

@@ -57,7 +57,7 @@ test('Equation keeps node order visible above the kernel simplified result',asyn
   }
 });
 
-test('circle edits preserve the coordinate frame until an explicit fit',async({page})=>{
+test('circle edits keep the default frame and Full curve toggles back without editing',async({page})=>{
   await ready(page,43);
   const marks=()=>page.evaluate(()=>({centre:[...document.querySelectorAll('.circle-centre-mark')].map(el=>[el.getAttribute('cx'),el.getAttribute('cy')]),targets:[...document.querySelectorAll('.ring-outer')].map(el=>[el.getAttribute('cx'),el.getAttribute('cy')])}));
   const initial=await marks(),width=await page.locator('#trajectory').evaluate(el=>el.getBBox().width),state=await page.evaluate(()=>window.angouri.state.circle);
@@ -68,8 +68,51 @@ test('circle edits preserve the coordinate frame until an explicit fit',async({p
   expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
   const before=await workspace(page);await page.locator('#circle-fit').click();await expect(page.locator('#circle-fit')).toBeFocused();
   expect(await workspace(page)).toEqual(before);await expect(page.locator('#circle-fit')).not.toHaveClass(/needs-fit/);
+  await expect(page.locator('#circle-fit')).toHaveAttribute('aria-pressed','true');
   const fitted=await marks();expect(fitted).not.toEqual(initial);
   await page.locator('#tab-flow').click();await expect(page.locator('#circle-fit')).toBeVisible();await page.locator('#tab-flight').click();expect(await marks()).toEqual(fitted);
-  await page.locator('#undo').click();await idle(page);expect(await marks()).toEqual(fitted);
+  await page.locator('#circle-fit').focus();await page.keyboard.press('Space');
+  await expect(page.locator('#circle-fit')).toHaveAttribute('aria-pressed','false');
+  expect(await marks()).toEqual(initial);expect(await workspace(page)).toEqual(before);
+  await page.locator('#circle-fit').click();await page.locator('#undo').click();await idle(page);
+  await expect(page.locator('#circle-fit')).toHaveAttribute('aria-pressed','true');
+  await page.locator('#circle-fit').click();expect(await marks()).toEqual(initial);
   expect(await page.evaluate(()=>window.angouri.state.circle)).toEqual(state);
+});
+
+test('the loaded slingshot and cucumber follow every frame of a curve edit',async({page})=>{
+  await page.emulateMedia({reducedMotion:'no-preference'});await ready(page,3);
+  await page.evaluate(()=>{
+    window.rigSamples=[];let frames=0;
+    const record=()=>{
+      if(window.angouri.state.nodes.length===1){
+        const curve=document.querySelector('#trajectory').getPointAtLength(0),rig=document.querySelector('#launcher'),front=document.querySelector('#launcher-front'),cucumber=document.querySelector('#cucumber');
+        const origin=rig.transform.baseVal.getItem(0).matrix,body=cucumber.transform.baseVal.getItem(0).matrix;
+        const degrees=document.querySelector('#flight-spin').transform.baseVal.getItem(0).angle-90,angle=degrees*Math.PI/180;
+        window.rigSamples.push({y:curve.y,originError:Math.hypot(curve.x-origin.e,curve.y-origin.f),bodyError:Math.hypot(body.e+68*Math.cos(angle)-origin.e,body.f+68*Math.sin(angle)-origin.f),same:rig.getAttribute('transform')===front.getAttribute('transform')});
+      }
+      if(++frames<90)requestAnimationFrame(record);
+    };requestAnimationFrame(record);
+  });
+  await add(page,'A');await page.waitForFunction(()=>window.rigSamples.length>=26);
+  const samples=await page.evaluate(()=>window.rigSamples);
+  expect(Math.max(...samples.map(s=>s.y))-Math.min(...samples.map(s=>s.y))).toBeGreaterThan(15);
+  expect(new Set(samples.map(s=>s.y.toFixed(1))).size).toBeGreaterThan(6);
+  for(const sample of samples){expect(sample.originError).toBeLessThan(.03);expect(sample.bodyError).toBeLessThan(.03);expect(sample.same).toBe(true);}
+});
+
+test('deck formulas stand alone while operation help is available on focus and hover',async({page})=>{
+  await ready(page,1);await page.locator('#menu-open').click();await page.locator('#nav-create').click();await idle(page);
+  await expect(page.locator('.ingredient-face strong')).toHaveCount(0);
+  await page.locator('[data-op="H"]').focus();await page.keyboard.press('Tab');
+  await expect(page.locator('[data-op="A"]')).toBeFocused();
+  await expect(page.locator('#block-tooltip')).toBeVisible();await expect(page.locator('#block-tooltip strong')).toHaveText('Add one');
+  await page.keyboard.press('Escape');await expect(page.locator('#block-tooltip')).toBeHidden();
+  await page.locator('[data-op="Q"]').hover();await expect(page.locator('#block-tooltip strong')).toHaveText('Square');
+  await expect(page.locator('#block-tooltip')).toBeVisible();
+  expect(await page.evaluate(()=>window.angouri.state.nodes)).toEqual([]);
+  await add(page,'A');
+  await expect(page.getByRole('button',{name:'Undo',exact:true})).toBeEnabled();
+  await expect(page.getByRole('button',{name:'Redo',exact:true})).toBeDisabled();
+  await expect(page.locator('.history-actions')).toHaveText('');
 });

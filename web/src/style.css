@@ -1,5 +1,5 @@
 @import 'katex/dist/katex.min.css';
-:root { font-family: Arial, Helvetica, sans-serif; color: #2a4334; background: #f4f7e9; font-synthesis: none; --ink: #2a4334; --muted: #76836b; --line: #dce2d3; --green: #416545; --sage: #e5ecd9; --peach: #f5e5d4; --blue: #e0eaf0; --lilac: #ece5f2; --gold: #f3ebce; }
+:root { font-family: Arial, Helvetica, sans-serif; color: #2a4334; background: #f4f7e9; font-synthesis: none; --ink: #2a4334; --muted: #76836b; --line: #dce2d3; --green: #416545; --sage: #e5ecd9; --peach: #f5e5d4; --blue: #dce2f5; --lilac: #ece5f2; --gold: #f3ebce; }
 * { box-sizing: border-box; }
 :root { --hit: #5d8046; --miss: #b45b55; --miss-ink: #a6504b; }
 body { margin: 0; font-size: 14px; line-height: 1.5; }
@@ -237,6 +237,13 @@ details { border-top: 1px solid var(--line); padding-top: 14px; margin: 16px 0; 
 .curve-thumbnail { flex: none; width: 34px; height: 34px; }.curve-axis { stroke: #c8d3bc; fill: none; stroke-width: .8; }.curve-shape { stroke: #67864d; stroke-width: 1.8; fill: none; stroke-linecap: round; }
 .curve-formula { display: block; margin-top: 6px; font-size: 12px; }
 .curve-selected { margin-left: auto; min-width: 18px; color: #5d8046; }
+.curve-family-heading { grid-column: 1 / -1; display: flex; align-items: center; gap: 9px; margin: 5px 0; color: #4b6840; }
+.curve-family-heading svg { flex-shrink: 0; }
+.curve-family-heading strong { font-size: 12px; font-weight: 500; }
+.curve-family-heading small { display: block; margin-top: 4px; font-size: 11px; color: #748164; }
+.circle-curve-family { grid-column: 1 / -1; padding: 13px; margin-top: 10px; border: 1px solid #bdcde0; border-radius: 12px; background: #ecf1f6; }
+.circle-curve-family .curve-family-heading { margin: 0 0 11px; }
+.circle-curve-family .curve-option { width: 100%; background: #fffef8; }
 @media(max-width:420px) { .curve-choices { grid-template-columns: 1fr; }.curve-option { padding: 9px 12px; }.file-actions { flex-direction: column; } }
 
 @media(max-width:1000px) { .game-shell { padding: 0 20px 18px; }.site-header { padding: 20px 0 5px; }.puzzle-heading h1 { font-size: 30px; } }

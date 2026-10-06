@@ -124,10 +124,17 @@ static class ContractTests
         ["1", "7/4", "1", "1/4", "1"]
     ];
 
-    public static int Main()
+    public static int Main(string[] args)
     {
         try
         {
+            if (args.Contains("--crop-only", StringComparer.Ordinal))
+            {
+                ExtendedPuzzleContract();
+                CropOutlineContract();
+                Console.WriteLine($"PASS: {assertions} focused Crop/outline contract assertions");
+                return 0;
+            }
             ExhaustivePuzzleContract();
             HeightGuideContract();
             RoundRoofContract();
@@ -139,6 +146,7 @@ static class ContractTests
             FixedStationChapterContract();
             ConstructedEquationContract();
             ExtendedPuzzleContract();
+            CropOutlineContract();
             PiecewisePresentationContract();
             ExactEqualityContract();
             HeightSquaredRelationContract();
@@ -2457,9 +2465,10 @@ static class ContractTests
             [58] = "NF", [59] = "HF", [60] = "AHF", [61] = "FS", [62] = "FSI",
             [63] = "AHFSIQNA", [64] = "DSQHA", [65] = "AHFSINAQNA",
             [66] = "Q", [67] = "DAHFSINAQNAQ", [68] = "A", [69] = "HH",
-            [70] = "N", [71] = "AHHQNAHQ"
+            [70] = "N", [71] = "AHHQNAHQ", [72] = "", [73] = "IH",
+            [74] = "NAHH", [75] = "HQNAQ", [76] = "ASAH", [77] = "HQQQNAHH"
         };
-        int[] relationSources = [48, 49, 66, 67, 68, 69, 70, 71];
+        int[] relationSources = [48, 49, 66, 67, 68, 69, 70, 71, 74, 75, 77];
 
         foreach ((int source, string witness) in witnesses)
         {
@@ -2502,9 +2511,14 @@ static class ContractTests
                 True(stage["valueLatex"]!.AsArray().All(value =>
                         !string.IsNullOrWhiteSpace(value!.GetValue<string>())),
                     $"extended source {source} exact stage LaTeX is nonempty");
-                True(expectedXs.SequenceEqual(stage["points"]!.AsArray()
-                        .Select(point => point![0]!.GetValue<double>())),
-                    $"extended source {source} stage samples stay aligned by x");
+                var stageXs = stage["points"]!.AsArray()
+                    .Select(point => point![0]!.GetValue<double>()).ToArray();
+                if (result.ContainsKey("crop"))
+                    True(expectedXs.All(x => stageXs.Contains(x)),
+                        $"extended source {source} cropped output samples come from the uncropped stage grid");
+                else
+                    True(expectedXs.SequenceEqual(stageXs),
+                        $"extended source {source} stage samples stay aligned by x");
                 True(stage.ContainsKey("paths"),
                     $"extended source {source} segmented stage supplies drawable paths");
             }
@@ -2566,6 +2580,271 @@ static class ContractTests
             .Substitute(displayX, MathS.FromString("1/2")).InnerSimplified.Latexize();
         Equal(exactSineLatex, exactSine["actualLatex"]!.GetValue<string>(),
             "sine radical renders its already exact substituted entity without another full simplify pass");
+    }
+
+    private static void CropOutlineContract()
+    {
+        var initial = Level(72);
+        var initialCrop = initial["result"]!["crop"]!.AsObject();
+        Equal("0", initialCrop["from"]!.GetValue<string>(), "authored Crop starts at its initial left bound");
+        Equal("4", initialCrop["to"]!.GetValue<string>(), "authored Crop starts at its initial right bound");
+        Equal("0", initialCrop["required"]!["from"]!.GetValue<string>(), "authored Crop exposes required left bound");
+        Equal("2", initialCrop["required"]!["to"]!.GetValue<string>(), "authored Crop exposes required right bound");
+        Equal(false, initialCrop["hit"]!.GetValue<bool>(), "initial full wave has not matched the required crop");
+        Equal(true, initial["result"]!["outline"]!["hit"]!.GetValue<bool>(),
+            "initial full wave already matches the required outline on the kept interval");
+        Equal(false, initial["result"]!["solved"]!.GetValue<bool>(), "landmarks alone do not bypass the Crop goal");
+
+        var cropped = Act(initial["state"]!, new JsonObject
+        {
+            ["type"] = "crop", ["from"] = "0", ["to"] = "2"
+        });
+        Equal(true, cropped["result"]!["crop"]!["hit"]!.GetValue<bool>(), "exact required Crop bounds match");
+        Equal(true, cropped["result"]!["outline"]!["hit"]!.GetValue<bool>(), "sine outline matches by exact expression proof");
+        Equal(true, cropped["result"]!["solved"]!.GetValue<bool>(), "matching landmarks, Crop, and outline solves");
+        Contains(cropped["result"]!["equationLatex"]!.GetValue<string>(), @"\text{for}",
+            "simplified equation uses native Provided presentation");
+        Contains(cropped["result"]!["constructedLatex"]!.GetValue<string>(), @"0 \le x \le 2",
+            "ordered construction displays its terminal restriction");
+        var croppedXs = cropped["result"]!["points"]!.AsArray().Select(point => point![0]!.GetValue<double>()).ToArray();
+        Equal(0d, croppedXs.First(), "cropped sine owns its exact left endpoint");
+        Equal(2d, croppedXs.Last(), "cropped sine owns its exact right endpoint");
+
+        var partial = Act(Remix(1)["state"]!, new JsonObject
+        {
+            ["type"] = "crop", ["from"] = "1/2", ["to"] = "7/2"
+        });
+        var partialCheckpoints = partial["result"]!["checkpoints"]!.AsArray();
+        foreach (int index in new[] { 0, 2 })
+        {
+            Equal("undefined", partialCheckpoints[index]!["actual"]!.GetValue<string>(),
+                "checkpoint outside Crop is explicitly undefined");
+            Equal(@"\varnothing", partialCheckpoints[index]!["actualLatex"]!.GetValue<string>(),
+                "checkpoint outside Crop uses empty-set LaTeX");
+            Equal(false, partialCheckpoints[index]!["defined"]!.GetValue<bool>(),
+                "checkpoint outside Crop is not zero-filled");
+            Equal(false, partialCheckpoints[index]!["hit"]!.GetValue<bool>(),
+                "checkpoint outside Crop cannot match");
+        }
+        Equal(.5d, partialCheckpoints[1]!["phase"]!.GetValue<double>(),
+            "defined explicit checkpoint phase is normalized across the kept interval");
+        Equal(1d, partialCheckpoints[0]!["phase"]!.GetValue<double>(),
+            "outside explicit checkpoint confirms as a miss at cropped-flight finish");
+        Equal(3d, partial["result"]!["startSlope"]!.GetValue<double>(),
+            "explicit launch slope is evaluated at the cropped left endpoint");
+        foreach ((string from, string to) in new[] { ("-1", "2"), ("2", "2"), ("0", "5"), ("sqrt(2)", "3") })
+            Invalid(new JsonObject
+            {
+                ["state"] = Clone(partial["state"]!),
+                ["action"] = new JsonObject { ["type"] = "crop", ["from"] = from, ["to"] = to }
+            }, $"invalid Crop bounds {from}..{to}");
+        var cleared = Act(partial["state"]!, new JsonObject { ["type"] = "crop", ["clear"] = true });
+        True(!cleared["state"]!.AsObject().ContainsKey("crop"), "Create can remove its terminal Crop");
+
+        var stepped = Remix(56);
+        stepped = Act(stepped["state"]!, new JsonObject
+        {
+            ["type"] = "insert", ["id"] = "floor", ["op"] = "F", ["index"] = 0
+        });
+        stepped = Act(stepped["state"]!, new JsonObject
+        {
+            ["type"] = "crop", ["from"] = "1/2", ["to"] = "7/2"
+        });
+        var stepPaths = stepped["result"]!["paths"]!.AsArray();
+        True(stepPaths.Count >= 3, "cropping a step curve preserves its explicit jump gaps");
+        True(stepPaths.SelectMany(path => path!["points"]!.AsArray())
+                .All(point => point![0]!.GetValue<double>() is >= .5 and <= 3.5),
+            "every cropped step path stays inside the exact interval");
+
+        JsonObject CachedRecipe(string prefix)
+        {
+            var response = Remix(1);
+            response = Act(response["state"]!, new JsonObject
+            {
+                ["type"] = "insert", ["id"] = $"{prefix}-sine", ["op"] = "S", ["index"] = 0
+            });
+            response = Act(response["state"]!, new JsonObject
+            {
+                ["type"] = "insert", ["id"] = $"{prefix}-floor", ["op"] = "F", ["index"] = 1
+            });
+            return Act(response["state"]!, new JsonObject
+            {
+                ["type"] = "crop", ["from"] = "1/2", ["to"] = "7/2"
+            });
+        }
+        var cachedA = CachedRecipe("cached-a");
+        var cachedB = CachedRecipe("cached-b");
+        Equal("cached-a-sine", cachedA["result"]!["stages"]![1]!["id"]!.GetValue<string>(),
+            "cached stages retain the first recipe's node identity");
+        Equal("cached-b-sine", cachedB["result"]!["stages"]![1]!["id"]!.GetValue<string>(),
+            "equivalent cached math does not reuse a stale node identity");
+        var replayedCrop = Act(cachedA["state"]!, new JsonObject
+        {
+            ["type"] = "crop", ["from"] = "1", ["to"] = "3"
+        });
+        replayedCrop = Act(replayedCrop["state"]!, new JsonObject
+        {
+            ["type"] = "crop", ["from"] = "1/2", ["to"] = "7/2"
+        });
+        Equal(cachedA["result"]!["stages"]!.ToJsonString(), replayedCrop["result"]!["stages"]!.ToJsonString(),
+            "replaying Crop bounds reuses the same immutable uncropped stage result");
+        var sfExact = ImportCreation(1, ["S", "F"])["result"]!.AsObject();
+        Equal("0,0,0", string.Join(',', sfExact["checkpoints"]!.AsArray()
+                .Select(point => point!["actual"]!.GetValue<string>())),
+            "cached SF evaluation retains exact checkpoint readings");
+        foreach (var checkpoint in sfExact["checkpoints"]!.AsArray())
+        {
+            double px = double.Parse(checkpoint!["x"]!.GetValue<string>(), System.Globalization.CultureInfo.InvariantCulture);
+            var preview = sfExact["points"]!.AsArray().First(point => Math.Abs(point![0]!.GetValue<double>() - px) < 1e-12);
+            Equal(checkpoint["actualNumber"]!.GetValue<double>(), preview![1]!.GetValue<double>(),
+                "cached SF drawing preserves its exact checkpoint override");
+        }
+
+        foreach ((int source, string recipe) in new[] { (48, "QNA"), (69, "HH"), (70, "Q") })
+        {
+            var relation = Remix(source);
+            for (int index = 0; index < recipe.Length; index++)
+                relation = Act(relation["state"]!, new JsonObject
+                {
+                    ["type"] = "insert", ["id"] = $"crop-relation-{source}-{index}",
+                    ["op"] = recipe[index].ToString(), ["index"] = index
+                });
+            relation = Act(relation["state"]!, new JsonObject
+            {
+                ["type"] = "crop", ["from"] = "1", ["to"] = "3"
+            });
+            var relationPaths = relation["result"]!["relation"]!["paths"]!.AsArray();
+            True(relationPaths.SelectMany(path => path!["points"]!.AsArray())
+                    .All(point => point![0]!.GetValue<double>() is >= 1 and <= 3),
+                $"implicit source {source} clips every open, closed, or crossing branch to Crop");
+            var playbackCount = relation["result"]!["relation"]!["playback"]!.AsArray().Count;
+            foreach (var flight in relation["result"]!["relation"]!["flights"]!.AsArray())
+                True(flight![0]!.GetValue<int>() >= 0 && flight[1]!.GetValue<int>() < playbackCount,
+                    $"implicit source {source} cropped flight range indexes its clipped playback");
+        }
+
+        var emptyGeometry = Remix(74);
+        emptyGeometry = Act(emptyGeometry["state"]!, new JsonObject
+        {
+            ["type"] = "insert", ["id"] = "negative", ["op"] = "N", ["index"] = 0
+        });
+        emptyGeometry = Act(emptyGeometry["state"]!, new JsonObject
+        {
+            ["type"] = "crop", ["from"] = "0", ["to"] = "1"
+        });
+        Equal(0, emptyGeometry["result"]!["relation"]!["paths"]!.AsArray().Count,
+            "a kept interval with no real implicit locus remains a valid empty editing state");
+        True(emptyGeometry["result"]!["checkpoints"]!.AsArray()
+                .Where(checkpoint => !checkpoint!["defined"]!.GetValue<bool>())
+                .All(checkpoint => checkpoint!["phase"]!.GetValue<double>() == 1d),
+            "outside-Crop relation misses confirm at the end of playback");
+        True(emptyGeometry["result"]!["checkpoints"]!.AsArray()
+                .All(checkpoint => checkpoint!.AsObject().ContainsKey("lhs")),
+            "outside-Crop relation checkpoints retain their exact expected left side");
+
+        var wrongOutline = PlayExtendedPuzzle(74, "NAHQ");
+        True(wrongOutline["result"]!["checkpoints"]!.AsArray()
+                .All(checkpoint => checkpoint!["hit"]!.GetValue<bool>()),
+            "quartic decoy hits every moon landmark");
+        Equal(false, wrongOutline["result"]!["outline"]!["hit"]!.GetValue<bool>(),
+            "common-refinement outline proof rejects a curve that only hits landmarks");
+        Equal(false, wrongOutline["result"]!["solved"]!.GetValue<bool>(),
+            "landmark-only decoy cannot solve an outline puzzle");
+        Equal(true, PlayExtendedPuzzle(73, "HI")["result"]!["outline"]!["hit"]!.GetValue<bool>(),
+            "algebraically equivalent operation order still matches the exact outline");
+
+        var reset = Act(cropped["state"]!, new JsonObject { ["type"] = "reset" });
+        Equal("4", reset["state"]!["crop"]!["to"]!.GetValue<string>(),
+            "authored reset restores the initial Crop interval");
+        var remixed = Act(cropped["state"]!, new JsonObject { ["type"] = "remix" });
+        Equal("2", remixed["state"]!["crop"]!["to"]!.GetValue<string>(),
+            "moving an authored construction to Create preserves its Crop");
+        True(!remixed["result"]!.AsObject().ContainsKey("outline"),
+            "authored outline authority is not inherited into Create");
+        remixed = Act(remixed["state"]!, new JsonObject
+        {
+            ["type"] = "crop", ["from"] = "1", ["to"] = "2"
+        });
+        Equal(true, remixed["result"]!["crop"]!["hit"]!.GetValue<bool>(),
+            "Create crop does not inherit an authored required interval");
+        True(!remixed["result"]!["crop"]!.AsObject().ContainsKey("required"),
+            "Create omits authored Crop target metadata");
+        var differentCropChallengeExport = Act(remixed["state"]!, new JsonObject
+        {
+            ["type"] = "export", ["kind"] = "challenge", ["view"] = "flight"
+        });
+        var differentCropChallenge = Ok(new JsonObject
+        {
+            ["action"] = new JsonObject
+            {
+                ["type"] = "import", ["artifact"] = Clone(differentCropChallengeExport["artifact"]!)
+            }
+        });
+        Equal(true, differentCropChallenge["result"]!["crop"]!["hit"]!.GetValue<bool>(),
+            "shared challenge with a different valid kept interval has no authored Crop requirement");
+        True(!differentCropChallenge["result"]!["crop"]!.AsObject().ContainsKey("required"),
+            "shared challenge omits authored Crop target metadata");
+        Equal(true, differentCropChallenge["result"]!["solved"]!.GetValue<bool>(),
+            "shared challenge solves against its exported kept-interval targets");
+
+        var clamped = Act(partial["state"]!, new JsonObject { ["type"] = "source", ["sourceId"] = 5 });
+        Equal("2", clamped["state"]!["crop"]!["to"]!.GetValue<string>(),
+            "source changes clamp a retained Crop to the new endpoint");
+        var changedSource = Act(partial["state"]!, new JsonObject { ["type"] = "source", ["sourceId"] = 2 });
+        True(changedSource["result"]!["stages"]![0]!["expression"]!.GetValue<string>() !=
+             partial["result"]!["stages"]![0]!["expression"]!.GetValue<string>(),
+            "crop-independent stage cache remains separated by source");
+
+        var creationExport = Act(partial["state"]!, new JsonObject
+        {
+            ["type"] = "export", ["kind"] = "creation", ["view"] = "flight"
+        });
+        var creationImport = Ok(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = Clone(creationExport["artifact"]!) }
+        });
+        Equal("1/2", creationImport["state"]!["crop"]!["from"]!.GetValue<string>(),
+            "creation artifact roundtrip preserves exact Crop bounds");
+
+        var challengeExport = Act(partial["state"]!, new JsonObject
+        {
+            ["type"] = "export", ["kind"] = "challenge", ["view"] = "flight"
+        });
+        Equal(1, challengeExport["artifact"]!["goals"]!.AsArray().Count,
+            "cropped challenge exports only kept-interval targets");
+        var challengeImport = Ok(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = Clone(challengeExport["artifact"]!) }
+        });
+        Equal(false, challengeImport["result"]!["crop"]!["editable"]!.GetValue<bool>(),
+            "shared challenge Crop is fixed");
+        var changedGoalArtifact = Clone(challengeExport["artifact"]!).AsObject();
+        changedGoalArtifact["goals"]![0]!["y"] = "5";
+        var changedGoal = Ok(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = changedGoalArtifact }
+        });
+        Equal("5", changedGoal["result"]!["checkpoints"]![0]!["target"]!.GetValue<string>(),
+            "cache key keeps distinct shared-challenge goals current");
+        Equal(false, changedGoal["result"]!["solved"]!.GetValue<bool>(),
+            "changed shared goal is validated against its own target");
+        Invalid(new JsonObject
+        {
+            ["state"] = Clone(challengeImport["state"]!),
+            ["action"] = new JsonObject { ["type"] = "crop", ["from"] = "1", ["to"] = "3" }
+        }, "shared challenge Crop edit rejection");
+
+        var forged = Clone(Level(1)["state"]!).AsObject();
+        forged["crop"] = new JsonObject { ["from"] = "0", ["to"] = "2" };
+        Invalid(new JsonObject
+        {
+            ["state"] = forged, ["action"] = new JsonObject { ["type"] = "evaluate" }
+        }, "old authored puzzle rejects forged Crop state");
+        Invalid(new JsonObject
+        {
+            ["state"] = Clone(Remix(43)["state"]!),
+            ["action"] = new JsonObject { ["type"] = "crop", ["from"] = "0", ["to"] = "2" }
+        }, "parameter circles reject Crop");
     }
 
     private static void PiecewisePresentationContract()
@@ -3936,6 +4215,13 @@ static class ContractTests
         }
         if (stationOp is not null)
             True(stationPlaced, $"extended source {sourceId} witness contains fixed {stationOp} station");
+        if (sourceId is 72 or 73 or 76)
+            response = Act(response["state"]!, new JsonObject
+            {
+                ["type"] = "crop",
+                ["from"] = sourceId == 72 ? "0" : "1",
+                ["to"] = sourceId == 72 ? "2" : "3"
+            });
         return response;
     }
 

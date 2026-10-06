@@ -870,8 +870,8 @@
     },
     "limit": 1,
     "relation": "height-squared",
-    "name": "Both sides of a roof",
-    "hint": "The squared-height equation asks one roof to account for matching upper and lower points.",
+    "name": "Round or pointed?",
+    "hint": "Compare how the two heights meet at each end before and after changing the roof.",
     "chapter": 7
   },
   {
@@ -934,7 +934,7 @@
     },
     "limit": 14,
     "relation": "height-squared",
-    "name": "The whole garden",
+    "name": "One curve, many ideas",
     "hint": "Connect a slope, thresholds, a repeating projection, signed area and a two-sided final shape.",
     "chapter": 10
   },
@@ -1101,5 +1101,237 @@
     "name": "A loop and its echoes",
     "hint": "Use a signed roof as an intermediate shape, then account for both heights and the region beyond its zero.",
     "chapter": 7
+  },
+  {
+    "id": 72,
+    "source": "sin(pi*x/2)",
+    "degree": 0,
+    "endpoint": 4,
+    "targets": [
+      {
+        "x": "0",
+        "y": "0"
+      },
+      {
+        "x": "1",
+        "y": "1"
+      },
+      {
+        "x": "2",
+        "y": "0"
+      }
+    ],
+    "inventory": {},
+    "limit": 0,
+    "name": "Keep one lobe",
+    "hint": "Keep the useful part without changing its heights.",
+    "chapter": 10,
+    "outline": "sin(pi*x/2)",
+    "crop": {
+      "from": "0",
+      "to": "4",
+      "targetFrom": "0",
+      "targetTo": "2"
+    }
+  },
+  {
+    "id": 73,
+    "source": "(x-2)^2",
+    "degree": 2,
+    "endpoint": 4,
+    "targets": [
+      {
+        "x": "1",
+        "y": "7/6"
+      },
+      {
+        "x": "2",
+        "y": "4/3"
+      },
+      {
+        "x": "3",
+        "y": "3/2"
+      }
+    ],
+    "inventory": {
+      "I": 1,
+      "H": 2,
+      "A": 1,
+      "N": 1,
+      "Q": 1
+    },
+    "limit": 5,
+    "name": "Grow a stem",
+    "hint": "Build a flowing stroke, then frame it. Area still begins at zero.",
+    "chapter": 10,
+    "outline": "x^3/6-x^2+2*x",
+    "crop": {
+      "from": "0",
+      "to": "4",
+      "targetFrom": "1",
+      "targetTo": "3"
+    }
+  },
+  {
+    "id": 74,
+    "source": "4*(x-2)^2",
+    "degree": 2,
+    "endpoint": 4,
+    "targets": [
+      {
+        "x": "3/2",
+        "y": "0"
+      },
+      {
+        "x": "2",
+        "y": "1/2"
+      },
+      {
+        "x": "2",
+        "y": "-1/2"
+      },
+      {
+        "x": "5/2",
+        "y": "0"
+      }
+    ],
+    "inventory": {
+      "N": 1,
+      "A": 2,
+      "H": 3,
+      "Q": 1
+    },
+    "limit": 6,
+    "name": "Shape the moon",
+    "hint": "Read the width from the zeros and the thickness from squared height.",
+    "chapter": 10,
+    "outline": "1/4-(x-2)^2",
+    "relation": "height-squared"
+  },
+  {
+    "id": 75,
+    "source": "x-2",
+    "degree": 1,
+    "endpoint": 4,
+    "targets": [
+      {
+        "x": "0",
+        "y": "0"
+      },
+      {
+        "x": "1",
+        "y": "3/4"
+      },
+      {
+        "x": "1",
+        "y": "-3/4"
+      },
+      {
+        "x": "2",
+        "y": "1"
+      },
+      {
+        "x": "2",
+        "y": "-1"
+      },
+      {
+        "x": "3",
+        "y": "3/4"
+      },
+      {
+        "x": "3",
+        "y": "-3/4"
+      },
+      {
+        "x": "4",
+        "y": "0"
+      }
+    ],
+    "inventory": {
+      "H": 3,
+      "Q": 2,
+      "N": 2,
+      "A": 2
+    },
+    "limit": 8,
+    "name": "Point a leaf",
+    "hint": "Build a roof whose magnitude becomes both sides of the leaf.",
+    "chapter": 10,
+    "outline": "(1-(x-2)^2/4)^2",
+    "relation": "height-squared"
+  },
+  {
+    "id": 76,
+    "source": "x-2",
+    "degree": 1,
+    "endpoint": 4,
+    "targets": [
+      {
+        "x": "1",
+        "y": "1/2"
+      },
+      {
+        "x": "2",
+        "y": "1"
+      },
+      {
+        "x": "3",
+        "y": "1/2"
+      }
+    ],
+    "inventory": {
+      "A": 3,
+      "H": 3,
+      "S": 1,
+      "N": 1,
+      "Q": 1
+    },
+    "limit": 7,
+    "name": "Settle a ripple",
+    "hint": "Place the wave, fit its height, then keep the useful stroke.",
+    "chapter": 10,
+    "outline": "(sin(pi*(x-1)/2)+1)/2",
+    "crop": {
+      "from": "0",
+      "to": "4",
+      "targetFrom": "1",
+      "targetTo": "3"
+    }
+  },
+  {
+    "id": 77,
+    "source": "x-2",
+    "degree": 1,
+    "endpoint": 4,
+    "targets": [
+      {
+        "x": "0",
+        "y": "0"
+      },
+      {
+        "x": "2",
+        "y": "1/2"
+      },
+      {
+        "x": "2",
+        "y": "-1/2"
+      },
+      {
+        "x": "4",
+        "y": "0"
+      }
+    ],
+    "inventory": {
+      "H": 5,
+      "Q": 3,
+      "N": 2,
+      "A": 2
+    },
+    "limit": 11,
+    "name": "Draw the cucumber",
+    "hint": "Fit a broad roof on the right. Solving for both heights rounds its ends.",
+    "chapter": 10,
+    "outline": "(1-(x-2)^8/256)/4",
+    "relation": "height-squared"
   }
 ]

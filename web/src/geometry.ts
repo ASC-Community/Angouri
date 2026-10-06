@@ -27,6 +27,7 @@ export function along(points:Point[],x:number):Point {
 }
 export function sampledPosition(result:Result,position:number):Point {
   const points=flightPoints(result);
+  if(!points.length)return [0,0];
   if(result.relation||result.circle) {
     const index=Math.max(0,Math.min(points.length-1,position*(points.length-1))),a=Math.floor(index),b=Math.min(a+1,points.length-1);
     if(!points.length)return [0,0];

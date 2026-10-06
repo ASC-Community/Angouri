@@ -1,14 +1,20 @@
 import { icon } from './icons';
-import { operationTex, tex } from './views';
+import { operationTex, rationalTex, tex } from './views';
 import { circleEdited } from './circle';
 import { OPS, type Op, type Result, type State } from './types';
 
 /** First encounters explain the move the player actually made, not a recipe to try. */
 export function isDiscovery(state:State) {
-  return state.mode==='puzzle'&&(!state.circle&&!state.station&&state.limit===1||[32,37,43,44,69].includes(state.sourceId));
+  return state.mode==='puzzle'&&(state.sourceId===72||!state.circle&&!state.station&&state.limit===1||[32,37,43,44,69].includes(state.sourceId));
 }
 export function discoveryObservation(state:State,result:Result,selected?:string) {
   if(!isDiscovery(state))return '';
+  if(state.sourceId===72) {
+    const crop=result.crop;
+    if(!crop)return '';
+    const range=tex(`${rationalTex(crop.from)}\\le x\\le ${rationalTex(crop.to)}`);
+    return `<span class="discovery-operation teal" aria-hidden="true">${tex('a\\le x\\le b')}</span><span>Crop keeps ${range}. Heights inside stay the same.${crop.hit?' The outlined lobe is framed.':''}</span>`;
+  }
   if(state.circle)return circleEdited(state,result)?`${icon(state.sourceId===43?'resize':'move',16)}<span>${state.sourceId===43?'A larger radius reaches farther in every direction.':'Moving the centre moves the whole loop.'}</span>`:'';
   const edits=state.nodes.filter(node=>node.id!==state.station?.id);
   if(!edits.length)return '';
@@ -27,7 +33,9 @@ export function discoveryObservation(state:State,result:Result,selected?:string)
       N:'The sign changes. Real heights appear where the right side is nonnegative.',
       Q:'Squaring restores both signs of the incoming magnitude, including outside the old loop.'
     };
-    finding=state.sourceId===69&&edits.every(node=>node.op==='H')&&edits.length===2?`Two halves of ${tex('h^2')} make one half of ${tex('|h|')}.`:effects[op]??'';
+    finding=state.sourceId===66&&op==='Q'
+      ?'The solved heights change from square roots of the roof to positive and negative copies of it. The rounded ends become pointed.'
+      :state.sourceId===69&&edits.every(node=>node.op==='H')&&edits.length===2?`Two halves of ${tex('h^2')} make one half of ${tex('|h|')}.`:effects[op]??'';
   } else {
     const effects:Record<Op,string>={
       A:'Every height rises equally. The gaps stay the same.',H:'Heights halve. The zeros stay put.',

@@ -5,7 +5,10 @@ import { circleSketch, compare, diagramChoices, lesson, move, recall, relationSk
 export interface ReferenceExamples {
   example(sourceId:number,ops:string):Promise<Result>;
   circleExample(x:string,y:string,radius:string,goals?:string[][]):Promise<Result>;
+  cropExample(from:string,to:string):Promise<Result>;
 }
+
+const finalDrawing=(result:Result):Result['stages'][number]=>({...result.stages.at(-1)!,points:result.points,paths:result.paths});
 
 const tag=(source:number)=>`<p class="note-reference" data-reference-lesson="${source}">${lesson(source)}</p>`;
 const markers=(...sources:number[])=>sources.map(source=>`<span data-reference-lesson="${source}" hidden></span>`).join('');
@@ -227,7 +230,10 @@ async function circleReference(known:Set<number>,examples:ReferenceExamples) {
 }
 
 async function relationReference(known:Set<number>,examples:ReferenceExamples) {
-  const [base,lift,half,quarter,turned,squared]=await Promise.all(['HH','HHA','HHH','HHHH','HHN','HHQ'].map(ops=>examples.example(68,ops)));
+  const [base,lift,half,quarter,turned,roundedRoof,pointedRoof]=await Promise.all([
+    ...['HH','HHA','HHH','HHHH','HHN'].map(ops=>examples.example(68,ops)),
+    examples.example(66,''),examples.example(66,'Q')
+  ]);
   const diagram=(result:Result,label:string)=>relationSketch(result,label,{before:base,bounds:[0,4,-2,2]});
   const equation='<p>The right side is squared height. At each position, a positive value gives two heights, zero gives one, and a negative value gives no real height.</p>'+diagram(base,'One equation, both heights')+`<p>${tex('h^2=a')} ${tex('\\Longrightarrow')} ${tex('h=\\pm\\sqrt a\\quad(a\\ge0)')}</p>`+tag(48);
   const growth='<p>Adding one on the right increases squared height. The upper branch rises and the lower branch falls; the middle stays fixed. The change in height is not one.</p>'+diagramChoices('The same centre line, a different reach.',[{label:'Before',html:diagram(base,'Before')},{label:'Add one',html:diagram(lift,'Add to squared height')}])+tag(68);
@@ -235,10 +241,13 @@ async function relationReference(known:Set<number>,examples:ReferenceExamples) {
     {label:'Before',html:diagram(base,'Before')},{label:'One halve',html:diagram(half,'Heights scale by one over the square root of two')},{label:'Two halves',html:diagram(quarter,'Heights are halved')}
   ])+`<p>${tex('h^2=a/4\\quad\\Longrightarrow\\quad h=\\pm\\sqrt a/2')}</p>`+tag(69);
   const regions='<p>Negation exchanges the positive and negative regions of the right side. A height can exist only in a nonnegative region. It does not simply turn the visible loop upside down.</p>'+diagramChoices('Change the sign. Change where heights exist.',[{label:'Before',html:diagram(base,'Heights inside the zeros')},{label:'Negate',html:diagram(turned,'Heights outside the zeros')}])+tag(70);
-  const magnitudes='<p>Squaring the right side makes every value nonnegative. Solving then returns both signs of its magnitude, including where the unsquared input was negative.</p>'+diagramChoices('Squaring can restore missing parts.',[{label:'Before',html:diagram(base,'Only the nonnegative input region')},{label:'Square',html:diagram(squared,'Both heights of the incoming magnitude')}])+`<p>${tex('h^2=a^2\\quad\\Longrightarrow\\quad h=\\pm|a|')}</p>`+tag(66);
+  const magnitudes='<p>The supplied roof is already nonnegative. With that roof on the right, solving takes a square root and the branches have rounded ends. Squaring the roof first makes the solved heights positive and negative copies of it, so they meet in pointed ends.</p>'+diagramChoices('Same roof. Rounded or pointed ends.',[
+    {label:'Roof',html:relationSketch(roundedRoof,'Square-root branches have rounded ends.')},
+    {label:'Roof squared',html:relationSketch(pointedRoof,'Copied roof branches meet in points.',{before:roundedRoof})}
+  ])+`<p>${tex('h^2=a\\ \\Longrightarrow\\ h=\\pm\\sqrt a')} ${tex('\\qquad')} ${tex('h^2=a^2\\ \\Longrightarrow\\ h=\\pm a\\quad(a\\ge0)')}</p>`+tag(66);
   const geometry='<p>The zeros of a circular roof locate the loop’s horizontal edges. Its maximum is the squared radius. Scaling height while keeping those zeros creates a different loop, rather than simply resizing a circle.</p>'+tag(49);
   const synthesis='<p>Several visible pieces may come from one signed shape. Track its zeros, its scale, and which operation makes negative regions visible again.</p>'+tag(71);
-  const lessons:[number,string,string][]=[[48,'Positive, zero or negative',equation],[68,'Adding to squared height',growth],[69,'Squared height and scale',scale],[70,'Where real heights exist',regions],[66,'Two signs of a magnitude',magnitudes],[49,'Geometry and the right side',geometry],[71,'Read a loop in parts',synthesis]];
+  const lessons:[number,string,string][]=[[48,'Positive, zero or negative',equation],[68,'Adding to squared height',growth],[69,'Squared height and scale',scale],[70,'Where real heights exist',regions],[66,'Rounded or pointed ends',magnitudes],[49,'Geometry and the right side',geometry],[71,'Read a loop in parts',synthesis]];
   const visible=lessons.filter(([id])=>known.has(id));
   const currentLesson=visible.pop()!;
   return current(currentLesson[1],currentLesson[2])+visible.reverse().map(([id,title,body])=>recall([id],title,body)).join('');
@@ -310,16 +319,52 @@ async function stepReference(known:Set<number>,examples:ReferenceExamples) {
 }
 
 async function togetherReference(known:Set<number>,examples:ReferenceExamples) {
-  const [slope,wave,steps,area,circle]=await Promise.all([
+  const [slope,wave,steps,area,circle,fullWave,keptLobe]=await Promise.all([
     examples.example(50,'NAQD'),examples.example(4,'HS'),examples.example(4,'HF'),
-    examples.example(4,'HFSI'),examples.circleExample('1','0','3/4')
+    examples.example(4,'HFSI'),examples.circleExample('1','0','3/4'),
+    examples.cropExample('0','4'),examples.cropExample('0','2')
   ]);
   const slopeCard=markers(32,34)+'<p>A flat place in an input is a zero in its derivative.</p>'+strip([slope.stages.at(-2)!,slope.stages.at(-1)!],['Input curve','Slope output'],[move('D')]);
   const waveCard=markers(50,54)+'<p>Sine reads input height as a circular phase.</p>'+strip([wave.stages.at(-2)!,wave.stages.at(-1)!],['Input phase','Circular height'],[move('S')]);
   const stepCard=markers(61,62)+'<p>Floor fixes jump positions; sine can map its integer heights; accumulation turns signed regions into a continuous total.</p>'+strip([steps.stages.at(-1)!,area.stages.at(-2)!,area.stages.at(-1)!],['Integer steps','Circular heights','Accumulated total'],[move('S'),move('I')]);
   const relationCard=markers(66)+'<p>A squared-height equation can return positive and negative heights of one magnitude.</p>'+circleSketch([circle],{centre:true,spoke:true,bounds:[-1,3,-2,2]})+`<p>${tex('h^2=\\frac9{16}-(x-1)^2')}</p>`;
+  const cropCard='<p>Crop keeps a chosen horizontal interval and removes the rest of the drawing. It does not move the curve or change any retained height.</p>'+strip([finalDrawing(fullWave),finalDrawing(keptLobe)],['Whole wave: 0 to 4','Kept lobe: 0 to 2'],['<strong>Crop</strong>'])+`<p>${tex('0\\le x\\le2')}</p>`+tag(72);
+  const moonCard="<p>The zeros of the right side set a loop's horizontal edges. Its maximum squared height sets its thickness, so a smaller maximum makes a thinner loop without moving those zeros. At one position, call the right-side value "+tex('a')+'.</p>'+circleSketch([circle],{centre:true,spoke:true,bounds:[-1,3,-2,2]})+`<p>${tex('h^2=a\\qquad h=\\pm\\sqrt a')}</p>`+tag(74);
+  const rippleCard='<p>Changes before sine set phase and period. Changes afterward set amplitude and baseline. Crop then keeps the useful part without changing those fitted heights.</p>'+strip([wave.stages.at(-2)!,wave.stages.at(-1)!],['Input phase','Fitted wave height'],[move('S')])+tag(76);
+  const artLessons:[number,string,string][]=[[72,'Crop changes extent, not height',cropCard]];
+  if(known.has(73)) {
+    const anchored=await examples.example(37,'I');
+    const card='<p>Accumulation is still anchored at zero before the finished curve is cropped. The crop changes which part is drawn; it does not restart the accumulated amount at its left edge.</p>'+strip(anchored.stages,['Input','Area accumulated from zero'],[move('I')])+`<p>${tex('F(x)=\\int_0^x h(u)\\,\\mathrm{d}u')}</p>`+tag(73);
+    artLessons.push([73,'Cropping does not move the area anchor',card]);
+  }
+  if(known.has(74))artLessons.push([74,'Zeros and squared height size a loop',moonCard]);
+  if(known.has(75)) {
+    const paired=await examples.example(66,'Q');
+    const card='<p>A line can first become a nonnegative roof with two zeros. When the squared-height equation uses the square of that roof, its solved branches are positive and negative copies that meet at those zeros.</p>'+relationSketch(paired,'Copied roof branches make a pointed outline.')+tag(75);
+    artLessons.push([75,'Build a pointed leaf from a roof',card]);
+  }
+  if(known.has(76))artLessons.push([76,'Fit a wave before framing it',rippleCard]);
+  if(known.has(77)) {
+    const [arch,broad,rounded,pointed]=await Promise.all([examples.example(8,'NA'),examples.example(13,'QNA'),examples.example(66,''),examples.example(66,'Q')]);
+    const roofs=compare('A flatter bowl makes a broader roof.',[
+      {label:'Familiar arch',stage:arch.stages.at(-1)!},
+      {label:'Broader roof',stage:broad.stages.at(-1)!,before:arch.stages.at(-1)!}
+    ],[],['Familiar arch','Broader roof']);
+    const ends=diagramChoices('The final right side chooses the cap shape.',[
+      {label:'Roof',html:relationSketch(rounded,'Square-root branches round the caps.')},
+      {label:'Roof squared',html:relationSketch(pointed,'Copied branches meet in points.',{before:rounded})}
+    ]);
+    const card='<p>A flatter bowl can become a broader roof after turning and lifting. That controls the body. Separately, leaving a roof unsquared on the right of a squared-height equation makes square-root branches with rounded caps; squaring that final roof would make pointed ends.</p>'+roofs+ends+`<p>At one position, if the right-side roof has value ${tex('a')}, then ${tex('h^2=\\frac a4\\quad\\Longrightarrow\\quad |h|=\\frac{\\sqrt a}{2}')}. The square root belongs to the squared-height relation itself.</p>`+tag(77);
+    artLessons.push([77,'Broadness, rounded caps and thickness are separate',card]);
+  }
+  const visibleArt=artLessons.filter(([id])=>known.has(id));
+  if(!known.has(64)) {
+    const lesson=visibleArt.pop()!;
+    return current(lesson[1],lesson[2])+visibleArt.reverse().map(([id,title,body])=>recall([id],title,body)).join('');
+  }
+  const artRecall=visibleArt.reverse().map(([id,title,body])=>recall([id],title,body)).join('');
   const reading='<p>A long construction remains a sequence of familiar local relationships. Each Flow card names the incoming curve, the operation and its output.</p>'+viewButton('flow')+tag(64);
-  if(known.has(67))return current('Mixed constructions are read one relationship at a time.',reading)+recall([66],'Paired magnitudes',relationCard)+recall([61,62],'Steps, projection and accumulation',stepCard)+recall([50,54],'Phase, amplitude and baseline',waveCard)+recall([32,34],'Slope and flat places',slopeCard);
-  if(known.has(65))return current('Earlier relationships remain visible inside a composition.',reading)+recall([61,62],'Steps, projection and accumulation',stepCard)+recall([50,54],'Circular phase and output height',waveCard)+recall([66],'Paired magnitudes',relationCard)+recall([32,34],'Slope and flat places',slopeCard);
-  return current('A composition can be inspected stage by stage.',reading)+recall([32,34],'Slope and flat places',slopeCard)+recall([50,54],'Circular phase and output height',waveCard)+recall([66],'Paired magnitudes',relationCard);
+  if(known.has(67))return current('Mixed constructions are read one relationship at a time.',reading)+recall([66],'Paired magnitudes',relationCard)+recall([61,62],'Steps, projection and accumulation',stepCard)+recall([50,54],'Phase, amplitude and baseline',waveCard)+recall([32,34],'Slope and flat places',slopeCard)+artRecall;
+  if(known.has(65))return current('Earlier relationships remain visible inside a composition.',reading)+recall([61,62],'Steps, projection and accumulation',stepCard)+recall([50,54],'Circular phase and output height',waveCard)+recall([66],'Paired magnitudes',relationCard)+recall([32,34],'Slope and flat places',slopeCard)+artRecall;
+  return current('A composition can be inspected stage by stage.',reading)+recall([32,34],'Slope and flat places',slopeCard)+recall([50,54],'Circular phase and output height',waveCard)+recall([66],'Paired magnitudes',relationCard)+artRecall;
 }

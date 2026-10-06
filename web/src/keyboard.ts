@@ -1,4 +1,4 @@
-const DATA_KEYS = ['op','insert','stage','circleValue','circleHandle','circleTarget'] as const;
+const DATA_KEYS = ['op','insert','stage','circleValue','circleHandle','circleTarget','cropRange','cropExact','cropAdd','cropClear'] as const;
 
 type DataKey = typeof DATA_KEYS[number];
 

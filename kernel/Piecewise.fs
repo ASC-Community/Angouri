@@ -135,6 +135,37 @@ module internal Piecewise =
         |> Option.orElseWith (fun () -> fn.Segments |> List.tryFind (contains point))
         |> Option.defaultWith (fun () -> invalidOp (sprintf "No exact segment owns x=%s." (rationalText point)))
 
+    let trySegmentAt point fn =
+        let pointSegment =
+            fn.Segments |> List.tryFind (fun segment ->
+                compareRational segment.Start segment.End = 0 && contains point segment)
+        pointSegment
+        |> Option.orElseWith (fun () -> fn.Segments |> List.tryFind (contains point))
+
+    let isDefinedAt point fn = trySegmentAt point fn |> Option.isSome
+
+    let crop fromPoint toPoint fn =
+        if compareRational fromPoint toPoint >= 0 ||
+           compareRational fromPoint fn.DomainStart < 0 ||
+           compareRational toPoint fn.DomainEnd > 0 then
+            invalidArg "interval" "The crop must be a non-empty interval inside the function domain."
+        let clipped =
+            fn.Segments
+            |> List.choose (fun segment ->
+                let startPoint = if compareRational segment.Start fromPoint < 0 then fromPoint else segment.Start
+                let endPoint = if compareRational segment.End toPoint > 0 then toPoint else segment.End
+                let comparison = compareRational startPoint endPoint
+                if comparison > 0 then None
+                elif comparison = 0 && not (contains startPoint segment) then None
+                else
+                    Some {
+                        segment with
+                            Start=startPoint
+                            End=endPoint
+                            StartClosed=(if compareRational startPoint segment.Start = 0 then segment.StartClosed else true)
+                            EndClosed=(if compareRational endPoint segment.End = 0 then segment.EndClosed else true) })
+        { fn with DomainStart=fromPoint; DomainEnd=toPoint; Segments=clipped }
+
     let boundaries fn =
         fn.Segments
         |> List.collect (fun segment -> [segment.Start;segment.End])
@@ -283,6 +314,34 @@ module internal Piecewise =
 
     let evaluateSegmentAt (x: Entity.Variable) point segment =
         evaluateExpressionAt x point segment.Expression
+
+    /// Exact equality of partial functions on a closed rational interval. Each
+    /// boundary is checked separately, then every open cell is compared by its
+    /// owning symbolic expressions. Sampling is never used as proof.
+    let exactlyEqualOn x fromPoint toPoint left right =
+        let left = crop fromPoint toPoint left
+        let right = crop fromPoint toPoint right
+        let cuts =
+            fromPoint :: toPoint :: (boundaries left @ boundaries right)
+            |> List.distinct
+            |> List.sortWith compareRational
+        let sameAt point =
+            match trySegmentAt point left,trySegmentAt point right with
+            | None,None -> true
+            | Some leftSegment,Some rightSegment ->
+                exactEqual
+                    (evaluateExpressionAt x point leftSegment.Expression)
+                    (evaluateExpressionAt x point rightSegment.Expression)
+            | _ -> false
+        let sameCell (startPoint,endPoint) =
+            if compareRational startPoint endPoint >= 0 then true
+            else
+                let point = midpoint startPoint endPoint
+                match trySegmentAt point left,trySegmentAt point right with
+                | None,None -> true
+                | Some leftSegment,Some rightSegment -> exactEqual leftSegment.Expression rightSegment.Expression
+                | _ -> false
+        cuts |> List.forall sameAt && cuts |> List.pairwise |> List.forall sameCell
 
     /// Compile smooth children with AngouriMath; round only their visual double
     /// readings. These delegates never decide checkpoint equality.
@@ -538,6 +597,21 @@ module internal Piecewise =
                     { segment with Expression=expression })
             Ok { fn with Segments=differentiated }
 
+    /// Build the bounded piecewise form of an authored outline. Rounding is
+    /// accepted only when it is the outer operation, so the same exact
+    /// partitioner used by game blocks remains the authority.
+    let rec fromExpression (x: Entity.Variable) maxSegments endpoint (expression: Entity) =
+        match expression with
+        | :? Entity.Floorf as floorNode ->
+            fromExpression x maxSegments endpoint floorNode.Argument
+            |> Result.bind (roundFunction x maxSegments floorRational true)
+        | :? Entity.Ceilf as ceilNode ->
+            fromExpression x maxSegments endpoint ceilNode.Argument
+            |> Result.bind (roundFunction x maxSegments ceilRational false)
+        | _ when hasSymbolicRounding expression ->
+            Error "This authored outline contains nested rounding that cannot be partitioned exactly yet."
+        | _ -> Ok (create expression endpoint)
+
     let apply (x: Entity.Variable) maxSegments op fn =
         let half = MathS.FromString("2")
         let oneEntity = MathS.FromString("1")
@@ -555,23 +629,25 @@ module internal Piecewise =
         | "I" -> integrateFunction x fn
         | _ -> Error "Unknown operation."
 
-    let rightSlopeAtZero (x: Entity.Variable) fn =
+    let rightSlopeAt (x: Entity.Variable) point fn =
         let rightSegment =
             fn.Segments
             |> List.filter (fun segment -> compareRational segment.Start segment.End < 0 &&
-                                           compareRational segment.Start zero <= 0 &&
-                                           compareRational segment.End zero > 0)
+                                           compareRational segment.Start point <= 0 &&
+                                           compareRational segment.End point > 0)
             |> List.tryHead
             |> Option.orElseWith (fun () ->
                 fn.Segments
                 |> List.filter (fun segment -> compareRational segment.Start segment.End < 0)
                 |> List.sortWith (fun left right -> compareRational left.Start right.Start)
                 |> List.tryHead)
-            |> Option.defaultWith (fun () -> invalidOp "The construction has no right-hand interval at zero.")
+            |> Option.defaultWith (fun () -> invalidOp (sprintf "The construction has no right-hand interval at x=%s." (rationalText point)))
         // With no subsequent integral or derivative, compositions of these
         // rounding nodes are locally constant on the right of the endpoint.
         if hasSymbolicRounding rightSegment.Expression then exactZeroEntity
-        else rightSegment.Expression.Differentiate(x).Substitute(x,toEntity zero).InnerSimplified
+        else rightSegment.Expression.Differentiate(x).Substitute(x,toEntity point).InnerSimplified
+
+    let rightSlopeAtZero (x: Entity.Variable) fn = rightSlopeAt x zero fn
 
     let segmentConditionLatex segment =
         let startRelation = if segment.StartClosed then "\\le" else "<"
@@ -581,6 +657,27 @@ module internal Piecewise =
         else
             sprintf "%s %s x %s %s"
                 ((toEntity segment.Start).Latexize()) startRelation endRelation ((toEntity segment.End).Latexize())
+
+    let intervalConditionLatex fromPoint toPoint =
+        sprintf "%s \\le x \\le %s" ((toEntity fromPoint).Latexize()) ((toEntity toPoint).Latexize())
+
+    let providedLatex fn =
+        let conditionText segment =
+            if compareRational segment.Start segment.End = 0 then
+                sprintf "x = %s" (rationalText segment.Start)
+            else
+                let left = if segment.StartClosed then ">=" else ">"
+                let right = if segment.EndClosed then "<=" else "<"
+                sprintf "x %s %s and x %s %s" left (rationalText segment.Start) right (rationalText segment.End)
+        let cases =
+            fn.Segments
+            |> List.map (fun segment ->
+                Entity.Providedf(segment.Expression,MathS.FromString(conditionText segment)))
+        let provided : Entity =
+            match cases with
+            | [single] -> upcast single
+            | _ -> upcast Entity.Piecewise(cases)
+        provided.Latexize()
 
     let private presentationCacheLimit = 256
     let private presentationCache = Dictionary<string,Presentation>()
