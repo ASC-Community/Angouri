@@ -1,7 +1,7 @@
 import { icon } from './icons';
 import { operationTex, tex } from './views';
 import { circleEdited } from './circle';
-import type { Op, Result, State } from './types';
+import { OPS, type Op, type Result, type State } from './types';
 
 /** First encounters explain the move the player actually made, not a recipe to try. */
 export function isDiscovery(state:State) {
@@ -38,5 +38,5 @@ export function discoveryObservation(state:State,result:Result,selected?:string)
     };
     finding=effects[op];
   }
-  return finding?`<span class="discovery-operation" aria-hidden="true">${operationTex(op)}</span><span>${finding}</span>`:'';
+  return finding?`<span class="discovery-operation ${OPS[op].color}" aria-hidden="true">${operationTex(op)}</span><span>${finding}</span>`:'';
 }

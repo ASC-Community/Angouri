@@ -621,10 +621,10 @@ module Game =
             |> Seq.toList
         | _ -> invalidInput "preview" "The squared-height relation could not be solved explicitly for h.")
     let private relationBranchCacheLimit = 256
-    let private relationBranchCache = Dictionary<string,RelationBranch list>()
+    let private relationBranchCache = Dictionary<string,RelationBranch list*Entity option>()
     let private relationBranchCacheOrder = Queue<string>()
     let private relationBranchCacheGate = System.Object()
-    let private cachedRelationBranches key create =
+    let private cachedRelationSolution key create =
         match lock relationBranchCacheGate (fun () ->
             match relationBranchCache.TryGetValue(key) with
             | true,cached -> Some cached
@@ -645,6 +645,7 @@ module Game =
     type private RelationSolvedSegment = {
         Segment: Piecewise.Segment
         Branches: RelationBranch list
+        SignedTraversalRoot: Entity option
     }
     type private RelationSolvedLine = {
         HeightLatex: string
@@ -654,6 +655,7 @@ module Game =
         Segments: RelationSolvedSegment list
         Latex: string
         Lines: RelationSolvedLine list
+        HasRounding: bool
     }
     let private constructedLatex s =
         // Keep the operation tree intact, then let AngouriMath serialize it with
@@ -698,6 +700,9 @@ module Game =
     let evaluateAt (f: Entity) (v: Entity) = f.Substitute(x,v).InnerSimplified
     let exactEqual left right = Piecewise.exactEqual left right
     let continuousPolynomialResultJson s =
+        // Rational polynomial substitutions are already reduced exact numbers.
+        // Latexize them directly; general simplification is only needed for the
+        // variable expressions, whose presentations are cached below.
         let stages = expressions s
         let final = List.last stages
         let startSlope = final.Differentiate(x) |> fun slope -> evaluateAt slope (rational "0") |> asFloat
@@ -711,23 +716,27 @@ module Game =
             let target = exactConstant "goals" g.Y
             let height = actual |> asFloat |> checkedPreviewValue
             obj [ "x",str g.X; "target",str g.Y; "actual",str (actual.ToString())
-                  "actualLatex",str ((actual.Simplify()).Latexize()); "actualNumber",flt height
+                  "actualLatex",str (actual.Latexize()); "actualNumber",flt height
                   "hit",boolean (exactEqual actual target); "y",flt height ])
         let endpoint = sourceEndpoints[s.Source-1]
         let samples = [0..80] |> List.map (fun i -> float i * float endpoint / 80.)
         let sampleXs = (samples @ (presentationGoals |> List.map (fun g -> asFloat (rational g.X)))) |> List.distinct |> List.sort
         let stageJson = stages |> List.mapi (fun i f ->
             let compiled = f.Compile([|x|])
-            let simplified = f.Simplify()
+            // Reuse the bounded display cache used by segmented equations. An
+            // edit usually adds only one new expression: re-simplifying every
+            // unchanged prefix made longer polynomial recipes lag on each move.
+            // Exact evaluation and samples still use the original expression.
+            let presentation = Piecewise.create f endpoint |> Piecewise.presentation
             let points = sampleXs |> List.map (fun sx ->
                 let y = compiled.Call([|Complex(sx,0.)|]).Real |> checkedPreviewValue
                 arr [flt sx;flt y])
             let values = presentationGoals |> List.map (fun g -> evaluateAt f (rational g.X))
             obj [ "id",str (if i=0 then "source" else s.Nodes[i-1].Id)
-                  "expression",str (simplified.ToString()); "latex",str (simplified.Latexize())
+                  "expression",str presentation.ExpressionText; "latex",str presentation.Latex
                   "points",arr points
                   "values",arr (values |> List.map (fun value -> str (value.ToString())))
-                  "valueLatex",arr (values |> List.map (fun value -> str ((value.Simplify()).Latexize()))) ])
+                  "valueLatex",arr (values |> List.map (fun value -> str (value.Latexize()))) ])
         // AngouriMath's bytecode interpreter samples the preview without dynamic code generation.
         // Exact symbolic checkpoint checks above remain the sole success authority.
         let preview = final.Compile([| x |])
@@ -764,13 +773,13 @@ module Game =
             let _,_,actualGap = gap final
             result["heightGuide"] <- obj [
                 "fromX",str fromGoal.X; "toX",str toGoal.X; "target",str (targetGap.ToString())
-                "actual",str (actualGap.ToString()); "actualLatex",str ((actualGap.Simplify()).Latexize())
+                "actual",str (actualGap.ToString()); "actualLatex",str (actualGap.Latexize())
                 "hit",boolean (exactEqual actualGap targetGap)
                 "stages",arr (stages |> List.map (fun stage ->
                     let fromValue,toValue,stageGap = gap stage
                     obj [ "from",str (fromValue.ToString()); "to",str (toValue.ToString()); "gap",str (stageGap.ToString())
-                          "fromLatex",str ((fromValue.Simplify()).Latexize()); "toLatex",str ((toValue.Simplify()).Latexize())
-                          "gapLatex",str ((stageGap.Simplify()).Latexize())
+                          "fromLatex",str (fromValue.Latexize()); "toLatex",str (toValue.Latexize())
+                          "gapLatex",str (stageGap.Latexize())
                           "fromNumber",flt (fromValue |> asFloat |> checkedPreviewValue)
                           "toNumber",flt (toValue |> asFloat |> checkedPreviewValue)
                           "gapNumber",flt (stageGap |> asFloat |> checkedPreviewValue) ])) ]
@@ -938,6 +947,40 @@ module Game =
                     let root = Math.Sqrt(d)
                     [(-b-root)/(2.*a);(-b+root)/(2.*a)]
 
+    let private tryExactSignedSquareRoot (expression: Entity) =
+        let two = rational "2"
+        let half = rational "1/2"
+        let rec root (current: Entity) =
+            match current with
+            | :? Entity.Powf as power ->
+                match Piecewise.tryRationalEntity power.Exponent with
+                | Some exponent when exponent.Denominator = BigInteger.One &&
+                                         exponent.Numerator.Sign >= 0 &&
+                                         exponent.Numerator.IsEven ->
+                    let rootExponent = Piecewise.ofBigInteger (exponent.Numerator/BigInteger(2)) |> Piecewise.toEntity
+                    Some (power.Base.Pow(rootExponent).InnerSimplified)
+                | _ -> None
+            | :? Entity.Mulf as product ->
+                match root product.Multiplier,root product.Multiplicand with
+                | Some left,Some right -> Some ((left*right).InnerSimplified)
+                | _ -> None
+            | :? Entity.Divf as quotient ->
+                match root quotient.Dividend,root quotient.Divisor with
+                | Some numerator,Some denominator -> Some ((numerator/denominator).InnerSimplified)
+                | _ -> None
+            | _ ->
+                match Piecewise.tryRationalEntity current with
+                | Some value when value.Numerator.Sign = 0 -> Some (rational "0")
+                | Some value when value.Numerator.Sign > 0 -> Some (current.Pow(half).InnerSimplified)
+                | _ -> None
+        root expression
+        |> Option.bind (fun candidate ->
+            let candidate = candidate.InnerSimplified
+            // The structural proof above only admits products and quotients of
+            // positive constants and even powers. Keep AngouriMath as the final
+            // exact authority before using the signed representative in Flight.
+            if exactEqual (candidate.Pow(two).InnerSimplified) expression then Some candidate else None)
+
     let private samePoint (leftX,leftY) (rightX,rightY) =
         abs (leftX-rightX) < 0.0000001 && abs (leftY-rightY) < 0.0000001
 
@@ -976,26 +1019,37 @@ module Game =
         use _realCodomain = MathS.Settings.Codomain.Set(Domain.Real)
         let solve expression =
             let key = expression.ToString()
-            cachedRelationBranches key (fun () ->
+            cachedRelationSolution key (fun () ->
                 // Solve the real h^2 = z shape once with AngouriMath, then
                 // substitute each exact segment RHS into those solver-derived
                 // branches and domains. This preserves concrete SolveEquation
                 // semantics without asking the CAS to rediscover the same
                 // quadratic structure for every response and segment.
-                heightSquaredBranchSchema.Value
-                |> List.choose (fun schema ->
-                    let branch = schema.Expression.Substitute(relationRhs,expression).Simplify()
-                    let domain = schema.Domain.Substitute(relationRhs,expression).Simplify()
-                    if branch.Vars |> Seq.exists (fun variable -> variable = h || variable = relationRhs) ||
-                       domain.Vars |> Seq.exists (fun variable -> variable = relationRhs) then
-                        invalidInput "preview" "The squared-height relation could not be solved explicitly for h."
-                    if domain.ToString() = "False" then None
-                    else Some { Family=schema.Family; Expression=branch; Domain=domain })
-                |> List.distinctBy (fun branch -> branch.Expression.ToString(),branch.Domain.ToString())
-                |> List.sortBy (fun branch -> branch.Expression.ToString()))
+                let branches =
+                    heightSquaredBranchSchema.Value
+                    |> List.choose (fun schema ->
+                        let branch = schema.Expression.Substitute(relationRhs,expression).Simplify()
+                        let domain = schema.Domain.Substitute(relationRhs,expression).Simplify()
+                        if branch.Vars |> Seq.exists (fun variable -> variable = h || variable = relationRhs) ||
+                           domain.Vars |> Seq.exists (fun variable -> variable = relationRhs) then
+                            invalidInput "preview" "The squared-height relation could not be solved explicitly for h."
+                        if domain.ToString() = "False" then None
+                        else Some { Family=schema.Family; Expression=branch; Domain=domain })
+                    |> List.distinctBy (fun branch -> branch.Expression.ToString(),branch.Domain.ToString())
+                    |> List.sortBy (fun branch -> branch.Expression.ToString())
+                branches,tryExactSignedSquareRoot expression)
         let segments =
             fn.Segments
-            |> List.map (fun segment -> { Segment=segment; Branches=solve segment.Expression })
+            |> List.map (fun segment ->
+                let branches,signedRoot = solve segment.Expression
+                { Segment=segment
+                  Branches=branches
+                  // A rounded function owns jumps and isolated endpoint values
+                  // through its exact segments. Its principal height solutions
+                  // must retain that ownership rather than being reinterpreted
+                  // as a smooth signed square root across segment boundaries.
+                  SignedTraversalRoot=
+                    if fn.HasRounding then None else signedRoot })
         let conditionLatex (segment: Piecewise.Segment) (domain: Entity) =
             let interval = Piecewise.segmentConditionLatex segment
             match domain.ToString() with
@@ -1014,7 +1068,8 @@ module Game =
                         { HeightLatex=sprintf "h = %s" (branch.Expression.Latexize())
                           ConditionLatex=conditionLatex solved.Segment branch.Domain }))
         let rows = lines |> List.map (fun line -> sprintf "%s & %s" line.HeightLatex line.ConditionLatex)
-        { Segments=segments; Lines=lines; Latex=sprintf "\\begin{cases}%s\\end{cases}" (String.concat " \\\\ " rows) }
+        { Segments=segments; Lines=lines; HasRounding=fn.HasRounding
+          Latex=sprintf "\\begin{cases}%s\\end{cases}" (String.concat " \\\\ " rows) }
 
     let private approximatelyDistinct tolerance values =
         values
@@ -1048,11 +1103,19 @@ module Game =
                         |> Map.ofList
                     {compiledEvaluator with Evaluate=fun point -> Map.tryFind point known |> Option.defaultWith (fun () -> compiledEvaluator.Evaluate point)}
                 else compiledEvaluator
+            let traversalBranches =
+                match solved.SignedTraversalRoot with
+                | None -> solved.Branches |> List.map (fun branch -> branch.Family,branch.Expression)
+                | Some root ->
+                    [root;(-root).InnerSimplified]
+                    |> List.distinctBy (fun expression -> expression.ToString())
+                    |> List.sortBy (fun expression -> expression.ToString())
+                    |> List.mapi (fun family expression -> family,expression)
             let branchEvaluators =
-                solved.Branches
-                |> List.map (fun branch ->
-                    let evaluate,_ = Piecewise.compileNumeric x branch.Expression
-                    branch.Family,(fun value ->
+                traversalBranches
+                |> List.map (fun (family,expression) ->
+                    let evaluate,_ = Piecewise.compileNumeric x expression
+                    family,(fun value ->
                         let result=evaluate value
                         if abs result < tolerance then 0. else checkedPreviewValue result))
             if genericRounding then
@@ -1067,8 +1130,16 @@ module Game =
                     match polynomialDegree with
                     | Some degree when degree <= 2 -> rationalQuadraticRoots segment
                     | _ -> []
+                let exactTraversalRoots =
+                    match solved.SignedTraversalRoot,polynomialDegree with
+                    | Some root,Some degree when degree <= 4 ->
+                        // tryQuadratic proves the coefficients and discriminant
+                        // symbolically. Irrational roots are converted to doubles
+                        // only to anchor the drawn curve, never for validation.
+                        rationalQuadraticRoots { segment with Expression=root }
+                    | _ -> []
                 let baseCandidates =
-                    startValue :: endValue :: exactRoots @
+                    startValue :: endValue :: exactRoots @ exactTraversalRoots @
                         (sampleXs |> List.map Piecewise.toFloat |> List.filter (fun value -> value >= startValue && value <= endValue))
                     |> List.filter (fun value -> Double.IsFinite(value) && value >= startValue-tolerance && value <= endValue+tolerance)
                     |> List.map (fun value -> max startValue (min endValue value))
@@ -1226,12 +1297,48 @@ module Game =
                 |> List.map (fun path -> if fst (List.head path.Points)>fst (List.last path.Points) then reversePath path else path)
                 |> List.sortBy (fun path -> fst (List.head path.Points)))
             |> List.distinctBy (fun paths -> paths |> List.map (fun path -> path.Points))
+        let hasNoInteriorIntersection path =
+            path.Points.Length>2 &&
+            (path.Points |> List.skip 1 |> List.take (path.Points.Length-2) |> List.forall (fun (_,height) -> abs height>0.000000001)) &&
+            // A signed traversal representative can cross zero between two
+            // display samples. Treat that proven analytic crossing as an
+            // interior intersection too, so the two curves are never folded
+            // into a loop or endpoint join.
+            (path.Points |> List.pairwise |> List.forall (fun ((_,left),(_,right)) -> left*right>=0.))
+        let tryJoinAtOneEndpoint first second =
+            let endpoints path = [true,List.head path.Points,path.StartClosed; false,List.last path.Points,path.EndClosed]
+            let shared =
+                endpoints first
+                |> List.collect (fun (firstStarts,firstPoint,firstClosed) ->
+                    endpoints second
+                    |> List.choose (fun (secondStarts,secondPoint,secondClosed) ->
+                        if firstClosed && secondClosed && samePoint firstPoint secondPoint then Some (firstStarts,secondStarts) else None))
+            match shared with
+            | [firstStarts,secondStarts] when hasNoInteriorIntersection first && hasNoInteriorIntersection second ->
+                // Orient both paths from one outer endpoint, through their only
+                // shared endpoint, to the other outer endpoint.
+                let before = if firstStarts then reversePath first else first
+                let after = if secondStarts then second else reversePath second
+                Some { before with
+                         Points=joinPoints before.Points after.Points
+                         EndClosed=after.EndClosed }
+            | _ -> None
+        let tryJoinRegions (firstPaths: NumericCurvePath list) (secondPaths: NumericCurvePath list) =
+            if solution.HasRounding || firstPaths.Length<>secondPaths.Length then None
+            else
+                (firstPaths,secondPaths)
+                ||> List.map2 tryJoinAtOneEndpoint
+                |> List.fold (fun joined candidate ->
+                    match joined,candidate with
+                    | Some accumulated,Some path -> Some (path::accumulated)
+                    | _ -> None) (Some [])
+                |> Option.map (List.rev >> List.map List.singleton)
         let flights =
             match families with
             | [ [first]; [second] ] when first.Points.Length>2 && second.Points.Length>2 &&
                     samePoint (List.head first.Points) (List.head second.Points) &&
                     samePoint (List.last first.Points) (List.last second.Points) &&
-                    (first.Points |> List.skip 1 |> List.take (first.Points.Length-2) |> List.forall (fun (_,height) -> abs height>0.000000001)) ->
+                    hasNoInteriorIntersection first && hasNoInteriorIntersection second ->
                 // Circles, ovals and leaf-shaped loops can combine their two
                 // branches without retracing or passing an internal junction.
                 let joined=joinPoints first.Points (List.rev second.Points)
@@ -1242,6 +1349,13 @@ module Game =
                     | None -> 0
                 let rotated=(openLoop |> List.skip offset) @ (openLoop |> List.take offset)
                 [[{ first with Points=rotated @ [List.head rotated] }]]
+            | [firstPaths;secondPaths] ->
+                // Separate real x-regions are separate connected components of
+                // the locus. Within each region, join the two height branches
+                // through their one shared tip and launch from an outer endpoint.
+                // Rounded relations deliberately keep one traveller per height
+                // solution so their jumps retain the authored step semantics.
+                tryJoinRegions firstPaths secondPaths |> Option.defaultValue families
             | _ -> families
         let resampleAnchored path =
             let points=path.Points

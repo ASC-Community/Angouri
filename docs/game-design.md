@@ -10,8 +10,8 @@ There are 57 main puzzles across ten chapters and fourteen optional puzzles: 71 
 | --- | --- | --- |
 | Height | 1, 2, 3, 24, 25 | Separate a gap from its placement; make fractional lifts |
 | Reflection | 6, 8, 9, 26 | Account for direction, scale and an existing offset |
-| Squaring | 7, 10, 4, 27, 28 | Choose where the input crosses zero before folding |
-| Repeated squaring | 12, 13, 29, 30, 31, 11 | Compare fourth, sixth and eighth powers; fit and construct before flattening |
+| Bowls and arches | 7, 10, 4, 27, 28 | Choose where the input crosses zero before folding |
+| Flat tops | 12, 13, 29, 30, 31, 11 | Compare fourth, sixth and eighth powers; fit and construct before flattening |
 | Slopes | 32–36 | Build the input's turning points, then place the output |
 | Accumulation | 37–42 | Plan input signs and zero crossings, then choose the initial amount |
 | Loops | 43, 44, 48, 68, 69, 70, 66, 49, 71 | Move a loop, then shape both heights and their real regions with block equations |
@@ -21,7 +21,7 @@ There are 57 main puzzles across ten chapters and fourteen optional puzzles: 71 
 
 The progression introduces a relationship, applies it in a more involved construction, and then asks for transfer. Every source occupies its own numbered step, records its own completion and appears in the ordinary Next route. Similar-looking puzzles stay separate when the later one adds scaling, reconstruction or another dependency; completing an earlier source never awards a later one.
 
-Reflection first turns a provided bowl into a roof (8), then adds scaling while holding its peak (9), before the raised-bowl challenge (26). Repeated squaring first isolates fourth-power flattening (12) and its roof finish (13), then repeats those decisions for a sixth power (29–30). Source 31 gives a provided bowl so repeated flattening is the new decision. Source 11 follows it and raises complexity by requiring the player to construct and fit that bowl before flattening, turning and placing the summit.
+Reflection first turns a provided bowl into a roof (8), then adds scaling while holding its peak (9), before the raised-bowl challenge (26). Flat tops first isolates fourth-power flattening (12) and its roof finish (13), then repeats those decisions for a sixth power (29–30). Source 31 gives a provided bowl so repeated flattening is the new decision. Source 11 follows it and raises complexity by requiring the player to construct and fit that bowl before flattening, turning and placing the summit.
 
 The sixth power comes from squaring a cubic, rather than adding a button for each exponent. Source 31 rehomes the repeated-flattening idea from the earlier derivative-first capstone and asks for an eighth-power summit without making differentiation a prerequisite. Source 11 then tests whether the player can recover the needed bowl as part of the construction.
 
@@ -78,7 +78,21 @@ Together has three jobs. Uneven wave spacing uses the derivative of a cubic as a
 
 The new authoring data lives in `content/extended-puzzles.json`, embedded in the kernel and imported by the interface. It contains rules and target values, never solution recipes. Existing source IDs, rules and save identities stay stable. The main route has 57 puzzles across ten chapters, with fourteen preserved optional sources.
 
-For recipe relations, blocks build the right side of `h^2 = ...`. The interface keeps the familiar `h` and `h^2` notation. AngouriMath solves for the real height branches and supplies their exact domain conditions; it also fully simplifies the displayed expressions. Exact validation compares each target's squared height with the right side. Only regions with nonnegative right side have real branches. Each real `h` solution gets its own cucumber. The renderer joins branches only when their sampled endpoints make one simple closed loop, including an oval. A cucumber assigned to a stepped height solution stays on that one solution across jumps, while open or crossing branches remain separate instead of being spliced into a false flight. Equation compares both sides, and Flow finishes the right-side chain with a diagram of both heights. Empty real geometry remains editable, with Throw disabled until a path exists. The frontend does not choose a mathematical branch or evaluate the recipe.
+For recipe relations, blocks build the right side of `h^2 = ...`. The interface keeps the familiar `h` and `h^2` notation. AngouriMath solves for the real height branches and supplies their exact domain conditions; it also fully simplifies the displayed expressions. Exact validation compares each target's squared height with the right side. Only regions with nonnegative right side have real branches. Playback follows the locus: a simple loop uses one cucumber, as do two open branches joined at their sole shared endpoint. The latter launches from an outer endpoint and visits the tip once. Disconnected nonrounded real regions are paired separately. Crossing curves retain separate travellers that follow their smooth analytic continuation when an exact signed square root can be proved, instead of bouncing along the positive or negative principal branch. This bounded structural proof is cached and verified by AngouriMath exact equality; expanded squares outside the recognized expression-tree forms retain solver traversal. A stepped height solution keeps one traveller across its unconnected jumps. Equation retains the principal solved heights and conditions, and Flow finishes the right-side chain with a diagram of both heights. Empty real geometry remains editable, with Throw disabled until a path exists. The frontend does not choose a mathematical branch or evaluate the recipe.
+
+## Proposed art progression
+
+The current Together puzzles primarily test synthesis through exact point fitting. They remain implemented challenge levels; the following art progression is a proposal, not a shipped change.
+
+| Structure | What it offers | Main design risk |
+| --- | --- | --- |
+| One outline per level | A recognizable goal at a glance, with the existing recipe editor | Forcing multipart pictures into one equation can add algebraic complexity without a useful lesson |
+| Build a picture in stages | Visible cumulative progress and a reason to decompose a shape into parts | Each part must require construction decisions; merely placing supplied pieces can become routine |
+| Keep challenges, then offer optional art | Preserves demanding mastery exercises and makes the creative activity voluntary | Players who stop at those challenges miss the most inviting payoff, and the chapter's point-fitting identity remains |
+
+Recognizable single-curve outlines would give each recipe a clear visual purpose while retaining the familiar editor. A later picture assembled from several independently constructed curves would then teach decomposition and offer visible cumulative progress. The existing demanding Together puzzles could remain available as optional mastery challenges. Keeping all art behind those challenges would make the most inviting payoff inaccessible to players who stop at that difficulty increase.
+
+Desmos's [math art introduction](https://help.desmos.com/hc/en-us/articles/4406809622541-Math-Art) and [restriction guide](https://help.desmos.com/hc/en-us/articles/4407885334285-Inequalities-and-Restrictions) illustrate composing ordinary curves and bounded pieces; [parametric curves](https://help.desmos.com/hc/en-us/articles/4406906208397-Parametric-Equations) provide a further extension. The immediate missing capability is a selectable curve interval, followed by composition of several curves. AngouriMath's `MathS.Provided(expression, condition)` is the natural kernel representation for that restriction. A proposed Crop block would attach an exact domain condition, with visible endpoints; it would remove the excluded curve instead of flattening it to zero. Domain ownership and validation would remain kernel decisions. Parametric drawing, arbitrary shading, and a new multi-curve save format have not been implemented.
 
 ## Evidence of fun, clarity and depth
 
@@ -90,6 +104,6 @@ The reference audit covers the full route. Puzzle 4.5 combines fitting from 3.2 
 
 After the authored ending, Picture Garden is an optional hands-on coda rather than another completion gate. Players stamp curve silhouettes onto Moonlight, Garden and Angouri boards. Completing the last board animates the drawn cucumber into the canonical wordmark. Entering or finishing this activity never fills missing chapter progress.
 
-The intended appeal is a readable target field, tactile manipulation, a cucumber that visibly travels the player's construction, and a new question at each chapter boundary. The intended depth lies in invariants: gaps, zeros, symmetry, input/output placement, signed accumulation and equal distances. The Repeated squaring sequence makes its added construction work explicit instead of treating related shapes as interchangeable. The geometric circle challenge uses a changed target arrangement; the new final garden asks players to combine ideas across chapters.
+The intended appeal is a readable target field, tactile manipulation, a cucumber that visibly travels the player's construction, and a new question at each chapter boundary. The intended depth lies in invariants: gaps, zeros, symmetry, input/output placement, signed accumulation and equal distances. The Flat tops sequence makes its added construction work explicit instead of treating related shapes as interchangeable. The geometric circle challenge uses a changed target arrangement; the new final garden asks players to combine ideas across chapters.
 
 Exact oracles establish legality, solutions and the absence of named mathematical shortcuts. They do not establish that a person reasons instead of guessing, or that the game is fun. Ask for a prediction before one move, then observe a changed problem and voluntary continuation. Separate understanding the mathematics from operating a handle, reading an equation or finding a view. See `playtest.md` for that participant protocol.

@@ -146,7 +146,9 @@ export function flightView(state:State,result:Result,camera:Camera,flight:Flight
   }).join('');
   const [zeroX,zeroY]=transform(state,camera,[0,0]);
   const annotations=circular?`${flightMath('0',zeroX-13,zeroY,24,'zero-label',15)}${flightMath('h',zeroX,25,28)}${flightMath('x',575,zeroY,26,'',15)}`:`${Array.from({length:(state.sourceId===5?2:4)+1},(_,i)=>flightMath(String(i),transform(state,camera,[i,0])[0],height-25)).join('')}${flightMath('0',64,zeroY,24,'zero-label')}${flightMath('h',zeroX,Math.max(16,top-12),28)}${flightMath('x',width-20,height-25,26)}`;
-  return `<div class="flight-diagram"><svg id="flight-svg" ${result.relation?'data-relation="true"':''} viewBox="${circular?'132 0 496 414':`0 0 ${width} ${height}`}" role="img" aria-label="${result.circle?'A complete circle, travelled counterclockwise from the rightmost point. ':result.relation?'Both real heights of the equation. ':''}${state.mode==='remix'?'Your cucumber’s flight path.':`Your cucumber's flight path through ${result.checkpoints.length} targets.`}">
+  // A joined open relation can launch from its right-hand end. Reserve room on
+  // both sides for the pulled-back rig without changing its mathematical frame.
+  return `<div class="flight-diagram"><svg id="flight-svg" ${result.relation?'data-relation="true"':''} viewBox="${result.relation?'92 0 576 414':circular?'132 0 496 414':`0 0 ${width} ${height}`}" role="img" aria-label="${result.circle?'A complete circle, travelled counterclockwise from the rightmost point. ':result.relation?'Both real heights of the equation. ':''}${state.mode==='remix'?'Your cucumber’s flight path.':`Your cucumber's flight path through ${result.checkpoints.length} targets.`}">
     <defs><clipPath id="plot-clip"><rect x="16" y="0" width="${width-32}" height="${height-38}" rx="12"/></clipPath></defs>
     <g clip-path="url(#plot-clip)">${ticks}
       <path class="flight-height-axis" d="M${zeroX} ${circular?40:top}V${circular?356:bottom}"/>

@@ -1110,6 +1110,35 @@ static class ContractTests
         Equal("9/8", level25NearMissKernel["result"]!["checkpoints"]![0]!["actual"]!.GetValue<string>(),
             "height capstone near miss exposes the fractional baseline");
 
+        string[] cachedPresentationOps = "AHAHAAHAHH".Select(character => character.ToString()).ToArray();
+        var cachedPresentation = PlayPuzzle(25, cachedPresentationOps)["result"]!.AsObject();
+        Entity directPresentation = MathS.FromString("x*(4-x)");
+        foreach (string op in cachedPresentationOps)
+            directPresentation = op == "A"
+                ? (directPresentation + 1).InnerSimplified
+                : (directPresentation / 2).InnerSimplified;
+        directPresentation = directPresentation.Simplify();
+        Equal(directPresentation.ToString(), cachedPresentation["stages"]!.AsArray()[^1]!["expression"]!.GetValue<string>(),
+            "long polynomial stage text remains the direct AngouriMath simplification");
+        Equal(directPresentation.Latexize(), cachedPresentation["stages"]!.AsArray()[^1]!["latex"]!.GetValue<string>(),
+            "long polynomial stage LaTeX remains the direct AngouriMath simplification");
+
+        JsonObject refreshed = Level(25);
+        for (int index = 0; index < cachedPresentationOps.Length; index++)
+            refreshed = Act(refreshed["state"]!, new JsonObject
+            {
+                ["type"] = "insert", ["id"] = $"fresh-presentation-{index}",
+                ["op"] = cachedPresentationOps[index], ["index"] = index
+            });
+        var refreshedResult = refreshed["result"]!.AsObject();
+        for (int index = 1; index < refreshedResult["stages"]!.AsArray().Count; index++)
+            Equal($"fresh-presentation-{index - 1}", refreshedResult["stages"]![index]!["id"]!.GetValue<string>(),
+                "cached formulas retain the current node identity");
+        True(JsonNode.DeepEquals(cachedPresentation["checkpoints"], refreshedResult["checkpoints"]),
+            "presentation caching leaves exact target readings unchanged");
+        True(JsonNode.DeepEquals(cachedPresentation["heightGuide"], refreshedResult["heightGuide"]),
+            "presentation caching leaves the exact height guide unchanged");
+
         var level26 = AnalyzeBoundedCapstone(26);
         CheckAuthoredOracle(level26, 3851, 16, 2, 6,
             "AHHHNA,AHHNHA,AHNHHA,ANHHHA", "reflection capstone");
@@ -2829,6 +2858,9 @@ static class ContractTests
                 "generic squared-height schema filters branches whose real domain is false");
         }
 
+        var openRelation = Level(48)["result"]!["relation"]!.AsObject();
+        CheckJoinedOpenFlight(openRelation);
+
         var shiftedSquare = PlayExtendedPuzzle(48, "AQ")["result"]!.AsObject();
         string expectedShiftedSquare = MathS.FromString("((x - 2) + 1)^2").Simplify().Latexize();
         Equal(expectedShiftedSquare, shiftedSquare["stages"]!.AsArray()[^1]!["latex"]!.GetValue<string>(),
@@ -2941,8 +2973,8 @@ static class ContractTests
 
         var shiftedRelation = shiftedSquare["relation"]!.AsObject();
         Equal(1, shiftedRelation["breaks"]!.AsArray().Count,
-            "touching AQ height solutions retain separate flights");
-        CheckHeightFlights(shiftedRelation, 2);
+            "height solutions touching at an interior point retain separate flights");
+        CheckSignedSquareFlights(shiftedRelation, x => x - 1, 1, "AQ crossing");
         var shiftedPlayback = shiftedRelation["playback"]!.AsArray();
         Equal(0.0, shiftedPlayback[0]![0]!.GetValue<double>(),
             "an open height solution launches from its left endpoint, not an interior checkpoint");
@@ -2955,6 +2987,41 @@ static class ContractTests
             "AQ playback follows each height solution without duplicate samples");
         True(shiftedChords.Max() / shiftedChords.Min() < 1.02,
             "AQ height solutions remain uniformly paced without retracing");
+
+        var intersectingParabolas = PlayExtendedPuzzle(70, "Q")["result"]!["relation"]!.AsObject();
+        CheckSignedSquareFlights(intersectingParabolas, x => (x - 2) * (x - 2) - 1, 2,
+            "source 70 Q intersecting parabolas");
+        foreach (var flight in intersectingParabolas["flights"]!.AsArray())
+        {
+            var points = intersectingParabolas["playback"]!.AsArray();
+            int start = flight![0]!.GetValue<int>(), end = flight[1]!.GetValue<int>();
+            foreach (double rootX in new[] { 1.0, 3.0 })
+                True(points.Skip(start).Take(end - start + 1).Any(point =>
+                        Math.Abs(point![0]!.GetValue<double>() - rootX) < 1e-12 &&
+                        Math.Abs(point[1]!.GetValue<double>()) < 1e-12),
+                    $"source 70 Q flight passes through exact crossing x={rootX}");
+        }
+
+        var tangentialFourthPower = ImportCreation(48, ["A", "Q", "Q"])["result"]!["relation"]!.AsObject();
+        CheckSignedSquareFlights(tangentialFourthPower, x => (x - 1) * (x - 1), 0,
+            "fourth-power tangential touch");
+
+        var shiftedOffGrid = ImportCreation(48, ["Q", "H", "N", "A", "Q"])["result"]!["relation"]!.AsObject();
+        CheckSignedSquareFlights(shiftedOffGrid, x => 1 - (x - 2) * (x - 2) / 2, 2,
+            "off-grid algebraic crossings");
+
+        var sineSquared = ImportCreation(48, ["S", "Q"])["result"]!["relation"]!.AsObject();
+        CheckSignedSquareFlights(sineSquared, x => Math.Sin(Math.PI * (x - 2) / 2), 1,
+            "sine-squared crossings");
+
+        var scaledSquare = ImportCreation(48, ["A", "Q", "H"])["result"]!["relation"]!.AsObject();
+        CheckSignedSquareFlights(scaledSquare, x => (x - 1) / Math.Sqrt(2), 1,
+            "positive scaled square");
+
+        var roundedSquare = ImportCreation(48, ["F", "Q"])["result"]!["relation"]!.AsObject();
+        CheckHeightFlights(roundedSquare, 2);
+        True(roundedSquare["breaks"]!.AsArray().Count > 1,
+            "rounded squared height keeps its real jump gaps within each height solution");
 
         var empty = PlayExtendedPuzzle(48, "QAN")["result"]!.AsObject();
         Equal(0, empty["relation"]!["paths"]!.AsArray().Count,
@@ -2993,23 +3060,33 @@ static class ContractTests
             "multi-segment solution exposes every solver branch");
 
         var initialMixedRelation = Level(67)["result"]!["relation"]!.AsObject();
-        var initialMixedPlayback = initialMixedRelation["playback"]!.AsArray();
-        Equal(0.0, initialMixedPlayback[0]![0]!.GetValue<double>(),
-            "open implicit branches start at their own left endpoint");
-        Equal(0.0, initialMixedPlayback[0]![1]!.GetValue<double>(),
-            "source 67 opens from its real origin vertex");
+        CheckJoinedOpenFlight(initialMixedRelation);
 
         var disconnected = PlayExtendedPuzzle(49, "HQNAN")["result"]!["relation"]!.AsObject();
-        Equal(3, disconnected["breaks"]!.AsArray().Count,
-            "two height solutions each retain their internal real-domain gap");
-        CheckHeightFlights(disconnected, 2);
-        int breakIndex = disconnected["breaks"]![0]!.GetValue<int>();
+        Equal(1, disconnected["breaks"]!.AsArray().Count,
+            "two disconnected real components have only the inter-flight break");
+        Equal(2, disconnected["flights"]!.AsArray().Count,
+            "each disconnected real component gets one complete flight");
         var disconnectedPlayback = disconnected["playback"]!.AsArray();
-        Equal(0.0, disconnectedPlayback[0]![0]!.GetValue<double>(),
-            "a disconnected height solution starts at its first real-domain endpoint");
-        True(Math.Abs(disconnectedPlayback[breakIndex]![0]!.GetValue<double>() -
-                      disconnectedPlayback[breakIndex - 1]![0]!.GetValue<double>()) > 1.0,
-            "disconnected playback does not draw across its negative-height-squared gap");
+        var componentOuterXs = new HashSet<double>();
+        foreach (var flight in disconnected["flights"]!.AsArray())
+        {
+            int start = flight![0]!.GetValue<int>(), end = flight[1]!.GetValue<int>();
+            double startX = disconnectedPlayback[start]![0]!.GetValue<double>();
+            double endX = disconnectedPlayback[end]![0]!.GetValue<double>();
+            Equal(startX, endX, "a component launches and lands at its two outer branch endpoints");
+            True(disconnectedPlayback[start]![1]!.GetValue<double>() *
+                 disconnectedPlayback[end]![1]!.GetValue<double>() < 0,
+                "a component traverses both height signs through its shared tip");
+            Equal(1, disconnectedPlayback.Skip(start + 1).Take(end - start - 1)
+                    .Count(point => Math.Abs(point![1]!.GetValue<double>()) < 1e-12),
+                "a disconnected component visits its one shared tip exactly once");
+            componentOuterXs.Add(startX);
+        }
+        True(componentOuterXs.SetEquals([0.0, 4.0]),
+            "the two component flights launch from the left and right outer endpoints");
+        True(PlaybackChordLengths(disconnected).Max() < 0.08,
+            "neither component teleports across the negative squared-height gap");
 
         var loopExport = Act(loopResponse["state"]!, new JsonObject
         {
@@ -3057,6 +3134,34 @@ static class ContractTests
     private static double PointY(JsonArray points, double x) =>
         points.Single(point => Math.Abs(point![0]!.GetValue<double>() - x) < 1e-12)![1]!.GetValue<double>();
 
+    private static void CheckJoinedOpenFlight(JsonObject relation)
+    {
+        var points=relation["playback"]!.AsArray();
+        var flights=relation["flights"]!.AsArray();
+        Equal(1,flights.Count,"two height branches with one shared endpoint form one open flight");
+        Equal(0,relation["breaks"]!.AsArray().Count,"a joined open flight has no teleport break");
+        Equal(0,flights[0]![0]!.GetValue<int>(),"the joined open flight owns the first playback point");
+        Equal(points.Count-1,flights[0]![1]!.GetValue<int>(),"the joined open flight owns the last playback point");
+        var zeroIndices=points.Select((point,index)=>(point,index))
+            .Where(item=>Math.Abs(item.point![1]!.GetValue<double>())<1e-12)
+            .Select(item=>item.index).ToArray();
+        Equal(1,zeroIndices.Length,"joined branches visit their only shared endpoint once");
+        int shared=zeroIndices[0];
+        True(shared>0&&shared<points.Count-1,"the shared endpoint lies inside playback, not at its launch");
+        double startX=points[0]![0]!.GetValue<double>(),endX=points[^1]![0]!.GetValue<double>();
+        Equal(startX,endX,"the joined path starts and ends at the two outer endpoints");
+        True(points[0]![1]!.GetValue<double>()*points[^1]![1]!.GetValue<double>()<0,
+            "the joined path finishes on the opposite solved height branch");
+        for(int index=1;index<=shared;index++)
+            True(points[index]![0]!.GetValue<double>()<=points[index-1]![0]!.GetValue<double>()+1e-9,
+                "the first half travels from its outer endpoint to the shared endpoint without backtracking");
+        for(int index=shared+1;index<points.Count;index++)
+            True(points[index]![0]!.GetValue<double>()+1e-9>=points[index-1]![0]!.GetValue<double>(),
+                "the second half travels from the shared endpoint to its outer endpoint without backtracking");
+        var chords=PlaybackChordLengths(relation);
+        True(chords.All(distance=>distance>1e-9),"joined open playback has no duplicate seam or retraced edge");
+    }
+
     private static void CheckHeightFlights(JsonObject relation, int count)
     {
         var points=relation["playback"]!.AsArray();
@@ -3081,6 +3186,58 @@ static class ContractTests
             next=end+1;
         }
         Equal(points.Count,next,"all playback belongs to a height solution");
+    }
+
+    private static void CheckSignedSquareFlights(
+        JsonObject relation, Func<double, double> signedRoot, int expectedSignChanges, string label)
+    {
+        var points = relation["playback"]!.AsArray();
+        var flights = relation["flights"]!.AsArray();
+        Equal(2, flights.Count, $"{label} keeps the two smooth analytic height curves separate");
+        Equal(1, relation["breaks"]!.AsArray().Count,
+            $"{label} teleports only between its two complete curves");
+        var orientations = new HashSet<int>();
+        int next = 0;
+        foreach (var flight in flights)
+        {
+            int start = flight![0]!.GetValue<int>(), end = flight[1]!.GetValue<int>();
+            Equal(next, start, $"{label} flight ranges partition playback");
+            True(end > start, $"{label} flight contains a complete curve");
+            int orientation = 0;
+            int previousSign = 0, signChanges = 0;
+            for (int index = start; index <= end; index++)
+            {
+                double x = points[index]![0]!.GetValue<double>();
+                double actual = points[index]![1]!.GetValue<double>();
+                double representative = signedRoot(x);
+                if (index > start)
+                    True(x + 1e-9 >= points[index - 1]![0]!.GetValue<double>(),
+                        $"{label} traces each analytic curve from left to right without retracing");
+                if (orientation == 0 && Math.Abs(representative) > 1e-6)
+                    orientation = Math.Sign(actual * representative);
+                if (orientation != 0)
+                {
+                    double expected = orientation * representative;
+                    True(Math.Abs(actual - expected) < 0.004,
+                        $"{label} playback stays on one signed representative at x={x}");
+                    True(Math.Abs(actual * actual - representative * representative) < 0.025,
+                        $"{label} playback sample satisfies the squared-height equation at x={x}");
+                }
+                int sign = Math.Abs(actual) < 1e-6 ? 0 : Math.Sign(actual);
+                if (sign != 0)
+                {
+                    if (previousSign != 0 && sign != previousSign) signChanges++;
+                    previousSign = sign;
+                }
+            }
+            True(orientation != 0, $"{label} has a nonzero signed representative");
+            orientations.Add(orientation);
+            Equal(expectedSignChanges, signChanges,
+                $"{label} crosses zero according to its analytic representative instead of taking an absolute-value cusp");
+            next = end + 1;
+        }
+        Equal(points.Count, next, $"{label} assigns every playback point to a flight");
+        True(orientations.SetEquals([-1, 1]), $"{label} traces both opposite signed representatives");
     }
 
     private static List<double> PlaybackChordLengths(JsonObject relation)

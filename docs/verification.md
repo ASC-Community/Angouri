@@ -1,8 +1,34 @@
-# Implementation verification · 6 October 2026
+# Implementation verification · 7 October 2026
 
 Version **0.1.0**, currently unreleased, is implemented on `prototype/vine-playground`. Source now lives in `web/`, `kernel/`, `bridge/` and `tests/`; the old `prototype/` directory is gone. The production artifact is built in `dist/`, with an optional repository-root copy for local preview. The default branch and public deployment are unchanged. The authorized organization-profile consolidation was pushed separately, as recorded below.
 
-## Discovery, loops and Picture Garden: current revision
+## Long recipes and continuous locus playback: current revision
+
+The reported placement lag in puzzle 1.5 came from full expression simplification of every recipe prefix on every edit, including unchanged prefixes and history restoration. Plot sampling already used compiled evaluators. A pre-fix ten-block final placement took 1,768.6 ms end to end, with 1,732.5 ms in the worker. Polynomial presentation now shares the bounded simplification cache already used for segmented equations; exact rational readings are rendered directly after their existing reduction. Exact target equality and the original expressions used for sampling remain unchanged.
+
+The expanded `npm run measure` covers ten-block source 25, Undo/Redo and all three views, as well as sources 3 and 4. On the local i5-8400 with Chromium 153 at 1440×1000, its 318 warm observations had a 60.8 ms median, 108.8 ms 95th percentile and 230.6 ms maximum, with no worker restarts. Source 25's warm edit timings were:
+
+| View | Total median / p95 | Worker median / p95 |
+| --- | --- | --- |
+| Flight | 60.9 / 95.4 ms | 41.8 / 76.1 ms |
+| Equation | 60.8 / 109.6 ms | 38.2 / 84.3 ms |
+| Flow | 67.9 / 115.6 ms | 37.5 / 68.9 ms |
+
+These figures exclude the first three recipe cycles in each case. First-use longer prefixes still took 153.9–505.8 ms; the first ten-block placement took 391.8 ms including 360.8 ms of worker time. The cache removes repeated work, not every initial symbolic cost. These are local measurements, not device-wide guarantees. Raw first-use and warm observations remain in `artifacts/measurements.json`; the diagnostic comparison is under `.work/artifacts/lag-15/`. The measurement preceded the subsequent relation-only traversal repair, which does not change this polynomial path.
+
+Initial source 48 (7.3) now joins its two branches into one open flight from an outer endpoint through the shared tip, without retracing. Source 70 with Square (7.6) traces two smooth intersecting parabolas through both zeros instead of following the principal roots' absolute-value cusps. The separate traversal representation requires a structural signed-root proof and AngouriMath exact equality; it is cached with the solved branches. Equation's principal branches and domain conditions remain unchanged. Expanded squares outside the recognized structural forms fall back to solver traversal. Nonrounded disconnected real regions are paired independently; rounded relations retain one traveller per height solution and explicit jump gaps.
+
+Relation plots reserve pullback space on both sides without changing their mathematical frame. Discovery-finding icons use their chosen block's foreground and background colors. Chapters 3 and 4 are now Bowls and arches and Flat tops, retaining all source IDs, rules and operation terminology. `AGENTS.md` records these decisions. Chapter 10 picture-building alternatives and AngouriMath `Provided` as a proposed Crop representation are documented in `docs/game-design.md`; neither Crop nor that progression redesign is implemented in this revision.
+
+The Release kernel suite (`npm run test:kernel`) passed **1,346,204 contract assertions**. Added cases cover open joins, intersecting parabolas, tangencies, irrational off-grid zeros, sine squares, rational scaling, rounded gaps, disconnected components and cached polynomial presentation with current node identities and exact readings. The TypeScript, F#/WebAssembly and Vite build passes, with the five existing FSharp.Core trimming warnings.
+
+The final targeted browser run passed **21 scenarios across Chromium, Firefox and WebKit**: discoveries, connected and disconnected locus routing, the two smooth 7.6 curves, solved-equation/Flow inspection, stable target framing with Fit, and renamed chapter navigation. The 7.6 test records actual SVG cucumber positions during playback and checks both zero crossings against the two parabolas. An earlier 15-case run across the same engines covered introductory layouts, exact decimal signs, height gaps and the initial open-join repair; all four content checks also passed. These are targeted checks, not a new full browser-suite run.
+
+Eighteen final production captures in Chromium and WebKit cover initial 7.3 and loaded/flying 7.6 at desktop, 390px portrait and 844×390 landscape. They report no page errors, KaTeX errors or horizontal document overflow. Visual inspection found the longer discovery message and Throw clipped inside the landscape dock; the finding now sits above the action, and that direct-choice layout lets the document grow instead of scrolling the dock. A subsequent frontend build and six replacement landscape captures verified the correction and actual throws in both engines. The reports are under `.work/artifacts/locus-final/`; earlier matching-icon captures are under `.work/artifacts/lag-15/`. No physical-device or native Safari testing is claimed.
+
+Six additional focused landscape checks cover 1.1, 1.2 and 7.6 in Chromium and WebKit after the layout correction. The complete finding and action fit inside the dock, the dock has no internal overflow, and the document has no horizontal overflow. Captures wait for the Throw button's color transition to settle; see `choice-landscape.json` in the same capture directory.
+
+## Discovery, loops and Picture Garden: earlier revision
 
 The route has **57 main puzzles in ten chapters**, with fourteen optional sources and 71 stable source IDs. Loops starts with radius and centre discoveries, then moves into block equations and stays there. New sources 68-70 isolate right-side growth, square-root scaling and real-domain changes before source 71 combines them. Existing puzzle rules and save identities remain intact. Single-slot and selected station discoveries explain the accepted move without offering a Hints menu of the same experiments.
 

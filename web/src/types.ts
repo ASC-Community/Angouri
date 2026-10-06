@@ -88,8 +88,8 @@ export const LEVELS = [
 export const CHAPTERS = [
   { name:'Height', idea:'Lift and scale', color:'sage', zero:29, before:'M3 29Q18-13 33 29', after:'M3 29Q18 9 33 29', levels:[1,2,3,24,25] },
   { name:'Reflection', idea:'Turn, then place', color:'blue', zero:18, before:'M3 18Q18 46 33 18', after:'M3 18Q18-10 33 18', levels:[6,8,9,26] },
-  { name:'Squaring', idea:'Build in parts', color:'lilac', zero:23, before:'M3 33L33 13', after:'M3 3Q18 43 33 3', levels:[7,10,4,27,28] },
-  { name:'Repeated squaring', idea:'Familiar moves, new silhouettes', color:'peach', zero:30, before:'M3 4Q18 56 33 4', after:'M3 4C7 29 11 30 18 30C25 30 29 29 33 4', levels:[12,13,29,30,31,11] },
+  { name:'Bowls and arches', idea:'Build in parts', color:'lilac', zero:23, before:'M3 33L33 13', after:'M3 3Q18 43 33 3', levels:[7,10,4,27,28] },
+  { name:'Flat tops', idea:'Familiar moves, new silhouettes', color:'peach', zero:30, before:'M3 4Q18 56 33 4', after:'M3 4C7 29 11 30 18 30C25 30 29 29 33 4', levels:[12,13,29,30,31,11] },
   { name:'Slopes', idea:'Shape what changes', color:'gold', zero:23, before:'M3 3Q18 43 33 3', after:'M3 32L33 14', levels:[32,33,34,35,36] },
   { name:'Accumulation', idea:'Shape what builds up', color:'teal', zero:29, before:'M3 18H33', after:'M3 29L33 7', levels:[37,38,39,40,41,42] },
   { name:'Loops', idea:'One equation. Both sides.', color:'lilac', zero:18, before:'M4 18Q18-10 32 18', after:'M32 18A14 14 0 1 1 4 18A14 14 0 1 1 32 18', levels:[43,44,48,68,69,70,66,49,71] },

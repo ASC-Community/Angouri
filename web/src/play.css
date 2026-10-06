@@ -92,7 +92,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 .insert-slot:hover, .insert-slot.selected, .insert-slot.suggested-slot { border-color: #6e8b4b; background: #e2ebd1; color: #486b35; box-shadow: inset 0 0 0 1px #8fa96d; }
 .is-dragging .insert-slot { border: 2px dashed #87a25f; color: #5b7f3e; background: #e6eed7; }
 .is-dragging .insert-slot.drop-target { border-style: solid; border-color: #3f713c; background: #cbdfa9; box-shadow: 0 0 0 3px #88a96540; }
-:where(.recipe-part, .ingredient-stack, .ingredient, .drag-ghost) { --piece-fill: var(--sage); --piece-edge: #a7bb8d; --piece-base: #a0b483; --piece-ink: #405d32; }
+:where(.recipe-part, .ingredient-stack, .ingredient, .drag-ghost, .discovery-operation) { --piece-fill: var(--sage); --piece-edge: #a7bb8d; --piece-base: #a0b483; --piece-ink: #405d32; }
 .peach { --piece-fill: var(--peach); --piece-edge: #d3b391; --piece-base: #c9a37b; --piece-ink: #815331; }
 .blue { --piece-fill: var(--blue); --piece-edge: #a6bfcd; --piece-base: #90acbd; --piece-ink: #3d6377; }
 .lilac { --piece-fill: var(--lilac); --piece-edge: #bdacd1; --piece-base: #af99c5; --piece-ink: #705286; }
@@ -158,7 +158,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 .feedback { display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 11px; color: #7d8e6c; text-align: center; line-height: 1.4; padding: 3px 4px; }
 .feedback.error { padding: 7px 10px; background: #f8e9e1; color: #94563c; border-radius: 7px; }
 .discovery-feedback { color: #526c42; max-width: 400px; text-align: left; }
-.discovery-operation { display: grid; place-items: center; flex: none; min-width: 28px; min-height: 28px; border-radius: 8px; background: #e8efdb; padding: 2px 5px; }
+.discovery-operation { display: grid; place-items: center; flex: none; min-width: 28px; min-height: 28px; border-radius: 8px; background: var(--piece-fill); color: var(--piece-ink); padding: 2px 5px; }
 .success { display: flex; align-items: center; gap: 16px; padding: 4px 0; }
 .success-medal { display: flex; align-items: center; gap: 9px; color: #4c703a; font-size: 12px; }
 .success-medal>svg { width: 31px; height: 31px; padding: 6px; border-radius: 50%; background: #e6efda; border: 1px solid #a7bc87; }
@@ -316,8 +316,12 @@ body.reduced-motion *, body.reduced-motion *::before, body.reduced-motion *::aft
   .landing .site-header { padding: 28px 0 20px; }
   .landing .brand { transform: scale(1.8); }
   .landing .menu-button { top: 10px; right: 0; }
-  .choice-game .play-dock, .choice-game .play-dock:has(.palette[data-count="3"]) { width: 260px; max-width: 40%; }
+  .choice-game .playground { min-height: min-content; }
+  .choice-game .play-dock, .choice-game .play-dock:has(.palette[data-count="3"]) { width: 260px; max-width: 40%; max-height: none; overflow: visible; }
   .choice-game .palette { grid-template-columns: 1fr; --piece-height: 64px; gap: 13px; }
+  .choice-game .dock-footer { flex-direction: column; gap: 6px; }
+  .choice-game .feedback { width: 100%; }
+  .choice-game .dock-actions { justify-content: center; }
 }
 
 /* Stations use the same single, horizontally scrollable recipe as other chapters. */

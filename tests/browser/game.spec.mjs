@@ -130,7 +130,7 @@ test('chapter selection groups puzzles without changing the construction until a
   await ready(page,'/#level=4&view=flight');await place(page,'H');const before=await snapshot(page);
   await menu(page,'puzzles-open');await expect(page.locator('.chapter-group:not(.extra-puzzles)')).toHaveCount(10);
   await expect(page.locator('#level-nav .challenge-label')).toHaveCount(10);await expect(puzzleOption(page,71)).toContainText('Chapter challenge');await expect(puzzleOption(page,67)).toContainText('Final challenge');
-  await expect(page.locator('.chapter-group[open]')).toHaveCount(1);await expect(page.locator('.chapter-group[open]>summary')).toContainText('Squaring');
+  await expect(page.locator('.chapter-group[open]')).toHaveCount(1);await expect(page.locator('.chapter-group[open]>summary')).toContainText('Bowls and arches');
   const reflection=page.locator('.chapter-group').nth(1).locator('summary');await reflection.focus();await page.keyboard.press('Enter');
   await expect(page.locator('.parallel-lesson,.parallel-options,#puzzle-variations')).toHaveCount(0);
   await expect(puzzleOption(page,8).locator('.level-number')).toHaveText('2.2');await expect(puzzleOption(page,9).locator('.level-number')).toHaveText('2.3');
