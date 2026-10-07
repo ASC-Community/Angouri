@@ -64,6 +64,7 @@
       53,
       54,
       80,
+      84,
       55
     ],
     [
@@ -87,7 +88,7 @@
       77,
       64,
       65,
-      67
+      85
     ]
   ],
   "lessons": [
@@ -620,7 +621,8 @@
       "id": 64,
       "prerequisites": [
         36,
-        55
+        55,
+        84
       ],
       "idea": "A nonlinear input winds sine at unequal horizontal intervals"
     },
@@ -749,6 +751,26 @@
         46
       ],
       "idea": "Transfer equal-distance geometry to a new constellation"
+    },
+    {
+      "id": 84,
+      "prerequisites": [
+        53,
+        52,
+        33
+      ],
+      "idea": "A steeper incoming curve advances circular phase faster over the same horizontal distance"
+    },
+    {
+      "id": 85,
+      "prerequisites": [
+        84,
+        62,
+        60,
+        66,
+        65
+      ],
+      "idea": "Accumulate unequal step heights into a phase, then project it to lobes of different widths"
     }
   ]
 }

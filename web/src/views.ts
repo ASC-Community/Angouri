@@ -58,9 +58,32 @@ const plotArea=()=>({width:760,height:414,top:62,bottom:310});
 // origin when they live inside foreignObject, even when its box is correct.
 const flightMath=(latex:string,x:number,y:number,width=48,extraClass='',offsetY=0)=>`<span class="flight-label" data-axis-x="${x}" data-axis-y="${y}" data-axis-offset-y="${offsetY}" data-axis-width="${width}"><span class="axis-math ${extraClass}">${tex(latex)}</span></span>`;
 export function sizeFlightAnnotations(root:HTMLElement) {
-  const svg=root.querySelector<SVGSVGElement>('#flight-svg'),matrix=svg?.getScreenCTM();
+  const svg=root.querySelector<SVGSVGElement>('#flight-svg');
   const overlay=root.querySelector<HTMLElement>('.flight-annotations');
-  if(!svg||!matrix||!overlay)return;
+  if(!svg||!overlay)return;
+  const callouts=svg.hasAttribute('data-callouts');
+  root.classList.toggle('has-flight-callouts',callouts);
+  type Callout={label:HTMLElement;width:number;height:number};
+  const rows:{entries:Callout[];side:'top'|'bottom'}[]=[];
+  if(callouts) {
+    const available=Math.max(120,root.clientWidth-24);
+    const labels=[...overlay.querySelectorAll<HTMLElement>('.target-label .flight-label')].sort((a,b)=>Number(a.parentElement!.dataset.plotX)-Number(b.parentElement!.dataset.plotX));
+    for(const [parity,side] of [[0,'top'],[1,'bottom']] as const) {
+      let used=0,row:Callout[]=[];
+      for(const label of labels.filter((_,i)=>i%2===parity)) {
+        const rect=label.querySelector('.katex-html')!.getBoundingClientRect();
+        if(!row.length||used+rect.width>available){row=[];rows.push({entries:row,side});used=0;}
+        row.push({label,width:rect.width,height:rect.height});used+=rect.width+18;
+      }
+    }
+    const space=(side:'top'|'bottom')=>rows.filter(row=>row.side===side).reduce((sum,row)=>sum+Math.max(...row.entries.map(entry=>entry.height))+14,12);
+    root.style.setProperty('--callout-top',`${space('top')}px`);
+    root.style.setProperty('--callout-bottom',`${space('bottom')}px`);
+    const shortLandscape=innerHeight<=560&&innerWidth>innerHeight;
+    const plotHeight=shortLandscape?190:Math.max(190,Math.min(320,root.clientWidth*414/760));
+    root.style.setProperty('--flight-height',`${space('top')+space('bottom')+plotHeight}px`);
+  }
+  const matrix=svg.getScreenCTM();if(!matrix)return;
   const scale=matrix.a,box=overlay.getBoundingClientRect();
   // Text stays at 12 CSS pixels as the diagram fits, so browser zoom can enlarge
   // the notation normally. Only label boxes change; the coordinate map does not.
@@ -72,7 +95,35 @@ export function sizeFlightAnnotations(root:HTMLElement) {
     label.style.top=`${matrix.f+y*matrix.d-box.top-12}px`;
     label.style.width=`${width}px`;
   }
-  if(svg.dataset.relation) {
+  if(callouts) {
+    // Whole coordinates occupy reserved rows outside the curve. These leaders
+    // are laid out only on render/resize, never during validation or playback.
+    const leaders:string[]=[],offset={top:8,bottom:box.height-parseFloat(root.style.getPropertyValue('--callout-bottom'))+8};
+    for(const {entries,side} of rows) {
+      const height=Math.max(...entries.map(entry=>entry.height));
+      // Keep the labels in target order and as close to their own x as possible.
+      // Alternating above/below avoids leaders running through another label row.
+      let right=12;
+      const placed=entries.map(entry=>{
+        const target=matrix.e+Number(entry.label.parentElement!.dataset.plotX)*scale-box.left;
+        const x=Math.max(target,right+entry.width/2);right=x+entry.width/2+18;
+        return {entry,x};
+      });
+      let edge=box.width-12;
+      for(const point of [...placed].reverse()){point.x=Math.min(point.x,edge-point.entry.width/2);edge=point.x-point.entry.width/2-18;}
+      for(const {entry,x} of placed) {
+        const parent=entry.label.parentElement!,rect=entry.label.querySelector('.katex-html')!.getBoundingClientRect();
+        const y=offset[side]+height/2;
+        entry.label.style.left=`${parseFloat(entry.label.style.left)+box.left+x-(rect.left+rect.width/2)}px`;
+        entry.label.style.top=`${parseFloat(entry.label.style.top)+box.top+y-(rect.top+rect.height/2)}px`;
+        const tx=matrix.e+Number(parent.dataset.plotX)*scale-box.left,ty=matrix.f+Number(parent.dataset.plotY)*matrix.d-box.top;
+        const endY=y+(side==='top'?1:-1)*(entry.height/2+3),distance=Math.hypot(x-tx,endY-ty),radius=Number(parent.dataset.radius)*scale+3;
+        leaders.push(`M${tx+(x-tx)*radius/(distance||1)} ${ty+(endY-ty)*radius/(distance||1)}L${x} ${endY}`);
+      }
+      offset[side]+=height+14;
+    }
+    root.querySelector('#callout-leaders')?.setAttribute('d',leaders.join(' '));
+  } else if(svg.dataset.relation) {
     // Dense paired targets need outside labels. This only runs when a scene is
     // laid out or resized, never while validating or advancing the flight.
     const entries=[...overlay.querySelectorAll<HTMLElement>('.target-label')].map(parent=>{
@@ -123,11 +174,21 @@ export function sizeFlightAnnotations(root:HTMLElement) {
   // keeps a CSS-pixel size even when the coordinate diagram becomes smaller.
   const zero=overlay.querySelector<HTMLElement>('.zero-label')?.closest<HTMLElement>('.flight-label');
   const firstTarget=overlay.querySelector('.target-label .katex-html');
-  if(zero&&firstTarget&&!svg.dataset.relation) {
+  if(zero&&firstTarget&&!svg.dataset.relation&&!callouts) {
     const numeral=zero.querySelector('.katex-html')!.getBoundingClientRect();
     const target=firstTarget.getBoundingClientRect();
     const shift=Math.min(0,target.left-numeral.right-8);
     if(numeral.width&&target.width)zero.style.left=`${parseFloat(zero.style.left)+shift}px`;
+  }
+}
+/** KaTeX labels stay in HTML; WebKit can detach glyphs inside foreignObject. */
+export function sizeFlowAnnotations(root:HTMLElement) {
+  for(const label of root.querySelectorAll<HTMLElement>('[data-flow-zero]')) {
+    const frame=label.parentElement!,svg=frame.querySelector('svg')!,matrix=svg.getScreenCTM();
+    if(!matrix)continue;
+    const box=frame.getBoundingClientRect();
+    label.style.left=`${matrix.e+12*matrix.a-box.left}px`;
+    label.style.top=`${matrix.f+Number(label.dataset.flowZero)*matrix.d-box.top}px`;
   }
 }
 export const interpolate=(points:[number,number][],p:number,loop=false):[number,number]=>{
@@ -165,8 +226,9 @@ export const targetMark=(status:string)=>status==='hit'?icon('check',13):status=
 export function flightView(state:State,result:Result,camera:Camera,flight:Flight) {
   const {width,height,top,bottom}=plotArea();
   const circular=!!state.circle||!!result.relation;
+  const callouts=!circular&&state.mode!=='remix'&&result.checkpoints.length>=6;
   const coordinates=result.checkpoints.map(c=>transform(state,camera,[fraction(c.x),targetHeight(c)]));
-  const radii=coordinates.map(([x,y],i)=>result.relation?Math.min(20,...coordinates.flatMap(([a,b],j)=>j===i?[]:[Math.hypot(x-a,y-b)*.39])):20);
+  const radii=coordinates.map(([x,y],i)=>result.relation||callouts?Math.min(20,...coordinates.flatMap(([a,b],j)=>j===i?[]:[Math.hypot(x-a,y-b)*.39])):20);
   const rings=(state.mode==='remix'?[]:result.checkpoints).map((c,i)=>{
     const [x,y]=transform(state,camera,[fraction(c.x),targetHeight(c)]),status=targetStatus(c,state,flight);
     const radius=radii[i];
@@ -177,7 +239,7 @@ export function flightView(state:State,result:Result,camera:Camera,flight:Flight
     // Put labels toward the open middle of the plot, clear of the launcher and
     // axis ticks. Their gap includes CSS pixels because the text does not shrink.
     const direction=circular?(y<200?-1:1):y<(top+bottom)/2?1:-1;
-    return `<span class="target-label" data-match="${c.hit?'hit':'miss'}" data-plot-x="${x}" data-plot-y="${y}" data-height="${targetHeight(c)}" data-radius="${radii[i]}">${flightMath(circular?`(${rationalTex(c.x)},${targetLatex(c)})`:`h = ${targetLatex(c)}`,x,y+20*direction,circular?96:70,'target-height',16*direction)}</span>`;
+    return `<span class="target-label" data-match="${c.hit?'hit':'miss'}" data-plot-x="${x}" data-plot-y="${y}" data-height="${targetHeight(c)}" data-radius="${radii[i]}">${flightMath(circular||callouts?`(${rationalTex(c.x)},${targetLatex(c)})`:`h = ${targetLatex(c)}`,x,y+20*direction,circular||callouts?96:70,'target-height',16*direction)}</span>`;
   }).join('');
   const ticks=circular?Array.from({length:Math.min(25,Math.ceil(camera.maxX!)-Math.floor(camera.minX!)+1)},(_,i)=>{
     const [x]=transform(state,camera,[Math.floor(camera.minX!)+i,0]);
@@ -187,10 +249,10 @@ export function flightView(state:State,result:Result,camera:Camera,flight:Flight
     return `<path class="flight-grid" d="M${x} ${top}V${bottom}" stroke="#dce6d0" stroke-dasharray="2 8"/>`;
   }).join('');
   const [zeroX,zeroY]=transform(state,camera,[0,0]);
-  const annotations=circular?`${flightMath('0',zeroX-13,zeroY,24,'zero-label',15)}${flightMath('h',zeroX,25,28)}${flightMath('x',575,zeroY,26,'',15)}`:`${Array.from({length:(state.sourceId===5?2:4)+1},(_,i)=>flightMath(String(i),transform(state,camera,[i,0])[0],height-25)).join('')}${flightMath('0',64,zeroY,24,'zero-label')}${flightMath('h',zeroX,Math.max(16,top-12),28)}${flightMath('x',width-20,height-25,26)}`;
+  const annotations=circular?`${flightMath('0',zeroX-13,zeroY,24,'zero-label',15)}${flightMath('h',zeroX,25,28)}${flightMath('x',575,zeroY,26,'',15)}`:`${Array.from({length:(state.sourceId===5?2:4)+1},(_,i)=>flightMath(String(i),transform(state,camera,[i,0])[0],height-25)).join('')}${flightMath('0',64,zeroY,24,'zero-label',callouts?16:0)}${flightMath('h',zeroX,Math.max(16,top-12),28)}${flightMath('x',width-20,height-25,26)}`;
   // A joined open relation can launch from its right-hand end. Reserve room on
   // both sides for the pulled-back rig without changing its mathematical frame.
-  return `<div class="flight-diagram"><svg id="flight-svg" ${result.relation?'data-relation="true"':''} viewBox="${result.relation?'92 0 576 414':circular?'132 0 496 414':`0 0 ${width} ${height}`}" role="img" aria-label="${result.circle?'A complete circle, travelled counterclockwise from the rightmost point. ':result.relation?'Both real heights of the equation. ':''}${state.mode==='remix'?'Your cucumber’s flight path.':`Your cucumber's flight path through ${result.checkpoints.length} targets.`}">
+  return `<div class="flight-diagram"><svg id="flight-svg" ${result.relation?'data-relation="true"':callouts?'data-callouts="true"':''} viewBox="${result.relation?'92 0 576 414':circular?'132 0 496 414':`0 0 ${width} ${height}`}" role="img" aria-label="${result.circle?'A complete circle, travelled counterclockwise from the rightmost point. ':result.relation?'Both real heights of the equation. ':''}${state.mode==='remix'?'Your cucumber’s flight path.':`Your cucumber's flight path through ${result.checkpoints.length} targets.`}">
     <defs><clipPath id="plot-clip"><rect x="16" y="0" width="${width-32}" height="${height-38}" rx="12"/></clipPath><clipPath id="crop-preview-clip"><rect x="0" y="0" width="760" height="414"/></clipPath></defs>
     <g clip-path="url(#plot-clip)">${ticks}
       <path class="flight-height-axis" d="M${zeroX} ${circular?40:top}V${circular?356:bottom}"/>
@@ -201,7 +263,7 @@ export function flightView(state:State,result:Result,camera:Camera,flight:Flight
       <path id="flight-trail" d=""/>
       ${flightStrokes(result).map((_,i)=>flightRig(i)).join('')}
       ${rings}
-    </g></svg><div class="flight-annotations"><div id="target-labels">${targetLabels}</div><div id="axis-labels">${annotations}</div></div>${cropVerdict(result)}</div>`;
+    </g></svg><div class="flight-annotations">${callouts?'<svg class="flight-callout-leaders" aria-hidden="true"><path id="callout-leaders" class="target-leaders"/></svg>':''}<div id="target-labels">${targetLabels}</div><div id="axis-labels">${annotations}</div></div>${cropVerdict(result)}</div>`;
 }
 /** One rig per non-retracing implicit trail; stepped height graphs retain one. */
 function flightRig(index:number) {
@@ -277,7 +339,7 @@ const stagePath=(result:Result,stage:Result['stages'][number])=>(stage.paths??[{
 export const cropFlowPath=(result:Result)=>drawnPaths(result).map(p=>flowPath(result,p.points)).join(' ');
 function cropCard(result:Result,targets:string) {
   const crop=result.crop!,zero=flowPoint(result,[0,0])[1];
-  return `<span class="flow-connector" aria-hidden="true">${icon('arrow',18)}</span><article class="flow-machine crop-machine"><div class="machine-body"><div class="machine-meta"><span class="machine-kicker">CROP · FINISH</span><span class="machine-icon">${icon('crop',20)}<span data-crop-interval data-from="${crop.from}" data-to="${crop.to}">${tex(`${rationalTex(crop.from)}\\le x\\le ${rationalTex(crop.to)}`)}</span></span><span class="machine-sample" data-crop-reading></span><span class="relation-caption">Kept heights stay the same.</span></div><svg class="flow-plot" viewBox="0 0 184 132" role="img" aria-label="Only the kept interval"><defs><clipPath id="flow-crop-kept"><rect x="${flowPoint(result,[crop.fromNumber,0])[0]}" y="0" width="${flowPoint(result,[crop.toNumber,0])[0]-flowPoint(result,[crop.fromNumber,0])[0]}" height="132"/></clipPath></defs>${cropWindow(crop,x=>flowPoint(result,[x,0])[0],{left:22,right:170,top:18,bottom:109},'flow-crop',result.relation?'':stagePath(result,result.stages.at(-1)!))}<path class="flow-zero-line" d="M26 ${zero}H164"/><path class="flow-curve" clip-path="url(#flow-crop-kept)" d="${cropFlowPath(result)}"/>${targets}<circle class="flow-point" data-crop-probe r="4"/></svg></div></article>`;
+  return `<span class="flow-connector" aria-hidden="true">${icon('arrow',18)}</span><article class="flow-machine crop-machine"><div class="machine-body"><div class="machine-meta"><span class="machine-kicker">CROP · FINISH</span><span class="machine-icon">${icon('crop',20)}<span data-crop-interval data-from="${crop.from}" data-to="${crop.to}">${tex(`${rationalTex(crop.from)}\\le x\\le ${rationalTex(crop.to)}`)}</span></span><span class="machine-sample" data-crop-reading></span><span class="relation-caption">Kept heights stay the same.</span></div><div class="flow-plot-frame"><svg class="flow-plot" viewBox="0 0 184 132" role="img" aria-label="Only the kept interval"><defs><clipPath id="flow-crop-kept"><rect x="${flowPoint(result,[crop.fromNumber,0])[0]}" y="0" width="${flowPoint(result,[crop.toNumber,0])[0]-flowPoint(result,[crop.fromNumber,0])[0]}" height="132"/></clipPath></defs>${cropWindow(crop,x=>flowPoint(result,[x,0])[0],{left:22,right:170,top:18,bottom:109},'flow-crop',result.relation?'':stagePath(result,result.stages.at(-1)!))}<path class="flow-zero-line" d="M26 ${zero}H164"/><path class="flow-curve" clip-path="url(#flow-crop-kept)" d="${cropFlowPath(result)}"/>${targets}<circle class="flow-point" data-crop-probe r="4"/></svg><span class="flow-zero" data-flow-zero="${zero}" aria-hidden="true">${tex('0')}</span></div></div></article>`;
 }
 export function updateFlowCrop(root:HTMLElement,result:Result,crop:NonNullable<Result['crop']>,instant=false) {
   updateCropWindow(root,crop,x=>flowPoint(result,[x,0])[0]);
@@ -292,7 +354,7 @@ export function updateFlowCrop(root:HTMLElement,result:Result,crop:NonNullable<R
 }
 function relationCard(result:Result,targets:string) {
   const relation=result.relation!,zero=flowPoint(result,[0,0])[1];
-  return `<span class="flow-connector" aria-hidden="true">${icon('arrow',18)}</span><article class="flow-machine relation-machine"><div class="machine-body"><div class="machine-meta"><span class="machine-kicker">BOTH HEIGHTS</span><span class="machine-icon">${tex('h^2 \\longrightarrow h')}</span><span class="machine-sample" data-relation-values></span><span class="relation-caption">Solve for both real heights.</span></div><svg class="flow-plot" viewBox="0 0 184 132" role="img" aria-label="Both real heights of the recipe equation"><path class="flow-zero-line" d="M26 ${zero}H164"/><path class="flow-curve" d="${relation.paths.map(p=>flowPath(result,p.points)).join(' ')}"/>${targets}<circle class="flow-point" data-relation-probe r="4"/><circle class="flow-point" data-relation-probe r="4"/></svg></div></article>`;
+  return `<span class="flow-connector" aria-hidden="true">${icon('arrow',18)}</span><article class="flow-machine relation-machine"><div class="machine-body"><div class="machine-meta"><span class="machine-kicker">BOTH HEIGHTS</span><span class="machine-icon">${tex('h^2 \\longrightarrow h')}</span><span class="machine-sample" data-relation-values></span><span class="relation-caption">Solve for both real heights.</span></div><div class="flow-plot-frame"><svg class="flow-plot" viewBox="0 0 184 132" role="img" aria-label="Both real heights of the recipe equation"><path class="flow-zero-line" d="M26 ${zero}H164"/><path class="flow-curve" d="${relation.paths.map(p=>flowPath(result,p.points)).join(' ')}"/>${targets}<circle class="flow-point" data-relation-probe r="4"/><circle class="flow-point" data-relation-probe r="4"/></svg><span class="flow-zero" data-flow-zero="${zero}" aria-hidden="true">${tex('0')}</span></div></div></article>`;
 }
 const sampleTex=(value:number)=>{
   if(Math.abs(value)>=10000)return decimalTex(value.toExponential(2));
@@ -324,7 +386,7 @@ export function flow(state:State,result:Result,selectedStage:string,probeIndex:n
       const arrow=size?`<path class="gap-direction" d="M${173-size} ${middle-direction*size}L173 ${middle+direction*size}L${173+size} ${middle-direction*size}Z"/>`:'';
       gapPlot=`<g class="flow-height-gap" data-flow-gap="${i}" data-gap-direction="${direction<0?'up':direction>0?'down':'flat'}" aria-label="Height gap from x=${guide.fromX} to x=${guide.toX}: ${gap.gap}"><path class="gap-guides" d="M${x0} ${y0}H173M${x1} ${y1}H173"/><path class="gap-bracket" d="M169 ${y0}H177M173 ${y0}V${y1}M169 ${y1}H177"/>${arrow}<circle data-gap-position="${guide.fromX}" cx="${x0}" cy="${y0}" r="2.5"/><circle data-gap-position="${guide.toX}" cx="${x1}" cy="${y1}" r="2.5"/></g>`;
     }
-    return `${i?`<span class="flow-connector" aria-hidden="true">${icon('arrow',18)}</span>`:''}<article class="flow-machine ${op==='D'||op==='I'||op==='S'?'calculus-machine':''} ${op?OPS[op].color:'source-machine'} ${stage.id===selectedStage?'inspected':''}" aria-label="${i?'Step '+i+': '+OPS[op!].name:'Starting curve'}">${stationScene(op,i,tex)}<div class="machine-body"><div class="machine-meta"><span class="machine-kicker">${i?'STEP '+i:'START'}</span><span class="machine-icon">${op?operationTex(op):tex(symbol+' = '+stage.latex)}</span><span class="machine-sample">${tex(symbol+' \\approx ')}<span data-flow-stage="${i}"></span></span>${gapLabel}${area?`<span class="area-sample">Area ${tex('\\approx')} <span data-flow-area-value="${i}"></span></span>`:''}${tangent?`<span class="tangent-sample">${tex('\\frac{\\mathrm{d}h}{\\mathrm{d}x} \\approx ')}<span data-flow-slope="${i}"></span></span>`:''}</div><svg class="flow-plot" viewBox="0 0 184 132" role="img" data-flow-plot="${i}"><defs><clipPath id="flow-clip-${i}"><rect x="22" y="15" width="148" height="100"/></clipPath>${area?`<clipPath id="flow-area-window-${i}"><rect data-flow-area-window="${i}" x="26" y="15" width="0" height="100"/></clipPath><clipPath id="flow-positive-${i}"><rect x="22" y="15" width="148" height="${Math.max(0,zero-15)}"/></clipPath><clipPath id="flow-negative-${i}"><rect x="22" y="${zero}" width="148" height="${Math.max(0,115-zero)}"/></clipPath><pattern id="area-hatch-${i}" patternUnits="userSpaceOnUse" width="5" height="5"><path d="M-1 1L1-1M0 5L5 0M4 6L6 4" stroke="#ac6755" stroke-width=".8"/></pattern>`:''}</defs><path class="flow-axis" d="M26 20V108"/><foreignObject x="2" y="${zero-8}" width="20" height="20"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-zero">${tex('0')}</div></foreignObject><g clip-path="url(#flow-clip-${i})">${area?`<g clip-path="url(#flow-area-window-${i})" class="flow-area" data-flow-area="${i}"><path class="area-positive" clip-path="url(#flow-positive-${i})" d="${areaPath}"/><g clip-path="url(#flow-negative-${i})"><path class="area-negative" d="${areaPath}"/><path fill="url(#area-hatch-${i})" d="${areaPath}"/></g></g>`:''}<path class="flow-zero-line" data-zero-line d="M26 ${zero}H164"/>${previous?`<path class="flow-before" d="${stagePath(result,previous)}"/>`:''}<path class="flow-curve" d="${stagePath(result,stage)}"/>${pathEnds(stage.paths,p=>flowPoint(result,p))}${tangent?`<path class="flow-tangent" data-flow-tangent="${i}"/>`:''}<path class="flow-probe" data-flow-probe="${i}"/><path class="flow-change" data-flow-change="${i}"/>${previous?`<circle class="flow-before-point" data-flow-before="${i}" r="3.5"/>`:''}<circle class="flow-point" data-flow-point="${i}" r="4.5"/></g>${gapPlot}${i===result.stages.length-1&&!result.relation&&!result.crop?targets:''}</svg></div></article>`;
+    return `${i?`<span class="flow-connector" aria-hidden="true">${icon('arrow',18)}</span>`:''}<article class="flow-machine ${op==='D'||op==='I'||op==='S'?'calculus-machine':''} ${op?OPS[op].color:'source-machine'} ${stage.id===selectedStage?'inspected':''}" aria-label="${i?'Step '+i+': '+OPS[op!].name:'Starting curve'}">${stationScene(op,i,tex,!!result.relation)}<div class="machine-body"><div class="machine-meta"><span class="machine-kicker">${i?'STEP '+i:'START'}</span><span class="machine-icon">${op?operationTex(op):tex(symbol+' = '+stage.latex)}</span><span class="machine-sample">${tex(symbol+' \\approx ')}<span data-flow-stage="${i}"></span></span>${gapLabel}${area?`<span class="area-sample">Area ${tex('\\approx')} <span data-flow-area-value="${i}"></span></span>`:''}${tangent?`<span class="tangent-sample">${tex('\\frac{\\mathrm{d}'+(result.relation?'(h^2)':'h')+'}{\\mathrm{d}x} \\approx ')}<span data-flow-slope="${i}"></span></span>`:''}</div><div class="flow-plot-frame"><svg class="flow-plot" viewBox="0 0 184 132" role="img" data-flow-plot="${i}"><defs><clipPath id="flow-clip-${i}"><rect x="22" y="15" width="148" height="100"/></clipPath>${area?`<clipPath id="flow-area-window-${i}"><rect data-flow-area-window="${i}" x="26" y="15" width="0" height="100"/></clipPath><clipPath id="flow-positive-${i}"><rect x="22" y="15" width="148" height="${Math.max(0,zero-15)}"/></clipPath><clipPath id="flow-negative-${i}"><rect x="22" y="${zero}" width="148" height="${Math.max(0,115-zero)}"/></clipPath><pattern id="area-hatch-${i}" patternUnits="userSpaceOnUse" width="5" height="5"><path d="M-1 1L1-1M0 5L5 0M4 6L6 4" stroke="#ac6755" stroke-width=".8"/></pattern>`:''}</defs><path class="flow-axis" d="M26 20V108"/><g clip-path="url(#flow-clip-${i})">${area?`<g clip-path="url(#flow-area-window-${i})" class="flow-area" data-flow-area="${i}"><path class="area-positive" clip-path="url(#flow-positive-${i})" d="${areaPath}"/><g clip-path="url(#flow-negative-${i})"><path class="area-negative" d="${areaPath}"/><path fill="url(#area-hatch-${i})" d="${areaPath}"/></g></g>`:''}<path class="flow-zero-line" data-zero-line d="M26 ${zero}H164"/>${previous?`<path class="flow-before" d="${stagePath(result,previous)}"/>`:''}<path class="flow-curve" d="${stagePath(result,stage)}"/>${pathEnds(stage.paths,p=>flowPoint(result,p))}${tangent?`<path class="flow-tangent" data-flow-tangent="${i}"/>`:''}<path class="flow-probe" data-flow-probe="${i}"/><path class="flow-change" data-flow-change="${i}"/>${previous?`<circle class="flow-before-point" data-flow-before="${i}" r="3.5"/>`:''}<circle class="flow-point" data-flow-point="${i}" r="4.5"/></g>${gapPlot}${i===result.stages.length-1&&!result.relation&&!result.crop?targets:''}</svg><span class="flow-zero" data-flow-zero="${zero}" aria-hidden="true">${tex('0')}</span></div></div></article>`;
   }).join('');
   return `<div class="flow-controls">${cropVerdict(result)}<div class="flow-control-heading"><label for="flow-position">Explore at ${tex('x = ')}<output id="flow-position-value" for="flow-position">${tex(positionText(x))}</output></label>${gapGoal}${goals.length?`<div class="flow-goals" role="group" aria-label="Target coordinates and validation">${goalList}</div>`:''}</div><div class="flow-slider-row"><span>${tex(positionText(scale.start))}</span><input id="flow-position" type="range" min="${scale.start}" max="${scale.end}" step="any" value="${x}" aria-label="Position x" aria-valuetext="x = ${positionText(x)}"><span>${tex(positionText(scale.end))}</span><span class="flow-key"><span class="before-key"></span>Before <span class="after-key"></span>After</span></div><span class="sr-only">Every graph uses the same height scale. Move position to compare each operation. A tangent shows the incoming slope before a slope block. Before an area block, shading shows accumulated area: solid above zero adds, hatched below zero subtracts. Targets appear on the final graph. During a throw, position follows the flight, then returns to your inspected position.</span></div><div class="flow-line" role="group" aria-label="Transformation chain">${cards}${result.relation?relationCard(result,result.crop?'':targets):''}${result.crop?cropCard(result,targets):''}</div>`;
 }

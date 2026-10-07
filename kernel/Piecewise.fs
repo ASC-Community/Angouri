@@ -895,6 +895,11 @@ module internal Piecewise =
                     | Some (leftLow,leftHigh),Some (rightLow,rightHigh) ->
                         Some (add leftLow rightLow,add leftHigh rightHigh)
                     | _ -> None
+                | :? Entity.Minusf as difference ->
+                    match bounds bits difference.Minuend,bounds bits difference.Subtrahend with
+                    | Some (leftLow,leftHigh),Some (rightLow,rightHigh) ->
+                        Some (subtract leftLow rightHigh,subtract leftHigh rightLow)
+                    | _ -> None
                 | :? Entity.Mulf as product ->
                     match bounds bits product.Multiplier,bounds bits product.Multiplicand with
                     | Some (leftLow,leftHigh),Some (rightLow,rightHigh) ->
@@ -919,11 +924,17 @@ module internal Piecewise =
                         | _ -> None
                     | _ -> None
                 | _ -> None
-        if exactEqual left right then Some 0
+        if left = right then Some 0
         else
-            [32;64;128;256]
-            |> List.tryPick (fun bits ->
-                match bounds bits left,bounds bits right with
-                | Some (_,leftHigh),Some (rightLow,_) when compareRational leftHigh rightLow < 0 -> Some -1
-                | Some (leftLow,_),Some (_,rightHigh) when compareRational leftLow rightHigh > 0 -> Some 1
-                | _ -> None)
+            // Disjoint certified intervals already prove inequality. Asking the
+            // general simplifier first made cold nested-radical misses costly.
+            let order =
+                [32;64;128;256]
+                |> List.tryPick (fun bits ->
+                    match bounds bits left,bounds bits right with
+                    | Some (_,leftHigh),Some (rightLow,_) when compareRational leftHigh rightLow < 0 -> Some -1
+                    | Some (leftLow,_),Some (_,rightHigh) when compareRational leftLow rightHigh > 0 -> Some 1
+                    | _ -> None)
+            match order with
+            | Some value -> Some value
+            | None -> if exactEqual left right then Some 0 else None

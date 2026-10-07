@@ -6,7 +6,15 @@ async function ready(page,id,view='flight') {
   expect(await page.evaluate(()=>window.angouri.state.sourceId)).toBe(id);
 }
 async function add(page,op){await page.locator(`[data-op="${op}"]`).click();await idle(page);}
-async function recipe(page,ops){for(const op of ops)await add(page,op);}
+async function recipe(page,ops){
+  const station=await page.evaluate(()=>window.angouri.state.station);
+  if(!station){for(const op of ops)await add(page,op);return;}
+  let output=false,before=0,after=station.before+1;
+  for(const op of ops){
+    if(!output&&op===station.op){output=true;continue;}
+    await page.locator(`[data-empty="${output?after++:before++}"]`).click();await add(page,op);
+  }
+}
 const snapshot=page=>page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}));
 
 test('a roof recipe constructs both heights and validates squared target heights',async({page})=>{
@@ -107,13 +115,13 @@ test('step area stays continuous and shares the reward clock with Flow',async({p
 });
 
 test('the mixed final garden uses the full chain and finishes only the solved source',async({page})=>{
-  test.setTimeout(120000);await ready(page,67);await recipe(page,'DAHFSINAQNAQ');
+  test.setTimeout(120000);await ready(page,85);await recipe(page,'DAHFISQ');
   const result=await page.evaluate(()=>window.angouri.result);expect(result.solved).toBe(true);expect(result.checkpoints).toHaveLength(10);
-  expect(await page.evaluate(()=>window.angouri.state.nodes.map(n=>n.op).join(''))).toBe('DAHFSINAQNAQ');
+  expect(await page.evaluate(()=>window.angouri.state.nodes.map(n=>n.op).join(''))).toBe('DAHFISQ');
   await page.locator('#tab-function').click();await expect(page.locator('.equation-verdict')).toHaveCount(10);await expect(page.locator('.katex-error')).toHaveCount(0);
   await page.locator('#launch').click();await expect(page.locator('#launch')).toHaveText('Finish');
   await expect(page.locator('.equation-verdict[data-status="hit"]')).toHaveCount(10);
-  await page.locator('#launch').click();await expect(page.locator('#ending-dialog')).toBeVisible();await expect(page.locator('#ending-progress')).toHaveText('1 of 69 puzzles complete');
+  await page.locator('#launch').click();await expect(page.locator('#ending-dialog')).toBeVisible();await expect(page.locator('#ending-progress')).toHaveText('1 of 70 puzzles complete');
   await expect(page.locator('#ending-dialog')).toContainText('AngouriMath');
 });
 

@@ -100,12 +100,12 @@ test('mastery puzzles belong to the authored chapter after its picture lessons',
   await ready(page,64);await expect(page.locator('#chapter-step')).toContainText('MASTERY CHALLENGE');
   await page.locator('#menu-open').click();await page.locator('#puzzles-open').click();
   const group=page.locator('.chapter-group').filter({hasText:'The moonlit garden'});
-  expect(await group.locator('[data-level]').evaluateAll(options=>options.map(option=>Number(option.dataset.level)))).toEqual([82,72,73,74,75,83,76,77,64,65,67]);
+  expect(await group.locator('[data-level]').evaluateAll(options=>options.map(option=>Number(option.dataset.level)))).toEqual([82,72,73,74,75,83,76,77,64,65,85]);
   await expect(group.locator('[data-level="64"]')).toContainText('Mastery challenge');
   await expect(group.locator('[data-level="65"]')).toContainText('Mastery challenge');
-  await expect(group.locator('[data-level="67"]')).toContainText('Final mastery');
+  await expect(group.locator('[data-level="85"]')).toContainText('Final mastery');
   expect(await group.locator('[data-level="72"] .challenge-label svg').innerHTML()).not.toBe(await group.locator('[data-level="64"] .challenge-label svg').innerHTML());
-  await expect(group.locator('[data-level="67"]')).toContainText('One curve, many ideas');
+  await expect(group.locator('[data-level="85"]')).toContainText('Two rhythms, one path');
   await page.keyboard.press('Escape');
   await expect(page.locator('#picture-open')).toHaveText('The moonlit garden');
   expect(await page.locator('#level-title').evaluate(el=>{const t=el.getBoundingClientRect(),h=el.closest('.puzzle-heading').getBoundingClientRect();return Math.abs(t.left+t.width/2-h.left-h.width/2);})).toBeLessThan(2);

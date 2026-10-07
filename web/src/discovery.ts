@@ -5,7 +5,7 @@ import { OPS, type Op, type Result, type State } from './types';
 
 /** First encounters explain the move the player actually made, not a recipe to try. */
 export function isDiscovery(state:State) {
-  return state.mode==='puzzle'&&(state.sourceId===72||!state.circle&&!state.station&&state.limit===1||[32,37,43,44,69].includes(state.sourceId));
+  return state.mode==='puzzle'&&(state.sourceId===72||!state.circle&&!state.station&&state.limit===1||[32,37,43,44,69,84].includes(state.sourceId));
 }
 export function discoveryObservation(state:State,result:Result,selected?:string) {
   if(!isDiscovery(state))return '';
@@ -20,6 +20,7 @@ export function discoveryObservation(state:State,result:Result,selected?:string)
     finding=op==='N'?before?'Negating the input reverses each slope.':'Negating the output reverses its heights.':before?'Lift the input: its slopes stay the same.':'Lift the output: the new heights rise.';
   }
   else if(state.sourceId===37)finding=state.nodes.indexOf(current)<state.nodes.findIndex(node=>node.id===state.station!.id)?'Taller input: more area over the same distance.':'Lift the output: a new starting height, the same growth.';
+  else if(state.sourceId===84)finding=state.nodes.indexOf(current)<state.nodes.findIndex(node=>node.id===state.station!.id)?'A steeper input turns the circle farther over the same distance. The crests crowd closer.':'Squaring the output folds the lobes upward. Their zero positions stay fixed.';
   else if(result.relation) {
     const effects:Partial<Record<Op,string>>={
       A:`Adds to ${tex('h^2')}. The two heights move apart.`,
@@ -28,7 +29,7 @@ export function discoveryObservation(state:State,result:Result,selected?:string)
       Q:'Squaring restores both signs of the incoming magnitude, including outside the old loop.'
     };
     finding=state.sourceId===83&&op==='Q'
-      ?'Squaring keeps the petal tips at zero and one while drawing its shoulders inward. The two height branches form one pointed petal.'
+      ?'The tips stay at zero and the peaks keep unit magnitude. Squaring draws the shoulders inward; the two branches form one pointed petal.'
       :state.sourceId===66&&op==='Q'
       ?'The solved heights change from square roots of the roof to positive and negative copies of it. The rounded ends become pointed.'
       :state.sourceId===69&&edits.every(node=>node.op==='H')&&edits.length===2?`Two halves of ${tex('h^2')} make one half of ${tex('|h|')}.`:effects[op]??'';

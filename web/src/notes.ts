@@ -1,14 +1,14 @@
 import './notes.css';
 import { Kernel } from './engine';
-import { CHAPTERS, chapterIndex, EXTRA_PUZZLES, GEOMETRY_PUZZLES, PUZZLE_ORDER, LEVELS, puzzleLabel, escape, fraction, targetHeight, type Op, type Result } from './types';
+import { CHAPTERS, chapterIndex, EXTRA_PUZZLES, GEOMETRY_PUZZLES, MIXED_PUZZLES, OPTIONAL_PUZZLES, PUZZLE_ORDER, LEVELS, puzzleLabel, escape, fraction, targetHeight, type Op, type Result } from './types';
 import learningPath from '../../content/learning-path.json';
 import { heightAtFormula, rationalTex, tex } from './views';
 import { chapterArt, lesson, move, viewButton, recall, strip, compare, circleSketch, diagramChoices, relationSketch } from './note-diagrams';
 import { renderReference } from './reference';
 export { chapterArt } from './note-diagrams';
 
-const knownLessons=(source:number)=>new Set(source===0||EXTRA_PUZZLES.includes(source)
-  ?[...PUZZLE_ORDER,...GEOMETRY_PUZZLES]
+const knownLessons=(source:number)=>new Set(source===0||EXTRA_PUZZLES.includes(source)||MIXED_PUZZLES.includes(source)
+  ?[...PUZZLE_ORDER,...GEOMETRY_PUZZLES,...MIXED_PUZZLES]
   :GEOMETRY_PUZZLES.includes(source)
     ?[...PUZZLE_ORDER.slice(0,PUZZLE_ORDER.indexOf(44)+1),...GEOMETRY_PUZZLES.slice(0,GEOMETRY_PUZZLES.indexOf(source)+1)]
     :PUZZLE_ORDER.slice(0,PUZZLE_ORDER.indexOf(source)+1));
@@ -55,7 +55,7 @@ export class ShapeNotes {
     this.known=knownLessons(source);
     const prerequisites=learningPath.lessons.find(lesson=>lesson.id===source)?.prerequisites??[];
     this.relevant=new Set([source,...prerequisites]);
-    if(source&&!EXTRA_PUZZLES.includes(source)&&!GEOMETRY_PUZZLES.includes(source)) {
+    if(source&&!OPTIONAL_PUZZLES.includes(source)) {
       this.index.innerHTML=`<p class="notes-scope">This lesson and related ideas</p>`+[source,...prerequisites].map(id=>`<button data-note-lesson="${id}" aria-pressed="false"><span class="note-lesson-numbers">${puzzleLabel(id)}</span><span>${escape(LEVELS[id-1].name)}</span></button>`).join('');
       this.index.hidden=false;
       void this.selectLesson(source);
@@ -65,7 +65,7 @@ export class ShapeNotes {
     const choices=CHAPTERS.flatMap((chapter,i)=>this.topics.has(i)?[`<button data-note="${i}" aria-pressed="false"><span class="note-tab-art ${chapter.color}">${chapterArt(i)}</span><span>${chapter.name}</span></button>`]:[]);
     this.index.innerHTML=choices.join('');
     this.index.hidden=choices.length<2;
-    void this.select(GEOMETRY_PUZZLES.includes(source)?6:EXTRA_PUZZLES.includes(source)?EXTRA_PUZZLES.indexOf(source)<4?4:5:Math.max(0,chapterIndex(source)));
+    void this.select(MIXED_PUZZLES.includes(source)?9:GEOMETRY_PUZZLES.includes(source)?6:EXTRA_PUZZLES.includes(source)?EXTRA_PUZZLES.indexOf(source)<4?4:5:Math.max(0,chapterIndex(source)));
   }
 
   private async selectLesson(source:number) {
@@ -84,7 +84,7 @@ export class ShapeNotes {
     this.content.setAttribute('aria-busy','true');
     this.content.innerHTML='<p class="notes-loading">Opening the sketches…</p>';
     try {
-      const focused=this.source&&!EXTRA_PUZZLES.includes(this.source)&&!GEOMETRY_PUZZLES.includes(this.source);
+      const focused=this.source&&!OPTIONAL_PUZZLES.includes(this.source);
       const referenceSource=focused?this.referenceSource:this.source;
       const known=focused?knownLessons(referenceSource):this.known;
       const sketches=new LessonSketches(this.kernel,referenceSource,known,this.examples);
@@ -109,7 +109,7 @@ export class ShapeNotes {
 
   async hintSketch(source:number) {
     const known=knownLessons(source);
-    const topic=GEOMETRY_PUZZLES.includes(source)?6:EXTRA_PUZZLES.includes(source)?EXTRA_PUZZLES.indexOf(source)<4?4:5:Math.max(0,chapterIndex(source));
+    const topic=MIXED_PUZZLES.includes(source)?9:GEOMETRY_PUZZLES.includes(source)?6:EXTRA_PUZZLES.includes(source)?EXTRA_PUZZLES.indexOf(source)<4?4:5:Math.max(0,chapterIndex(source));
     const sketches=new LessonSketches(this.kernel,source,known,this.examples);
     if(EXTRA_PUZZLES.includes(source)) {
       const op:Op=EXTRA_PUZZLES.indexOf(source)<4?'D':'I',reading=await sketches.example(source,op);
@@ -299,6 +299,13 @@ class LessonSketches {
   }
 
   private async relationNotes():Promise<string> {
+    if(this.source===78) {
+      const [original,moved]=await Promise.all([this.example(78,'Q'),this.example(78,'AQ')]);
+      return '<h3>Move the incoming zero before folding.</h3><p>The widest target pair locates the loop’s centre. The input’s zero must reach that position before Square turns it into the bottom of a bowl.</p>'+compare('Which bowl has its zero at the needed position?',[
+        {label:'Original zero',stage:original.stages.at(-1)!},
+        {label:'Lift before folding',stage:moved.stages.at(-1)!,before:original.stages.at(-1)!}
+      ])+'<p>The bowl is an intermediate shape. Its reflection and height still need choosing; inspect the right side in '+viewButton('flow')+'.</p>';
+    }
     if(this.source===71) {
       const [before,after]=await Promise.all([this.example(68,'HH'),this.example(68,'HHQ')]);
       return '<h3>One signed roof can make several visible pieces.</h3><p>Read the zero and the distance from the middle first. The outer heights can be copies of a negative part of that same roof.</p>'+diagramChoices('An independent roof, before and after squaring.',[
@@ -348,6 +355,14 @@ class LessonSketches {
   }
 
   private async waveNotes():Promise<string> {
+    if(this.source===79||this.source===81) {
+      const [liftFirst,halveFirst]=await Promise.all([this.example(this.source,'AH'),this.example(this.source,'HA')]);
+      const movable=this.source===81;
+      return '<h3>Set the phase before the circular projection.</h3><p>A halve also halves any lift that came before it. Compare the input at the target peak: sine reaches its first maximum when the incoming value is '+tex('1')+'.</p>'+compare('The same two blocks reach different input heights.',[
+        {label:'Lift, then halve',stage:liftFirst.stages.at(-1)!,before:liftFirst.stages[0]},
+        {label:'Halve, then lift',stage:halveFirst.stages.at(-1)!,before:halveFirst.stages[0]}
+      ])+'<p>'+(movable?'Place Sine after the input you intend to project. Blocks after it change the output heights instead.':'The fixed Sine station reads the completed input zone.')+' Use '+viewButton('flow')+' to compare the input height with the circular projection. The finishing order remains yours to choose.</p>';
+    }
     const turn=await this.example(50,'S');
     const quarter='<p>The sine block reads its input as turns around a circle: '+tex('S(u)=\\sin(\\frac{\\pi u}{2})')+'. Increasing '+tex('u')+' by one advances a quarter-turn, so the heights repeat '+tex('0,1,0,-1,0')+'.</p>'+compare('A line becomes a repeating height.',[
       {label:'Input position',stage:turn.stages[0]},
@@ -399,6 +414,13 @@ class LessonSketches {
   }
 
   private async togetherNotes():Promise<string> {
+    if(this.source===85) {
+      const [projectThenArea,areaThenProject]=await Promise.all([this.example(50,'FSI'),this.example(50,'FIS')]);
+      return '<h3>What does the accumulated curve feed?</h3><p>These independent examples use the same steps. One projects their heights before adding area; the other projects the growing total.</p>'+compare('The two orders give area a different job.',[
+        {label:'Project, then accumulate',stage:projectThenArea.stages.at(-1)!},
+        {label:'Accumulate, then project',stage:areaThenProject.stages.at(-1)!}
+      ])+'<p>Your targets still determine the threshold positions, how quickly each region advances and how the right side supplies both signs of height. Use '+viewButton('flow')+' to connect those intermediate decisions; this is not the fitted recipe.</p>';
+    }
     const [water,bamboo]=await Promise.all([this.example(50,'HSH'),this.example(82,'H')]);
     const reference=(id:number)=>`<p class="note-reference">${lesson(id)}</p>`;
     const bambooLesson='<p>A straight line has one constant inclination. Halving its height keeps the zero fixed and halves the rise over every horizontal interval.</p>'+strip(bamboo.stages,['Starting line','Half the rise'],[move('H')])+reference(82);

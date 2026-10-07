@@ -3,19 +3,19 @@ import { decimalTex, type Op, type Result, type State } from './types';
 type MathMarkup=(latex:string)=>string;
 
 /** Each spatial relationship reads only its own calculus step's kernel samples. */
-export function stationScene(op:Op|undefined,stage:number,math:MathMarkup) {
-  if(op==='S')return `<section class="station-scene wave-scene" data-station-stage="${stage}" aria-label="Circle height at step ${stage}"><h3>Circle → wave</h3><svg viewBox="0 0 224 116" role="img" data-station-picture><path class="wave-axis" d="M30 58H204M88 8V108"/><circle class="wave-circle" cx="88" cy="58" r="44"/><path class="wave-radius" data-wave-radius/><path class="wave-projection" data-wave-projection/><circle class="wave-dot" data-wave-dot r="4"/><circle class="wave-dot" data-wave-height cx="190" r="4"/></svg><div class="station-readings"><span>Input<output data-station-input></output></span><span>Height<output data-station-output></output></span></div><p>${math('1\\;\\mapsto\\;\\frac14\\text{ turn}')}</p><small>Read the height around the circle.</small></section>`;
+export function stationScene(op:Op|undefined,stage:number,math:MathMarkup,squared=false) {
+  if(op==='S')return `<section class="station-scene wave-scene" data-station-stage="${stage}" aria-label="Circle height at step ${stage}"><h3>Circle → ${squared?math('h^2'):'wave'}</h3><svg viewBox="0 0 224 116" role="img" data-station-picture><path class="wave-axis" d="M30 58H204M88 8V108"/><circle class="wave-circle" cx="88" cy="58" r="44"/><path class="wave-radius" data-wave-radius/><path class="wave-projection" data-wave-projection/><circle class="wave-dot" data-wave-dot r="4"/><circle class="wave-dot" data-wave-height cx="190" r="4"/></svg><div class="station-readings"><span>Input<output data-station-input></output></span><span>${squared?math('h^2'):'Circle height'}<output data-station-output></output></span></div><p>${math('1\\;\\mapsto\\;\\frac14\\text{ turn}')}</p><small>Read the height around the circle.</small></section>`;
   if(op!=='D'&&op!=='I')return '';
-  const slope=op==='D';
-  return `<section class="station-scene ${slope?'slope-scene':'amount-scene'}" data-station-stage="${stage}" aria-label="${slope?'Height and slope':'Signed area'} at step ${stage}">
-    <h3>${slope?'Height → slope':'Height → signed area'}</h3>
+  const slope=op==='D',quantity=squared?'Squared height':'Height';
+  return `<section class="station-scene ${slope?'slope-scene':'amount-scene'}" data-station-stage="${stage}" aria-label="${slope?quantity+' and slope':'Signed area of '+quantity.toLowerCase()} at step ${stage}">
+    <h3>${quantity+(slope?' → slope':' → signed area')}</h3>
     <svg viewBox="0 0 224 116" role="img" data-station-picture>
       ${slope?`<path class="slope-run" data-station-run/><path class="slope-rise" data-station-rise/><path class="slope-tangent" data-station-tangent/><circle class="slope-point" cx="112" cy="58" r="4"/>`:
       `<defs><pattern id="station-negative-${stage}" patternUnits="userSpaceOnUse" width="6" height="6"><path d="M0 6L6 0" stroke="#a86051" stroke-width="1.5"/></pattern></defs><path class="amount-pipe" d="M24 24H78M146 24H200"/><path class="station-arrow" data-station-arrow/><rect class="amount-vessel" x="22" y="49" width="180" height="36" rx="8"/><rect class="amount-positive" data-station-fill y="50" height="34"/><rect fill="url(#station-negative-${stage})" data-station-negative y="50" height="34"/><path class="amount-zero" data-station-origin/>`}
     </svg>
-    <div class="station-readings"><span>Height<output data-station-input></output></span><span>${slope?'Slope':'Area'}<output data-station-output></output></span></div>
+    <div class="station-readings"><span>${squared?math('h^2'):'Height'}<output data-station-input></output></span><span>${slope?'Slope':'Area'}<output data-station-output></output></span></div>
     <p>${slope?math('\\text{slope}=\\frac{\\text{rise}}{\\text{run}}'):'Above zero adds. Below zero subtracts.'}</p>
-    <small>${slope?'Local tangent at the inspected position':'Signed area from zero to the inspected position'}</small>
+    <small>${squared?slope?'Tangent of the incoming right side':'Area under the incoming right side from zero':slope?'Local tangent at the inspected position':'Signed area from zero to the inspected position'}</small>
   </section>`;
 }
 
@@ -41,7 +41,7 @@ export function updateStationScene(root:HTMLElement,state:State,result:Result,in
       set('[data-station-rise]',{d:`M${right} ${bottom}V${top}`});
       set('[data-station-tangent]',{d:`M${left} ${bottom}L${right} ${top}`});
       scene.dataset.direction=change>1e-8?'rising':change< -1e-8?'falling':'flat';
-      set('[data-station-picture]',{'aria-label':`Input height ${value.toPrecision(4)}; slope ${change.toPrecision(4)} at horizontal position ${input.points[index][0].toPrecision(4)}. The tangent is ${scene.dataset.direction}; its signed rise divided by its run is the slope.`});
+      set('[data-station-picture]',{'aria-label':`Input ${result.relation?'squared height':'height'} ${value.toPrecision(4)}; slope ${change.toPrecision(4)} at horizontal position ${input.points[index][0].toPrecision(4)}. The tangent is ${scene.dataset.direction}; its signed rise divided by its run is the slope.`});
     } else {
       const low=Math.min(0,...output.points.map(p=>p[1])),high=Math.max(0,...output.points.map(p=>p[1]));
       const place=(v:number)=>24+176*(v-low)/(high-low||1),zero=place(0),edge=place(change);
@@ -52,7 +52,7 @@ export function updateStationScene(root:HTMLElement,state:State,result:Result,in
       const maximum=Math.max(1,...input.points.map(p=>Math.abs(p[1])));
       set('[data-station-arrow]',{d:arrow(112,24,value/maximum*40)});
       scene.dataset.direction=value>1e-8?'adding':value< -1e-8?'taking':'still';
-      set('[data-station-picture]',{'aria-label':`Input height ${value.toPrecision(4)}; signed area from zero to horizontal position ${input.points[index][0].toPrecision(4)} is ${change.toPrecision(4)}. ${scene.dataset.direction}.`});
+      set('[data-station-picture]',{'aria-label':`Input ${result.relation?'squared height':'height'} ${value.toPrecision(4)}; signed area from zero to horizontal position ${input.points[index][0].toPrecision(4)} is ${change.toPrecision(4)}. ${scene.dataset.direction}.`});
     }
   }
 }

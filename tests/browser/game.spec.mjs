@@ -132,7 +132,7 @@ test('pickup previews legal gaps and cancelling keeps the acknowledged recipe',a
 test('chapter selection groups puzzles without changing the construction until a puzzle is chosen',async({page})=>{
   await ready(page,'/#level=4&view=flight');await place(page,'H');const before=await snapshot(page);
   await menu(page,'puzzles-open');await expect(page.locator('.chapter-group:not(.extra-puzzles)')).toHaveCount(10);
-  await expect(page.locator('#level-nav .challenge-label')).toHaveCount(20);await expect(puzzleOption(page,71)).toContainText('Chapter challenge');await expect(puzzleOption(page,67)).toContainText('Final mastery');
+  await expect(page.locator('#level-nav .challenge-label')).toHaveCount(20);await expect(puzzleOption(page,71)).toContainText('Chapter challenge');await expect(puzzleOption(page,85)).toContainText('Final mastery');
   await expect(page.locator('.chapter-group[open]')).toHaveCount(1);await expect(page.locator('.chapter-group[open]>summary')).toContainText('Bowls and arches');
   const reflection=page.locator('.chapter-group').nth(1).locator('summary');await reflection.focus();await page.keyboard.press('Enter');
   await expect(page.locator('.parallel-lesson,.parallel-options,#puzzle-variations')).toHaveCount(0);
@@ -250,7 +250,7 @@ test('minimal openings hide notes, while later puzzles scope them and Create sho
   const openNotes=async()=>{await page.locator('#ideas-open').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');};
   const closeNotes=()=>page.getByRole('button',{name:'Back to puzzle',exact:true}).click();
   await expect(page.locator('#ideas-open')).toBeHidden();await choosePuzzle(page,2);await expect(page.locator('#ideas-open')).toBeHidden();
-  const chapters=[[1,2,3,24,25],[6,8,9,26],[7,10,4,27,28],[12,13,29,30,31,11],[32,33,34,35,36],[37,38,39,40,41,42],[43,44,48,78,68,69,70,66,49,71],[50,51,52,79,81,53,54,80,55],[56,57,58,59,60,61,62,63],[82,72,73,74,75,83,76,77,64,65,67]];
+  const chapters=[[1,2,3,24,25],[6,8,9,26],[7,10,4,27,28],[12,13,29,30,31,11],[32,33,34,35,36],[37,38,39,40,41,42],[43,44,48,78,68,69,70,66,49,71],[50,51,52,79,81,53,54,80,84,55],[56,57,58,59,60,61,62,63],[82,72,73,74,75,83,76,77,64,65,85]];
   const route=chapters.flat();
   for(const level of route.slice(2)) {
     await choosePuzzle(page,level);const before=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history,save:localStorage.getItem('angouri:vine:v1:progress')}));
@@ -405,7 +405,7 @@ test('zero stays labelled and inside Flight, Flow and reference plots after inte
   const checkPlots=async selector=>{
     const bounds=await page.locator(selector).evaluateAll(plots=>plots.filter(svg=>svg.getClientRects().length).map(svg=>{
       const zero=svg.querySelector('[data-zero-line]'),b=zero.getBBox(),box=svg.viewBox.baseVal,style=getComputedStyle(zero);
-      const labels=svg.id==='flight-svg'?svg.closest('.scene'):svg.closest('.note-plot-frame')??svg;
+      const labels=svg.id==='flight-svg'?svg.closest('.scene'):svg.closest('.note-plot-frame,.flow-plot-frame')??svg;
       return {inside:b.y>box.y&&b.y<box.y+box.height,solid:style.strokeDasharray==='none',width:parseFloat(style.strokeWidth),label:[...labels.querySelectorAll('annotation')].some(el=>el.textContent==='0')};
     }));
     expect(bounds.length).toBeGreaterThan(0);for(const result of bounds){expect(result.inside).toBe(true);expect(result.solid).toBe(true);expect(result.width).toBeGreaterThanOrEqual(1);expect(result.label).toBe(true);}
@@ -430,6 +430,7 @@ test('a miss can be revised, and an edit during flight resets the throw without 
 });
 
 test('fullscreen keeps three views visible and occasional tasks in the visual menu',async({page})=>{
+  test.setTimeout(120000); // Thirty puzzle/viewport combinations plus menu navigation.
   await ready(page,'/#level=3&view=flight');
   for(const id of ['level-nav','share-open','nav-create','library-open'])await expect(page.locator(`#${id}`)).toBeHidden();
   for(const view of ['flight','function','flow'])await expect(page.locator(`#tab-${view}`)).toBeVisible();
@@ -514,13 +515,13 @@ test('all mathematical notation is KaTeX, and all three views reflect the same t
   await expect(page.locator('#scene [data-part],#scene button')).toHaveCount(0);await expect(page.locator('.katex-error')).toHaveCount(0);
 });
 
-test('ten chapters cover 69 puzzles, then end with a chapter record and AngouriMath credit',async({page})=>{
+test('ten chapters cover 70 puzzles, then end with a chapter record and AngouriMath credit',async({page})=>{
   test.setTimeout(300000);
   await ready(page);
   const chapters=[[[1,'H'],[2,'A'],[3,'AH'],[24,'AHAH'],[25,'AHHAHA']],[[6,'N'],[8,'NA'],[9,'NHA'],[26,'NAHAHAH']],[[7,'Q'],[10,'HQ'],[4,'HQNA'],[27,'AQ'],[28,'AHQNAH']],[[12,'Q'],[13,'QNA'],[29,'Q'],[30,'QNA'],[31,'HHQQNA'],[11,'QHQNAA']],[[32,'DA'],[33,'QD'],[34,'AQD'],[35,'QD'],[36,'HHNAQDA']],[[37,'AI'],[38,'AI'],[39,'NAI'],[40,'HIA'],[41,'DI'],[42,'HHNAINA']],[[43,{x:'2',y:'0',radius:'1'}],[44,{x:'3/2',y:'1/2',radius:'1'}],[48,'QNA'],[78,'AQNA'],[68,'A'],[69,'HH'],[70,'N'],[66,'Q'],[49,'HAQNAAAA'],[71,'AHHQNAHQ']]];
-  chapters.push([[50,'S'],[51,'AS'],[52,'HS'],[79,'AHS'],[81,'HAS'],[53,'SQ'],[54,'SQHA'],[80,'Q'],[55,'ASHQA']],[[56,'F'],[57,'C'],[58,'NF'],[59,'HF'],[60,'AHF'],[61,'FS'],[62,'FSI'],[63,'AHFSIQNA']],[[82,'H'],[72,'H'],[73,'IH'],[74,'NAHH'],[75,'HQNAQ'],[83,'Q'],[76,'ASAH'],[77,'HQQQNAHH'],[64,'DSQHA'],[65,'AHFSINAQNA'],[67,'DAHFSINAQNAQ']]);
+  chapters.push([[50,'S'],[51,'AS'],[52,'HS'],[79,'AHS'],[81,'HAS'],[53,'SQ'],[54,'SQHA'],[80,'Q'],[84,'QS'],[55,'ASHQA']],[[56,'F'],[57,'C'],[58,'NF'],[59,'HF'],[60,'AHF'],[61,'FS'],[62,'FSI'],[63,'AHFSIQNA']],[[82,'H'],[72,'H'],[73,'IH'],[74,'NAHH'],[75,'HQNAQ'],[83,'Q'],[76,'ASAH'],[77,'HQQQNAHH'],[64,'DSQHA'],[65,'AHFSINAQNA'],[85,'DAHFISQ']]);
   const lessons=chapters.flatMap((levels,chapter)=>levels.map(([level,recipe],step)=>({level,recipe,chapter:chapter+1,step:step+1,total:levels.length})));
-  expect(lessons).toHaveLength(69);
+  expect(lessons).toHaveLength(70);
   for(const [index,{level,recipe,chapter,step,total}] of lessons.entries()) {
     if(index){await page.locator('#launch').click();await idle(page);}
     expect((await snapshot(page)).sourceId).toBe(level);
@@ -538,7 +539,7 @@ test('ten chapters cover 69 puzzles, then end with a chapter record and AngouriM
   await expect(page.locator('#launch')).toHaveText('Finish');await expect(page.locator('#chapter-step')).toContainText('FINAL MASTERY');
   const finalRecipe=await snapshot(page),history=await page.evaluate(()=>window.angouri.history);
   await page.locator('#launch').click();await expect(page.locator('#ending-dialog')).toBeVisible();await expect(page.locator('#ending-title')).toHaveText('A whole garden of ideas.');
-  await expect(page.locator('.ending-chapter.complete')).toHaveCount(10);await expect(page.locator('#ending-progress')).toHaveText('69 of 69 puzzles complete');
+  await expect(page.locator('.ending-chapter.complete')).toHaveCount(10);await expect(page.locator('#ending-progress')).toHaveText('70 of 70 puzzles complete');
   const credit=page.locator('.ending-credit a');await expect(credit).toContainText('AngouriMath');await expect(credit).toHaveAttribute('href','https://github.com/asc-community/AngouriMath');expect(await credit.locator('img').evaluate(img=>img.complete&&img.naturalWidth>0)).toBe(true);
   expect(await snapshot(page)).toEqual(finalRecipe);expect(await page.evaluate(()=>window.angouri.history)).toEqual(history);
   await page.locator('#ending-create').click();await expect(page.locator('#leave-dialog')).toBeVisible();await discardNavigation(page);await idle(page);expect((await snapshot(page)).mode).toBe('remix');expect((await snapshot(page)).circle).toEqual(finalRecipe.circle);
@@ -547,9 +548,9 @@ test('ten chapters cover 69 puzzles, then end with a chapter record and AngouriM
 });
 
 test('finishing after jumping ahead celebrates that flight without claiming unfinished chapters',async({page})=>{
-  await ready(page,'/#level=67&view=flight');await placeRecipe(page,'DAHFSINAQNAQ');await throwIt(page);
+  await ready(page,'/#level=85&view=flight');await placeRecipe(page,'DAHFISQ');await throwIt(page);
   await expect(page.locator('#launch')).toHaveText('Finish');await page.locator('#launch').click();await expect(page.locator('#ending-title')).toHaveText('Your garden, shaped.');
-  await expect(page.locator('#ending-progress')).toHaveText('1 of 69 puzzles complete');await expect(page.locator('.ending-chapter.complete')).toHaveCount(0);
+  await expect(page.locator('#ending-progress')).toHaveText('1 of 70 puzzles complete');await expect(page.locator('.ending-chapter.complete')).toHaveCount(0);
   const finalRecipe=await snapshot(page);await page.locator('#ending-create').click();await expect(page.locator('#leave-dialog')).toBeVisible();
   await page.locator('#leave-cancel').click();expect(await snapshot(page)).toEqual(finalRecipe);await page.locator('#launch').click();
   for(const viewport of [{width:1440,height:900},{width:390,height:844},{width:320,height:568},{width:844,height:390}]) {
@@ -558,7 +559,7 @@ test('finishing after jumping ahead celebrates that flight without claiming unfi
   }
   await page.locator('#ending-revisit').click();await expect(page.locator('#puzzles-dialog')).toBeVisible();await expect(page.locator('.chapter-group[open]>summary')).toContainText('The moonlit garden');
   await page.keyboard.press('Escape');await expect(page.locator('#launch')).toHaveText('Finish');await page.reload();await page.waitForFunction(()=>window.angouri?.state);
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([67]);
+  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([85]);
 });
 
 test('empty slots can move, fill in place, persist, and undo with the recipe',async({page})=>{
@@ -654,6 +655,11 @@ test('creation changes its source under Start and preserves the recipe through U
 });
 
 test('the italic wordmark and dotted favicon share the thrown cucumber artwork',async({page})=>{
+  const {default:opentype}=await import('opentype.js');
+  const fontBytes=await readFile(new URL('../../node_modules/katex/dist/fonts/KaTeX_Main-Italic.ttf',import.meta.url));
+  const font=opentype.parse(fontBytes.buffer.slice(fontBytes.byteOffset,fontBytes.byteOffset+fontBytes.byteLength));
+  const glyph=font.charToGlyph('n').getBoundingBox();
+  const ink={ascent:glyph.y2/font.unitsPerEm,descent:-glyph.y1/font.unitsPerEm};
   await ready(page);
   const paths=await page.evaluate(()=>[document.querySelector('link[rel="icon"]').getAttribute('href'),document.querySelector('#cucumber image').getAttribute('href')]);
   expect(paths).toEqual(['./favicon.svg','./cucumber.svg']);
@@ -667,19 +673,21 @@ test('the italic wordmark and dotted favicon share the thrown cucumber artwork',
   expect(icon).toContain(body);expect(icon).not.toContain('clipPath');expect(icon).not.toContain('data-cucumber-part="stem"');
   for(const width of [1440,390]) {
     await page.setViewportSize({width,height:900});await page.evaluate(()=>document.fonts.ready);
-    const alignment=await page.evaluate(()=>{
+    const alignment=await page.evaluate(ink=>{
     const math=document.querySelector('.brand .mathit'),style=getComputedStyle(math),probe=document.createElement('span');
     probe.style.cssText='display:inline-block;width:1px;height:0';math.append(probe);
     const baseline=probe.getBoundingClientRect();probe.remove();
-    const context=document.createElement('canvas').getContext('2d');
-    context.font=`${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-    const letter=context.measureText('n'),scale=baseline.width;
+    // Canvas raster ink bounds can round outward by a whole CSS pixel on
+    // Windows. Compare SVG geometry with the actual bundled font outline.
+    const fontSize=parseFloat(style.fontSize),scale=baseline.width;
     const body=document.querySelector('.brand-cucumber [data-body-frame]'),matrix=body.getScreenCTM();
     const top=new DOMPoint(11.5,5).matrixTransform(matrix),bottom=new DOMPoint(3.5,62).matrixTransform(matrix);
     const dot=document.querySelector('.brand-dot').getBoundingClientRect(),dx=top.x-bottom.x,dy=top.y-bottom.y;
     return {angle:Math.atan2(dx,-dy)*180/Math.PI,dotGap:Math.abs((dot.x+dot.width/2-top.x)*dy-(dot.y+dot.height/2-top.y)*dx)/Math.hypot(dx,dy),
-      crownGap:(top.y-baseline.top)/scale+letter.actualBoundingBoxAscent,tailGap:(bottom.y-baseline.top)/scale-letter.actualBoundingBoxDescent};
-    });
+      family:style.fontFamily,fontStyle:style.fontStyle,
+      crownGap:(top.y-baseline.top)/scale+ink.ascent*fontSize,tailGap:(bottom.y-baseline.top)/scale-ink.descent*fontSize};
+    },ink);
+    expect(alignment.family).toContain('KaTeX_Main');expect(alignment.fontStyle).toBe('italic');
     expect(alignment.angle).toBeCloseTo(17,1);expect(alignment.dotGap).toBeLessThan(.1);
     expect(Math.abs(alignment.crownGap)).toBeLessThan(.5);expect(Math.abs(alignment.tailGap)).toBeLessThan(.5);
   }

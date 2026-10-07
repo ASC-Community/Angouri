@@ -15,8 +15,8 @@ import { Garden } from './garden';
 import { gardenOrigin } from './garden-collection';
 import { installBlockTooltip } from './block-tooltip';
 import { along, drawnPaths, flightPoints, flightStrokes, nearestIndex, strokePosition, sampledPosition, travelledPaths } from './geometry';
-import { functionView, flow, cropFlowPath, cucumberPose, interpolate, launcherPose, operationTex, path, sizeFlightAnnotations, targetDescription, targetMark, targetStatus, tex, transform, updateFlowProbe, updateFlowCrop, flightView, type Camera, type Flight } from './views';
-import { CHAPTERS, chapterIndex, CURVES, curveId, escape, EXTRA_PUZZLES, GEOMETRY_PUZZLES, OPTIONAL_PUZZLES, fraction, targetHeight, isCapstone, isCircleSource, isMastery, isPicture, LEVELS, OPS, PUZZLE_ORDER, puzzleLabel, type Action, type Artifact, type Circle, type Op, type Response, type Result, type State, type View } from './types';
+import { functionView, flow, cropFlowPath, cucumberPose, interpolate, launcherPose, operationTex, path, sizeFlightAnnotations, sizeFlowAnnotations, targetDescription, targetMark, targetStatus, tex, transform, updateFlowProbe, updateFlowCrop, flightView, type Camera, type Flight } from './views';
+import { CHAPTERS, chapterIndex, CURVES, curveId, escape, EXTRA_PUZZLES, GEOMETRY_PUZZLES, MIXED_PUZZLES, OPTIONAL_PUZZLES, fraction, targetHeight, isCapstone, isCircleSource, isMastery, isPicture, LEVELS, OPS, PUZZLE_ORDER, puzzleLabel, type Action, type Artifact, type Circle, type Op, type Response, type Result, type State, type View } from './types';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 installTabStops();
@@ -62,7 +62,7 @@ const introActive=()=>introStage()>0;
 const choiceActive=()=>!!state&&state.mode!=='remix'&&!state.circle&&!state.station&&state.limit===1;
 const displayedView=():View=>introActive()?'flight':view;
 const stepLabel=(id:number)=>{const levels=CHAPTERS[chapterIndex(id)].levels;return `${levels.indexOf(id)+1} OF ${levels.length}`;};
-const followingPuzzle=(sourceId:number)=>{const order=PUZZLE_ORDER.includes(sourceId)?PUZZLE_ORDER:GEOMETRY_PUZZLES.includes(sourceId)?GEOMETRY_PUZZLES:EXTRA_PUZZLES;return order[order.indexOf(sourceId)+1];};
+const followingPuzzle=(sourceId:number)=>{const order=PUZZLE_ORDER.includes(sourceId)?PUZZLE_ORDER:GEOMETRY_PUZZLES.includes(sourceId)?GEOMETRY_PUZZLES:MIXED_PUZZLES.includes(sourceId)?MIXED_PUZZLES:EXTRA_PUZZLES;return order[order.indexOf(sourceId)+1];};
 const hintOrders=new Set<string>();
 let hintOffered=false,hintCue=false;
 let hintBlockSet='',bestTargetHits=-1,unsuccessfulRevisions=0;
@@ -207,6 +207,11 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
       if(newSource||history==='clear'||!previousResult?.circle&&!previousResult?.relation) {
         fullCurve=false;fitCircleCamera(state.mode!=='remix');defaultCamera={...camera};
       } else if(fullCurve)fitCircleCamera();
+    } else if(hasTargetFrame()) {
+      // Later wave/step puzzles need their landmarks to remain legible while
+      // an unfinished input may be much taller than the intended output.
+      if(newSource||history==='clear') {fullCurve=false;fitCircleCamera(true);defaultCamera={...camera};}
+      else if(fullCurve)fitCircleCamera();
     } else if(newSource||history==='clear'||!result.crop) {
       const [baseMin,baseMax]=LEVELS[state.sourceId-1].y;
       const ys=[...result.points.map(p=>p[1]),...result.checkpoints.map(targetHeight)];
@@ -304,7 +309,7 @@ function renderLevels() {
   };
   const currentChapter=chapterIndex(state.sourceId);
   $('level-nav').innerHTML=CHAPTERS.map((chapter,i)=>`<details class="chapter-group" name="chapters" ${i===Math.max(0,currentChapter)?'open':''}><summary><span class="chapter-art ${chapter.color}">${chapterArt(i)}</span><span><small>Chapter ${i+1}</small>${i===9?`<button type="button" id="menu-picture-open" class="note-view-button" data-open-garden aria-haspopup="dialog" aria-controls="garden-dialog">${icon('picture',14)}${chapter.name}</button>`:`<strong>${chapter.name}</strong>`}</span><span class="chapter-progress" aria-label="${chapter.levels.filter(id=>completed.has(id)).length} of ${chapter.levels.length} puzzles complete">${chapter.levels.filter(id=>completed.has(id)).length} / ${chapter.levels.length}</span>${icon('arrow',16)}</summary><div class="chapter-levels">${chapter.levels.map(option).join('')}</div></details>`).join('');
-  $('level-nav').insertAdjacentHTML('beforeend',`<details class="chapter-group extra-puzzles" name="chapters" ${currentChapter<0?'open':''}><summary><span class="chapter-art neutral">${icon('puzzles',28)}</span><span><small>Optional collection</small><strong>More shape puzzles</strong></span>${icon('arrow',16)}</summary><div class="chapter-levels">${[...EXTRA_PUZZLES,...GEOMETRY_PUZZLES].map(id=>`<button class="level-option" data-level="${id}" ${state!.sourceId===id?'aria-current="step"':''}><span class="level-number">${icon(completed.has(id)?'check':'blocks',18)}</span><span>${LEVELS[id-1].name}</span>${icon('arrow',18)}</button>`).join('')}</div></details>`);
+  $('level-nav').insertAdjacentHTML('beforeend',`<details class="chapter-group extra-puzzles" name="chapters" ${currentChapter<0?'open':''}><summary><span class="chapter-art neutral">${icon('puzzles',28)}</span><span><small>Optional collection</small><strong>More shape puzzles</strong></span>${icon('arrow',16)}</summary><div class="chapter-levels">${OPTIONAL_PUZZLES.map(id=>`<button class="level-option" data-level="${id}" ${state!.sourceId===id?'aria-current="step"':''}><span class="level-number">${icon(completed.has(id)?'check':'blocks',18)}</span><span>${LEVELS[id-1].name}</span>${icon('arrow',18)}</button>`).join('')}</div></details>`);
 }
 function renderCurves() {
   const option=(curve:typeof CURVES[number])=>{
@@ -315,12 +320,14 @@ function renderCurves() {
 }
 function renderScene() {
   if(!state||!result)return;
+  $('scene').classList.remove('has-flight-callouts');
   $('scene').removeAttribute('data-crop-pending');
   const visibleView=displayedView();
   $('scene').dataset.view=visibleView;$('scene').setAttribute('role',introActive()?'region':'tabpanel');$('scene').setAttribute('aria-labelledby',introActive()?'level-title':`tab-${visibleView}`);
   $('scene').innerHTML=visibleView==='flight'?flightView(state,result,camera,flight):visibleView==='function'?(state.circle?circleEquation(state,result,flight):functionView(state,result,flight)):(state.circle?circleFlow(state,result,probeIndex,flight):flow(state,result,selectedStage,probeIndex,flight));
   if(visibleView==='flight'){sizeFlightAnnotations($('scene'));if(state.circle)decorateCircleFlight($('scene'),state,result,camera);}
   if(visibleView==='flow') {
+    sizeFlowAnnotations($('scene'));
     if(state.circle)updateCircleProbe($('scene'),state,result,probeIndex,camera);else updateFlowProbe($('scene'),state,result,probeIndex);
     const line=$('scene').querySelector<HTMLElement>('.flow-line')!;
     line.scrollLeft=flowScroll.left;line.scrollTop=flowScroll.top;
@@ -374,7 +381,7 @@ function render() {
   $('chapter-step').hidden=$('picture-open').hidden;
   if(state.mode==='puzzle'&&chapter===9){
     $('level-category').textContent='CHAPTER 10';
-    $('chapter-step').innerHTML=`${isMastery(state.sourceId)?`${icon('mastery',12)} ${state.sourceId===67?'FINAL MASTERY':'MASTERY CHALLENGE'} · `:''}${stepLabel(state.sourceId)}`;
+    $('chapter-step').innerHTML=`${isMastery(state.sourceId)?`${icon('mastery',12)} ${state.sourceId===PUZZLE_ORDER.at(-1)?'FINAL MASTERY':'MASTERY CHALLENGE'} · `:''}${stepLabel(state.sourceId)}`;
   }
   $('playground').dataset.mode=state.mode;
   $('playground').dataset.choice=state.nodes.length?'placed':'empty';
@@ -387,7 +394,7 @@ function render() {
   $<HTMLButtonElement>('hints-open').disabled=false;
   $('hints-open').hidden=state.mode!=='puzzle'||isDiscovery(state);
   $('hints-open').classList.toggle('hint-cue',hintCue);
-  $('circle-fit').hidden=!(result.circle||result.relation)||displayedView()==='function'||!!result.relation&&displayedView()==='flow';
+  $('circle-fit').hidden=!(result.circle||result.relation||hasTargetFrame())||displayedView()==='function'||!result.circle&&displayedView()==='flow';
   $('circle-fit').setAttribute('aria-label','Full curve');
   $('circle-fit').setAttribute('aria-pressed',String(fullCurve));
   if(result.circle) {
@@ -396,7 +403,7 @@ function render() {
     $('circle-fit').classList.toggle('needs-fit',outside);
     $('circle-fit').title=fullCurve?'Return to the default view':outside?'Circle extends beyond the view. Show the full curve.':'Show the full curve';
   } else {
-    const outside=result.relation?.playback.some(([x,y])=>x<(camera.minX??-1)||x>(camera.maxX??5)||y<camera.min||y>camera.max)??false;
+    const outside=(result.relation?.playback??result.points).some(([x,y])=>x<(camera.minX??-1)||x>(camera.maxX??5)||y<camera.min||y>camera.max);
     $('circle-fit').classList.toggle('needs-fit',outside);
     $('circle-fit').title=fullCurve?'Return to the default view':outside?'Path extends beyond the view. Show the full curve.':'Show the full curve';
   }
@@ -413,6 +420,7 @@ function render() {
   restoreFocus(focus);
 }
 function setView(next: View) {view=next;preferences();progress();render();}
+function hasTargetFrame() {return !!state&&state.mode==='puzzle'&&state.sourceId>=48&&!state.circle&&!result?.relation;}
 function fitCircleCamera(targetsFirst=false) {
   if(!result)return;
   if(result.circle){const b=result.circle.bounds;camera={min:b.minY,max:b.maxY,minX:b.minX,maxX:b.maxX};return;}
@@ -422,10 +430,14 @@ function fitCircleCamera(targetsFirst=false) {
     const goals=result.checkpoints.map(g=>[fraction(g.x),targetHeight(g)] as [number,number]);
     const points=targetsFirst&&goals.length?goals:[...result.relation.playback,...goals],ys=points.map(p=>p[1]);
     camera={min:Math.min(-1,...ys)-.7,max:Math.max(1,...ys)+.7,minX:-.7,maxX:4.7};
+  } else {
+    const ys=[0,...result.checkpoints.map(targetHeight),...(targetsFirst?[]:result.points.map(point=>point[1]))];
+    const min=Math.floor(Math.min(...ys)),max=Math.ceil(Math.max(...ys)),padding=Math.max((max-min)*.2,.4);
+    camera={min:min-padding,max:max+padding};
   }
 }
 $('circle-fit').onclick=()=>{
-  if(!(result?.circle||result?.relation)||pending||['flying','releasing'].includes(flight.phase))return;
+  if(!(result?.circle||result?.relation||hasTargetFrame())||pending||['flying','releasing'].includes(flight.phase))return;
   cancelCirclePickup();cropEditor.cancel();fullCurve=!fullCurve;
   if(fullCurve)fitCircleCamera();else camera={...defaultCamera};
   render();$('circle-fit').focus({preventScroll:true});
@@ -513,6 +525,12 @@ function animatePosition() {
   }
   updateTargets();
 }
+let flightActionFocus:HTMLButtonElement|undefined;
+// Disabling an active action makes browsers move focus to the document. Restore
+// that action after playback only if the player has not chosen another focus.
+document.addEventListener('focusin',event=>{if(event.target!==flightActionFocus&&event.target!==document.body)flightActionFocus=undefined;});
+document.addEventListener('pointerdown',()=>{flightActionFocus=undefined;});
+document.addEventListener('keydown',event=>{if(event.key==='Tab')flightActionFocus=undefined;});
 function finishFlight() {
   flight={phase:'landed',position:1};animatePosition();
   notice={text:state?.mode==='remix'?'':result?.solved?'':state?.circle?'Adjust the centre or radius.':choiceActive()?'Pick another block and try again.':'Adjust a block and try again.',kind:''};
@@ -520,6 +538,8 @@ function finishFlight() {
   $('success').classList.toggle('just-solved',!!result?.solved&&!reduced);
   $('move-announcement').textContent=state?.mode==='remix'?'Throw complete.':result?.solved?'Every target hit. Puzzle solved.':`${result?.checkpoints.filter(c=>c.hit).length} of ${result?.checkpoints.length} targets hit. ${choiceActive()?'Pick another block':'Adjust your recipe'} and throw again.`;
   if(state?.mode==='puzzle'&&isPicture(state.sourceId)&&result?.solved&&!pictureCelebrated){pictureCelebrated=true;showGarden('launch',state.sourceId);}
+  const action=flightActionFocus;flightActionFocus=undefined;
+  if(action&&document.activeElement===document.body&&!action.disabled&&!action.hidden&&!document.querySelector('dialog[open]'))action.focus({preventScroll:true});
 }
 function launch() {
   if(!initialized||pending)return;
@@ -537,6 +557,7 @@ function launch() {
 function throwCucumber(replay=false) {
   if(!initialized||pending)return;
   if(flight.phase==='flying'||flight.phase==='releasing')return;
+  flightActionFocus=document.activeElement===$('launch')?$<HTMLButtonElement>('launch'):document.activeElement===$('rethrow')?$<HTMLButtonElement>('rethrow'):undefined;
   cancelCirclePickup();
   cropEditor.cancel();
   cancelAnimationFrame(morphFrame);displayedPoints=undefined;displayedSlope=undefined;
@@ -559,7 +580,7 @@ function frame(time: number) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-new ResizeObserver(()=>{sizeFlightAnnotations($('scene'));sizeCircleControls($('scene'));}).observe($('scene'));
+new ResizeObserver(()=>{sizeFlightAnnotations($('scene'));sizeFlowAnnotations($('scene'));sizeCircleControls($('scene'));}).observe($('scene'));
 
 function closeDialogs(){document.querySelectorAll<HTMLDialogElement>('dialog[open]').forEach(dialog=>dialog.close());}
 let leaveAction:(()=>Promise<unknown>)|undefined;
@@ -975,18 +996,26 @@ function renderSeeds(){
     return `<div class="favorite-row"><div class="favorite-info"><span class="favorite-name">${escape(s.name)}</span>${meta}</div><div class="favorite-actions"><button class="button" data-seed="${i}" aria-label="Open ${escape(s.name)}">${icon('folder',16)} Open</button><button class="icon-button" data-rename-seed="${i}" aria-label="Rename ${escape(s.name)}" title="Rename">${icon('rename',16)}</button><button class="icon-button" data-delete-seed="${i}" aria-label="Delete ${escape(s.name)}" title="Delete">${icon('trash',16)}</button></div></div>`;
   }).join(''):`<div class="empty-library">${icon('folder',32)}<p>Your saved recipes appear here.</p></div>`;
 }
-$('library-open').onclick=()=>{renamingSeed=undefined;renderSeeds();open('library-dialog');};
+$('library-open').onclick=()=>{renamingSeed=undefined;$('library-error').hidden=true;renderSeeds();open('library-dialog');};
 function saveRecipe(name:string) {
   return serial(async()=>{
     if(!state)return;
-    if(seeds.length>=12)throw new Error('Your library is full. Export a favourite before making room.');
+    if(seeds.length>=12)throw new Error('Your library is full. Delete a saved recipe to make room. Open and export it first if you want a copy.');
     const reply=await kernel.run(state,{type:'export',kind:'creation',view});requireOk(reply);
     const next=[...seeds,{name:name.trim().slice(0,60)||'My next great throw',artifact:reply.artifact!,snapshot:{state:clone(state),slots:[...railSlots]},view,savedAt:new Date().toISOString()}];
     if(!write(SEEDS,next))throw new Error('Could not save on this device. Keep this recipe open and export progress from Save & open.');
-    seeds=next;renderSeeds();return true;
+    seeds=next;notice={text:'',kind:''};showNotice();renderSeeds();return true;
   });
 }
-$('favorite-save').onclick=()=>{if(initialized)void saveRecipe($<HTMLInputElement>('seed-name').value).then(saved=>{if(saved)$<HTMLInputElement>('seed-name').value='';});};
+$('seed-save').onsubmit=async event=>{
+  event.preventDefault();if(!initialized)return;
+  const save=$<HTMLButtonElement>('favorite-save');if(save.getAttribute('aria-disabled')==='true')return;
+  $('library-error').hidden=true;save.setAttribute('aria-disabled','true');$('seed-save').setAttribute('aria-busy','true');
+  const saved=await saveRecipe($<HTMLInputElement>('seed-name').value);
+  save.removeAttribute('aria-disabled');$('seed-save').removeAttribute('aria-busy');
+  if(saved)$<HTMLInputElement>('seed-name').value='';
+  else {$('library-error').textContent=notice.text;$('library-error').hidden=false;}
+};
 function openSeed(seed:Seed) {
   if(!seed.snapshot)return importData(seed.artifact);
   return serial(async()=>{
@@ -1008,7 +1037,13 @@ $('favorites-list').onclick=event=>{
   if(b.dataset.cancelRename!==undefined)finishRename(Number(b.dataset.cancelRename));
   if(b.dataset.deleteSeed!==undefined){
     const index=Number(b.dataset.deleteSeed),next=seeds.filter((_,i)=>i!==index);
-    if(write(SEEDS,next)){seeds=next;renamingSeed=undefined;renderSeeds();$('favorites-list').querySelector<HTMLButtonElement>(`[data-seed="${Math.min(index,seeds.length-1)}"]`)?.focus({preventScroll:true});}
+    if(write(SEEDS,next)){seeds=next;renamingSeed=undefined;$('library-error').hidden=true;notice={text:'',kind:''};showNotice();renderSeeds();($('favorites-list').querySelector<HTMLButtonElement>(`[data-seed="${Math.min(index,seeds.length-1)}"]`)||$('seed-name')).focus({preventScroll:true});}
+    else {
+      const row=b.closest('.favorite-row')!;
+      let message=row.querySelector<HTMLElement>('.favorite-error');
+      if(!message){message=document.createElement('p');message.className='favorite-error reset-progress-error';message.setAttribute('role','alert');row.append(message);}
+      message.textContent='Could not delete on this device. Your saved recipe is still here.';
+    }
   }
   if(b.dataset.seed!==undefined){const seed=seeds[Number(b.dataset.seed)];changeWorkspace(()=>openSeed(seed).then(ok=>{if(ok)closeDialogs();}),seed.name);}
 };
@@ -1033,15 +1068,22 @@ function parseSave(value:unknown) {
   if(data.slots!==undefined&&(!Array.isArray(data.slots)||data.slots.length>65||!data.slots.every(id=>id===null||typeof id==='string'&&/^[A-Za-z0-9_-]{1,64}$/.test(id))))throw new Error('The saved recipe slots are invalid.');
   return {state:data.state as State,slots:data.slots as RailSlots|undefined,completed:data.completed as number[],view:data.view};
 }
-function importData(value:unknown) {
+function importData(value:unknown,onEngineFailure?:(failure:Error)=>void) {
   return serial(async()=>{
+    const run=async(snapshot:State|undefined,action:Action)=>{
+      let reply:Response;
+      try {reply=await kernel.run(snapshot,action);}
+      catch(e){onEngineFailure?.(e instanceof Error?e:new Error(String(e)));throw e;}
+      if(reply.status==='error')onEngineFailure?.(new Error(reply.message||'The math engine could not open this recipe. Try again.'));
+      return reply;
+    };
     if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Choose an Angouri JSON file.');
     const data={...value,view:canonicalView((value as Record<string,unknown>).view)} as Record<string,unknown>;
-    if(data.type==='save'){const save=parseSave(data);const reply=await kernel.run(save.state,{type:'evaluate'});requireOk(reply);completed=new Set(save.completed);accept(reply,'clear',save.slots,save.view);}
+    if(data.type==='save'){const save=parseSave(data);const reply=await run(save.state,{type:'evaluate'});requireOk(reply);completed=new Set(save.completed);accept(reply,'clear',save.slots,save.view);}
     else if(data.type==='level'){
       if(data.schema!==1||Object.keys(data).some(k=>!['schema','type','sourceId','view'].includes(k))||!isView(data.view))throw new Error('Unsupported puzzle link file.');
-      const reply=await kernel.run(undefined,{type:'level',sourceId:data.sourceId,mode:'puzzle'});requireOk(reply);accept(reply,'clear',undefined,data.view);
-    } else {const reply=await kernel.run(state,{type:'import',artifact:data});requireOk(reply);accept(reply,'clear',undefined,isView(data.view)?data.view:undefined);}
+      const reply=await run(undefined,{type:'level',sourceId:data.sourceId,mode:'puzzle'});requireOk(reply);accept(reply,'clear',undefined,data.view);
+    } else {const reply=await run(state,{type:'import',artifact:data});requireOk(reply);accept(reply,'clear',undefined,isView(data.view)?data.view:undefined);}
     closeDialogs();preferences();return true;
   });
 }
@@ -1053,12 +1095,27 @@ async function start() {
   // A new deep link replaces the open workspace, not the chapter record.
   if(saved)try {completed=new Set(parseSave(saved).completed);}catch {/* Invalid saves are handled below. */}
   let opened=false;
+  const openInitial=async(value:unknown)=>{
+    let failure:Error|undefined;
+    const opened=!!await importData(value,error=>{failure=error;});
+    // A worker failure says nothing about the validity of the saved workspace.
+    // Retry it intact; only invalid input may fall through to a fresh puzzle.
+    if(failure)throw failure;
+    return opened;
+  };
   try {
     const fragment=new URLSearchParams(location.hash.slice(1));
-    if(saved&&typeof saved==='object'&&(saved as {entry?:unknown}).entry===location.hash&&location.hash)opened=!!await importData(saved);
-    if(!opened&&fragment.has('v1'))opened=!!await importData(decode(fragment.get('v1')!));
-    else if(!opened&&fragment.has('level'))opened=!!await importData({schema:1,type:'level',sourceId:Number(fragment.get('level')),view:isView(fragment.get('view'))?fragment.get('view'):'flight'});
-    else if(!opened&&saved)opened=!!await importData(saved);
+    if(saved&&typeof saved==='object'&&(saved as {entry?:unknown}).entry===location.hash&&location.hash)opened=await openInitial(saved);
+    if(!opened&&fragment.has('v1'))opened=await openInitial(decode(fragment.get('v1')!));
+    else if(!opened&&fragment.has('level')) {
+      const sourceId=Number(fragment.get('level'));
+      opened=await openInitial({schema:1,type:'level',sourceId,view:isView(fragment.get('view'))?fragment.get('view'):'flight'});
+      // A known puzzle can fail to load transiently. Keep its link and the
+      // existing save recoverable instead of accepting puzzle 1 over them.
+      if(!opened&&Number.isInteger(sourceId)&&sourceId>=1&&sourceId<=LEVELS.length)
+        throw new Error(notice.text||'The requested puzzle could not load. Try again.');
+    }
+    else if(!opened&&saved)opened=await openInitial(saved);
     if(!opened){const reply=await kernel.run(undefined,{type:'evaluate'});accept(reply,'clear');if(saved||location.hash)error('The saved or shared file could not be opened. A fresh puzzle is ready.');}
   }catch(e){$('scene').innerHTML=`<div class="loading-scene"><img src="./favicon.svg" width="56" height="56" alt=""><p>Getting ready to throw.</p><small>${escape(e instanceof Error?e.message:String(e))}</small><button id="retry-engine" class="button primary">Try again</button></div>`;$('retry-engine').onclick=()=>{kernel.restart();void start();};error('The math engine is unavailable. Your saved progress is still on this device.');}
 }

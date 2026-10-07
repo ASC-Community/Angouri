@@ -4,7 +4,7 @@ No participant session has been run. This sheet prepares the plan’s small form
 
 ## Current hypothesis
 
-The main progression has 69 puzzles across ten chapters, including direct and recipe-built loops, waves, steps, and a combined finale. Three geometry puzzles and eleven earlier calculus combinations remain optional with stable rules, for 83 playable sources in total. Fixed calculus stations replace the old derivative-first and integral-first combinations. The change follows an exact audit: the old source-22 challenge allowed 90 solutions and none required squaring before differentiation; the old source-23 challenge likewise did not require squaring before integration. Those combinations did not test the intended new decision.
+The main progression has 70 puzzles across ten chapters, including direct and recipe-built loops, waves, steps, and a combined finale. Three geometry puzzles, eleven earlier calculus combinations and the former finale remain optional with stable rules, for 85 playable sources in total. Fixed calculus stations replace the old derivative-first and integral-first combinations. The change follows an exact audit: the old source-22 challenge allowed 90 solutions and none required squaring before differentiation; the old source-23 challenge likewise did not require squaring before integration. Those combinations did not test the intended new decision.
 
 Observe whether players distinguish the Input and Output zones and predict where a move belongs. Fixing a station is not sufficient on its own: new tasks must need their inputs. Motion and signed-amount sketches in Flow explain the station while Flight remains the reward. See [game-design.md](game-design.md) for implementation and extension boundaries, including equation-based curves with complete circle relations alongside the polynomial engine.
 
@@ -103,7 +103,8 @@ The main progression uses ten chapters. Each introduces an idea in a small space
 | 8.6 Waves | Fold both lobes (53) | Squaring folds negative lobes above zero | Which zeros stay fixed? |
 | 8.7 Waves | Set height and baseline (54) | Output scale and lift set amplitude and baseline | Which move changes the middle line? |
 | 8.8 Waves | Keep the peaks, fit between (80) | Repair one shoulder while preserving five landmarks | Which operation keeps zero and one fixed but shrinks a fractional height? |
-| 8.9 Waves | Place the repeating pattern (55) | Combine phase, period, folding and output fitting | Which landmarks should be placed before fitting height? |
+| 8.9 Waves | Closer crests (84) | Input slope controls how quickly phase advances | Why do later crests crowd together? |
+| 8.10 Waves | Place the repeating pattern (55) | Combine phase, period, folding and output fitting | Which landmarks should be placed before fitting height? |
 | 9.1 Steps | Round down (56) | Floor holds the whole step below | Which side owns an exact integer boundary? |
 | 9.2 Steps | Round up (57) | Ceiling holds the whole step above | How does boundary ownership change? |
 | 9.3 Steps | Reverse the thresholds (58) | Negation before rounding changes direction and endpoint ownership | Is the staircase merely turned over? |
@@ -122,7 +123,7 @@ The main progression uses ten chapters. Each introduces an idea in a small space
 | 10.8 Picture | Draw the cucumber (77) | Separate broadness, cap shape and thickness | Which earlier idea controls each property? |
 | 10.9 Mastery | Uneven wave spacing (64) | A derivative supplies a nonuniform phase | Where will the wave compress or spread? |
 | 10.10 Mastery | Build a gate (65) | A finite positive step window accumulates into a ramp and plateau | Which regions should rise or stay flat? |
-| 10.11 Mastery | One curve, many ideas (67) | Combine slope, thresholds, projection, signed area and paired heights | Which intermediate goal will you build first? |
+| 10.11 Mastery | Two rhythms, one path (85) | Use accumulated steps as phase, creating unequal-width paired lobes | What determines width independently from height? |
 
 For adjacent puzzles that reuse a relationship, observe whether the added work feels like a meaningful increase in complexity. Ask what changed from the previous construction and whether that change requires a new planning step. If players experience the second task as repetition, revise its targets or role rather than granting completion through the earlier source.
 
@@ -158,7 +159,7 @@ The independent exact oracle enumerates all **2,154 legal constructions across t
 
 These counts establish exact legality and solution multiplicity, not how a player searches. A large finite space does not prove that brute-force play is impossible, and a solve does not prove the intended decomposition. Ask for predictions and intermediate goals to distinguish reasoning from enumeration or luck. Chapter 6 integration means signed accumulated area `F(x) = ∫₀ˣ h(u) du`, written with an upright differential d, anchored at zero and without a free constant.
 
-Observe the ending after One curve, many ideas as part of the experience: does Finish feel earned after the last throw, do the chapter badges communicate what was completed, and does the player choose to stop, revisit, create or open Picture Garden? The AngouriMath credit should offer a route to the underlying project without interrupting the payoff. In Chapter 10, observe whether the framed lobe teaches domain-only cropping, the stem retains its zero anchor, and the leaf/cucumber constructions transfer loop and flat-roof understanding. Does the assembled picture make these builds feel worthwhile before the Mastery challenges? Opening or completing source 67 or Picture Garden must not award skipped puzzles; partial progress must remain partial in the ending record.
+Observe the ending after Two rhythms, one path as part of the experience: does Finish feel earned after the last throw, do the chapter badges communicate what was completed, and does the player choose to stop, revisit, create or open Picture Garden? The AngouriMath credit should offer a route to the underlying project without interrupting the payoff. In Chapter 10, observe whether the framed lobe teaches domain-only cropping, the stem retains its zero anchor, and the leaf/cucumber constructions transfer loop and flat-roof understanding. Does the assembled picture make these builds feel worthwhile before the Mastery challenges? Opening or completing source 85 or Picture Garden must not award skipped puzzles; partial progress must remain partial in the ending record.
 
 The final challenge is optional: offer stop, an earlier puzzle, refinement or creation without treating any choice as failure. Do not impose an attempt limit or timer. Before an unaided move, invite one brief prediction about a point, zero, sign, symmetry, scale or accumulated area. Use the next chapter combination or changed targets to check transfer; do not count a replayed familiar task as fresh transfer. Log whether a prompt itself revealed the idea; a prompted solution is different evidence from a spontaneous plan. Do not use a low attempt count alone as evidence: a small inventory can be exhausted quickly without understanding.
 
@@ -178,7 +179,7 @@ Recruitment and sending invitations are separate actions requiring user authoriz
 
 ### Transfer into the combined garden
 
-The current route has 69 main puzzles and fourteen optional sources. Observe these connections before judging the finale:
+The current route has 70 main puzzles and fifteen optional sources. Observe these connections before judging the finale:
 
 | Discovery | Prediction before a move | Transfer to look for |
 | --- | --- | --- |
@@ -190,7 +191,7 @@ The current route has 69 main puzzles and fourteen optional sources. Observe the
 | Uneven wave spacing (64) | What happens when phase itself is a bowl? | Reuse a derivative as a new input relationship |
 | Gate and paired roof (65–66) | What input window makes that flat region? What does squaring the right side do? | Decompose the final garden before placing blocks |
 
-At 67, ask for the first useful intermediate goal, not the full recipe. A player may start from the input window, the accumulated ramp, the centred fold, or the two branches. Record whether they can connect their chosen subgoal to another one. Hints may suggest those questions without prescribing the complete chain. Distinguish purposeful experiments from unexplained reordering, and stop if fatigue replaces useful observation.
+At 85, ask what intermediate measurement controls the different lobe widths. A player may start from step heights, accumulated slopes, phase advance or paired branches. Record whether they can connect their chosen subgoal to another one. Hints may suggest those questions without prescribing the complete chain. Distinguish purposeful experiments from unexplained reordering, and stop if fatigue replaces useful observation.
 
 The independent oracle (`py -3 tests/extended_puzzles_oracle.py`, optionally `--shortcuts`) checks the authored witnesses and rational targets without AngouriMath. It accepts the shorter equivalent at 55. The revised 64 rejects the earlier direct linear-wave bypass; 687 shorter candidates were exactly evaluable and missed, while 256 fall outside that oracle's symbolic subset. All 20,160 witness-multiset permutations at 63 were checked; 65 has valid linearity equivalents among its 302,400 permutations. Only 76 local deletion/swap/substitution neighbours at 67 were checked; its 19,958,400 witness-multiset permutations were not enumerated. For source 71, the exact rational search covers all 92,124 legal recipes through its nine-block limit, finds eight solutions, and finds `AHHQNAHQ` as the unique shortest solution at length eight. These are bounded shortcut audits, not evidence that guessing is impossible or that people will find the game satisfying.
 
@@ -210,3 +211,6 @@ Use the prompts in [learning-path.md](learning-path.md). Before the 7.4 block mo
 Observe whether the direct prerequisite links in Notes recover a missing idea quickly. Record requests for an unrelated earlier reference and the purpose it would serve; this evidence can establish whether an accumulated-knowledge destination is useful. Create retains the complete reference. The full graph, exact enumeration and automated route checks establish availability and arithmetic, not understanding.
 
 After assembling the garden, ask players to name the scene and identify each earned contribution. Check whether the aligned top/bottom labels and their contrasting hover/focus outlines make selecting a shape predictable, and whether the cucumber reveal stays attached to its mathematical outline. A complete picture should feel like a reward before the remaining Mastery puzzles.
+
+
+For 84 → 64 → 85, ask players to predict which crests move closer before an edit. Transfer to a steeper or flatter incoming phase. At 85, ask why doubling a step's height can shorten a wave lobe without making it taller, then ask for a changed-width construction. Distinguish recalling this connection from reading dense fractions or finding the right Flow stage. The fixed I station permits S on either side; observe whether the player can explain the difference. `tests/mastery_oracle.py` records the bounded current shortcut audit separately from the historical source-67 audit above. The flower-petal retrieval beat is a reward opportunity, not evidence of new learning.

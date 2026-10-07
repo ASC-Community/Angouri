@@ -1,6 +1,6 @@
 # Learning dependencies
 
-`content/learning-path.json` owns the ten chapter orders and the prerequisite edges for all 83 sources. The main route contains 69 lessons; fourteen preserved sources are optional. `web/src/types.ts` consumes the order, and authored Notes selects the current lesson and its direct prerequisite references. Create/shared challenges retain the complete book. There is one Notes destination, not another accumulated-knowledge menu.
+`content/learning-path.json` owns the ten chapter orders and the prerequisite edges for all 85 sources. The main route contains 70 lessons; fifteen preserved sources are optional. `web/src/types.ts` consumes the order, and authored Notes selects the current lesson and its direct prerequisite references. Create/shared challenges retain the complete book. There is one Notes destination, not another accumulated-knowledge menu.
 
 These edges are teaching hypotheses. A solve, an exhaustive recipe count, or an acyclic graph does not establish understanding. Observe a prediction before a move and a transfer to changed targets; distinguish mathematical uncertainty from trouble reading or operating the interface.
 
@@ -25,6 +25,10 @@ The circle offset lesson changes the input zero before Square; it teaches horizo
 
 8.3 already isolated halving before sine. The missing bridge was transfer: 8.4 compares input shift/scale order, then 8.5 removes the fixed sine station in a small search space. 8.8 starts with five exact matches and one off-peak miss. Squaring preserves zero and one while lowering intermediate heights, connecting Flat tops to wave repair. 10.7 references these precise lessons rather than the entire knowledge history.
 
+8.9 adds a small nonlinear-phase comparison before the 8.10 chapter challenge. Square before Sine compresses later crests; Square afterward folds negative lobes without moving their zeros. 10.9 recalls this directly and fits a phase built from a derivative. Its extra half-position landmark distinguishes the target from an ordinary evenly spaced wave.
+
+The final 10.11 uses accumulated step heights as the phase of two unequal-width lobes. Five input slots and three output slots around the fixed Accumulate station allow players to try Sine on either side. The old source 67 remains unchanged as optional practice: prepending D to the source-65 construction did not create a new decision. Required source 85 replaces that repetition with a new use of the earlier relationships. 10.6 remains a deliberately short retrieval/reward beat; its decorative repeated petal does not establish mastery.
+
 ## Exact audit
 
 `python3 tests/learning_path_oracle.py` uses independent exact arithmetic, not the game kernel. It exhausts six added legal spaces, including station boundaries and all prefixes:
@@ -41,6 +45,8 @@ The circle offset lesson changes the input zero before Square; it teaches horizo
 No candidate in these spaces was unsupported. The shorter `HAS` is welcome: it still centres and scales the input before movable sine. A longer witness is not a success rule. Witnesses appear in tests/docs only, never in shipped puzzle metadata.
 
 At source 80, the initial squared sine agrees at all five zero/peak landmarks but gives `1/4` instead of `1/16` at `x=1/3`. Squaring fixes that point and preserves the five matches. At source 76, `QHNA` matches three targets but gives `7/8` rather than `(2+sqrt(2))/4` at `x=3/2`; `ASAH` matches all four. Rounded display agreement never establishes a hit. These two comparisons motivate preserving known matches while inspecting the missing relationship.
+
+`python3 tests/mastery_oracle.py` checks all three source-84 constructions, the added exact landmark of 64, and bounded source-85 alternatives. At 85 it checks 2,160 witness permutations (one proved hit, 735 proved misses, 1,424 unsupported), 2,160 Ceiling substitutions (no hit, 745 misses, 1,415 unsupported), 40 local edits and 37 insertions. Equivalent insertions still preserve Accumulate before Sine. The `4/3` shoulder rejects the independently discovered `FHSQ` alternative. Unsupported is not a miss; this is not a full-inventory proof.
 
 ## Complete dependency record
 
@@ -97,7 +103,8 @@ Each edge names a directly useful earlier lesson, not every operation that happe
 | 53 | 8.6 | 8.1, 3.1 | Squaring folds signed wave lobes and keeps their zeros |
 | 54 | 8.7 | 8.6, 1.5 | Fit a folded wave amplitude and baseline |
 | 80 | 8.8 | 8.6, 4.1 | Shared peaks do not determine the heights between them |
-| 55 | 8.9 | 8.5, 8.7, 8.8 | Locate wave landmarks before fitting its vertical range |
+| 84 | 8.9 | 8.6, 8.3, 5.2 | A steeper incoming curve advances circular phase faster over the same horizontal distance |
+| 55 | 8.10 | 8.5, 8.7, 8.8 | Locate wave landmarks before fitting its vertical range |
 | 56 | 9.1 | 1.1 | Floor holds the integer below an input |
 | 57 | 9.2 | 9.1 | Ceiling differs between integer thresholds |
 | 58 | 9.3 | 9.2, 2.1 | Negation before rounding changes threshold ownership |
@@ -111,12 +118,13 @@ Each edge names a directly useful earlier lesson, not every operation that happe
 | 73 | 10.3 | 6.6, 6.4 | A cropped drawing still accumulates from zero |
 | 74 | 10.4 | 7.9, 7.6 | Fit circular width and squared-height thickness |
 | 75 | 10.5 | 7.8, 3.5 | A squared roof gives a pointed leaf |
-| 83 | 10.6 | 10.5, 7.8 | Reuse a pointed leaf as one repeated flower petal |
+| 83 | 10.6 | 10.5, 7.8 | A pointed leaf can become one repeated flower petal |
 | 76 | 10.7 | 8.5, 8.4, 8.7, 8.8 | Distinguish phase and period from amplitude and baseline at extra landmarks |
 | 77 | 10.8 | 4.5, 7.8, 7.6 | Combine a broad roof with rounded caps and fitted thickness |
-| 64 | 10.9 | 5.5, 8.9 | A nonlinear input winds sine at unequal horizontal intervals |
+| 64 | 10.9 | 5.5, 8.10, 8.9 | A nonlinear input winds sine at unequal horizontal intervals |
 | 65 | 10.10 | 9.8, 9.5, 7.8 | Build a finite step window before shaping its accumulated ramp |
-| 67 | 10.11 | 10.10, 10.9, 7.10, 10.8 | Connect slope, thresholds, projection, area and paired heights |
+| 85 | 10.11 | 8.9, 9.7, 9.5, 7.8, 10.10 | Accumulate unequal step heights into a phase, then project it to lobes of different widths |
+| 67 | Bonus | 10.10, 10.9, 7.10, 10.8 | Connect slope, thresholds, projection, area and paired heights |
 | 14 | Bonus | 5.1 | Read the slope of a bowl |
 | 5 | Bonus | Bonus source 14, 2.3 | Fit the slope of a cubic |
 | 15 | Bonus | Bonus source 5, 3.3 | Find and fit the roof hidden in a derivative |

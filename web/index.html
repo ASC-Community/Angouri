@@ -67,7 +67,7 @@
   </dialog>
   <dialog id="library-dialog" aria-labelledby="library-title">
     <form method="dialog" class="dialog-top"><button type="button" class="icon-button menu-back" data-back="library-open" aria-label="Back to menu" title="Back to menu"><span data-icon="back"></span></button><h2 id="library-title">Save &amp; open</h2><button class="icon-button close-dialog" aria-label="Close saved recipes"><span data-icon="close"></span></button></form>
-    <label for="seed-name">Save this recipe</label><div class="seed-save"><input id="seed-name" maxlength="60" placeholder="My next great throw"><button id="favorite-save" class="button primary"><span data-icon="save"></span>Save</button></div><div id="favorites-list"></div>
+    <label for="seed-name">Save this recipe</label><form id="seed-save" class="seed-save"><input id="seed-name" maxlength="60" placeholder="My next great throw" aria-describedby="library-error"><button id="favorite-save" class="button primary" type="submit"><span data-icon="save"></span>Save</button></form><p id="library-error" class="reset-progress-error" role="alert" hidden></p><div id="favorites-list"></div>
     <div class="file-actions"><button id="import-open" class="button"><span data-icon="import"></span>Import progress from file</button><button id="download-save" class="button"><span data-icon="export"></span>Export progress</button></div><p class="muted">Saved on this device. Export progress to keep a portable copy.</p>
   </dialog>
   <dialog id="help-dialog" aria-labelledby="help-title">

@@ -5,18 +5,18 @@ import {readFile} from 'node:fs/promises';
 const root=new URL('../',import.meta.url);
 const path=JSON.parse(await readFile(new URL('content/learning-path.json',root),'utf8'));
 const extended=JSON.parse(await readFile(new URL('content/extended-puzzles.json',root),'utf8'));
-const bonus=[14,5,15,22,16,19,17,20,21,18,23,45,46,47];
-const allSources=Array.from({length:83},(_,index)=>index+1);
+const bonus=[14,5,15,22,16,19,17,20,21,18,23,45,46,47,67];
+const allSources=Array.from({length:85},(_,index)=>index+1);
 
 test('learning path covers every source exactly once as main or bonus',()=>{
   assert.equal(path.chapters.length,10);
   const main=path.chapters.flat();
-  assert.equal(main.length,69);
-  assert.equal(new Set(main).size,69,'chapter source IDs must be unique');
+  assert.equal(main.length,70);
+  assert.equal(new Set(main).size,70,'chapter source IDs must be unique');
   assert.deepEqual([...main,...bonus].toSorted((a,b)=>a-b),allSources);
 
   const lessonIds=path.lessons.map(lesson=>lesson.id);
-  assert.equal(new Set(lessonIds).size,83,'lesson metadata IDs must be unique');
+  assert.equal(new Set(lessonIds).size,85,'lesson metadata IDs must be unique');
   assert.deepEqual(lessonIds.toSorted((a,b)=>a-b),allSources);
 });
 
@@ -42,7 +42,7 @@ test('learning prerequisites form a DAG and every main dependency is taught earl
     visiting.delete(id);visited.add(id);
   };
   for(const id of lessons.keys())visit(id);
-  assert.equal(visited.size,83);
+  assert.equal(visited.size,85);
 
   const main=path.chapters.flat(),position=new Map(main.map((id,index)=>[id,index]));
   for(const id of main){
@@ -61,6 +61,8 @@ test('new authored lessons occupy their declared chapters and keep stable rules'
     [80,{chapter:8,source:'sin(pi*x/2)^2',inventory:{Q:1,H:1,A:1},limit:1}],
     [81,{chapter:8,source:'x-2',inventory:{A:2,H:1,S:1},limit:4}],
     [82,{chapter:10,source:'x',inventory:{H:1,A:1},limit:1,outline:'x/2'}],
+    [84,{chapter:8,source:'x',inventory:{Q:1},limit:3,station:{id:'station',op:'S',before:1,after:1}}],
+    [85,{chapter:10,source:'x^2/2',inventory:{D:1,H:2,A:2,F:1,C:1,S:1,Q:2,N:1},limit:9,station:{id:'station',op:'I',before:5,after:3},relation:'height-squared'}],
     [83,{chapter:10,source:'1-(x-2)^2/4',inventory:{Q:1,H:1},limit:1,outline:'(1-(x-2)^2/4)^2',relation:'height-squared'}],
   ]);
   for(const [id,rules] of expected){

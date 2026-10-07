@@ -734,6 +734,10 @@
         "y": "9/8"
       },
       {
+        "x": "1/2",
+        "y": "(10+sqrt(2))/8"
+      },
+      {
         "x": "2/3",
         "y": "11/8"
       },
@@ -1598,5 +1602,119 @@
     "chapter": 10,
     "outline": "(1-(x-2)^2/4)^2",
     "relation": "height-squared"
+  },
+  {
+    "id": 84,
+    "source": "x",
+    "degree": 1,
+    "endpoint": 4,
+    "targets": [
+      {
+        "x": "0",
+        "y": "0"
+      },
+      {
+        "x": "1",
+        "y": "1"
+      },
+      {
+        "x": "3/2",
+        "y": "-sqrt(2-sqrt(2))/2"
+      },
+      {
+        "x": "2",
+        "y": "0"
+      },
+      {
+        "x": "3",
+        "y": "1"
+      },
+      {
+        "x": "4",
+        "y": "0"
+      }
+    ],
+    "inventory": {
+      "Q": 1
+    },
+    "limit": 3,
+    "station": {
+      "id": "station",
+      "op": "S",
+      "before": 1,
+      "after": 1
+    },
+    "name": "Closer crests",
+    "hint": "Does squaring change the incoming phase, or fold the outgoing heights?",
+    "chapter": 8
+  },
+  {
+    "id": 85,
+    "source": "x^2/2",
+    "degree": 2,
+    "endpoint": 4,
+    "targets": [
+      {
+        "x": "0",
+        "y": "0"
+      },
+      {
+        "x": "1",
+        "y": "0"
+      },
+      {
+        "x": "4/3",
+        "y": "1/2"
+      },
+      {
+        "x": "4/3",
+        "y": "-1/2"
+      },
+      {
+        "x": "2",
+        "y": "1"
+      },
+      {
+        "x": "2",
+        "y": "-1"
+      },
+      {
+        "x": "3",
+        "y": "0"
+      },
+      {
+        "x": "7/2",
+        "y": "1"
+      },
+      {
+        "x": "7/2",
+        "y": "-1"
+      },
+      {
+        "x": "4",
+        "y": "0"
+      }
+    ],
+    "inventory": {
+      "D": 1,
+      "H": 2,
+      "A": 2,
+      "F": 1,
+      "C": 1,
+      "S": 1,
+      "Q": 2,
+      "N": 1
+    },
+    "limit": 9,
+    "station": {
+      "id": "station",
+      "op": "I",
+      "before": 5,
+      "after": 3
+    },
+    "relation": "height-squared",
+    "name": "Two rhythms, one path",
+    "hint": "The lobes have the same height but different widths. What should the accumulated value control next?",
+    "chapter": 10
   }
 ]

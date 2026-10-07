@@ -280,10 +280,11 @@ module Game =
         extendedPuzzles
         |> Array.choose (fun puzzle -> if isNull puzzle.outline then None else Some (puzzle.id,puzzle.outline))
         |> Map.ofArray
-    // Exact authored goals shipped before the picture puzzles moved from a
-    // whole-outline win condition to stronger checkpoint sets. These are the
-    // only obsolete authored rules that state loading may upgrade.
-    let private legacyPictureGoals = Map [
+    // Only these exact earlier authored goal sets may upgrade. Extra landmarks
+    // distinguish the intended curves; existing node identities stay intact.
+    let private legacyAuthoredGoals = Map [
+        64,[{X="0";Y="1"};{X="1/3";Y="9/8"};{X="2/3";Y="11/8"};{X="1";Y="3/2"};
+            {X="4/3";Y="11/8"};{X="5/3";Y="9/8"};{X="2";Y="1"};{X="4";Y="1"}]
         72,[{X="0";Y="0"};{X="1";Y="1"};{X="2";Y="0"}]
         73,[{X="1";Y="7/6"};{X="2";Y="4/3"};{X="3";Y="3/2"}]
         74,[{X="3/2";Y="0"};{X="2";Y="1/2"};{X="2";Y="-1/2"};{X="5/2";Y="0"}]
@@ -522,7 +523,7 @@ module Game =
                     stringField n "x",stringField n "y")
             let positionCandidates =
                 if cropTargets then
-                    match legacyPictureGoals |> Map.tryFind source with
+                    match legacyAuthoredGoals |> Map.tryFind source with
                     | Some legacy ->
                         let legacyTargets =
                             legacy
@@ -659,7 +660,7 @@ module Game =
         let goalData = field n "goals"
         let goals =
             if mode = "puzzle" &&
-               (legacyPictureGoals |> Map.tryFind source |> Option.exists (serializedGoalsExactly goalData)) then
+               (legacyAuthoredGoals |> Map.tryFind source |> Option.exists (serializedGoalsExactly goalData)) then
                 baseState.Goals
             elif mode = "remix" && (array goalData).IsEmpty then []
             else readGoals source (mode = "puzzle") (mode = "challenge") crop goalData
@@ -667,7 +668,7 @@ module Game =
         let suppliedLimit = intField n "limit"
         let legacyCropOnly =
             mode = "puzzle" && source = 72 && suppliedInventory = Map.empty && suppliedLimit = 0 &&
-            (array (field n "nodes")).IsEmpty && serializedGoalsExactly goalData legacyPictureGoals[72]
+            (array (field n "nodes")).IsEmpty && serializedGoalsExactly goalData legacyAuthoredGoals[72]
         let inventory = if legacyCropOnly then baseState.Inventory else suppliedInventory
         let limit = if legacyCropOnly then baseState.Limit else suppliedLimit
         let suppliedStation =
@@ -1786,7 +1787,9 @@ module Game =
             match exactEqualityCache.TryGetValue(key) with
             | true,cached -> cached
             | false,_ ->
-                let equal = exactEqual left right
+                // The comparator already tries exactEqual when intervals
+                // cannot establish an order; None also rules out that proof.
+                let equal = Piecewise.tryCompareConstants left right = Some 0
                 exactEqualityCache[key] <- equal
                 equal
         let proveSineLandmark inputRange input expected =

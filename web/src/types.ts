@@ -104,10 +104,11 @@ export const PUZZLE_ORDER = CHAPTERS.flatMap(chapter=>chapter.levels);
 // Earlier authored puzzles retain their IDs and rules in a small optional collection.
 export const EXTRA_PUZZLES = [14,5,15,22,16,19,17,20,21,18,23];
 export const GEOMETRY_PUZZLES = [45,46,47];
-export const OPTIONAL_PUZZLES = [...EXTRA_PUZZLES,...GEOMETRY_PUZZLES];
+export const MIXED_PUZZLES = [67];
+export const OPTIONAL_PUZZLES = [...EXTRA_PUZZLES,...GEOMETRY_PUZZLES,...MIXED_PUZZLES];
 export const chapterIndex=(sourceId:number)=>CHAPTERS.findIndex(chapter=>chapter.levels.includes(sourceId));
 export const isCapstone=(sourceId:number)=>CHAPTERS.some(chapter=>chapter.levels.at(-1)===sourceId);
-export const isMastery=(sourceId:number)=>[64,65,67].includes(sourceId);
+export const isMastery=(sourceId:number)=>[64,65,85].includes(sourceId);
 export const isPicture=(sourceId:number)=>sourceId>=72&&sourceId<=77||sourceId===82||sourceId===83;
 export const puzzleLabel=(sourceId:number)=>{const chapter=chapterIndex(sourceId);return chapter<0?'Bonus':`${chapter+1}.${CHAPTERS[chapter].levels.indexOf(sourceId)+1}`;};
 export const CURVES = [
@@ -137,7 +138,7 @@ export const CURVES = [
 ];
 export const isCircleSource=(id:number)=>id>=43&&id<=47;
 export const isRelationSource=(id:number)=>extensions.some(level=>level.id===id&&level.relation==='height-squared');
-export const curveId=(sourceId:number)=>isCircleSource(sourceId)?43:[3,24,25].includes(sourceId)?1:[7,10,11,27,28,33,34,58].includes(sourceId)?4:[12,13,14,32].includes(sourceId)?8:[31,36,39].includes(sourceId)?9:[19,38,40].includes(sourceId)?17:[20,37].includes(sourceId)?16:sourceId===22?15:sourceId===30?29:sourceId===41?21:sourceId===64?5:sourceId>=50&&sourceId<=65?50:sourceId;
+export const curveId=(sourceId:number)=>isCircleSource(sourceId)?43:[3,24,25].includes(sourceId)?1:[7,10,11,27,28,33,34,58].includes(sourceId)?4:[12,13,14,32].includes(sourceId)?8:[31,36,39].includes(sourceId)?9:[19,38,40].includes(sourceId)?17:[20,37].includes(sourceId)?16:sourceId===22?15:sourceId===30?29:sourceId===41?21:sourceId===85?67:sourceId===84?50:sourceId===64?5:sourceId>=50&&sourceId<=65?50:sourceId;
 export const fraction = (s: string) => { const [n,d] = s.split('/').map(Number); return n / (d ?? 1); };
 /** Display decimal exponents as mathematical powers, never programming e notation. */
 export const decimalTex = (value:string|number) => {

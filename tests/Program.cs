@@ -2488,9 +2488,9 @@ static class ContractTests
             [70] = "N", [71] = "AHHQNAHQ", [72] = "H", [73] = "IH",
             [74] = "NAHH", [75] = "HQNAQ", [76] = "ASAH", [77] = "HQQQNAHH",
             [78] = "AQNA", [79] = "AHS", [80] = "Q", [81] = "HAS",
-            [82] = "H", [83] = "Q"
+            [82] = "H", [83] = "Q", [84] = "QS", [85] = "DAHFISQ"
         };
-        int[] relationSources = [48, 49, 66, 67, 68, 69, 70, 71, 74, 75, 77, 78, 83];
+        int[] relationSources = [48, 49, 66, 67, 68, 69, 70, 71, 74, 75, 77, 78, 83, 85];
 
         foreach ((int source, string witness) in witnesses)
         {
@@ -2598,6 +2598,17 @@ static class ContractTests
             "lifting the bamboo misses its exact inclination");
         Equal(false, PlayExtendedPuzzle(83, "H")["result"]!["solved"]!.GetValue<bool>(),
             "halving the leaf cannot substitute for shaping the petal shoulders");
+        Equal(false, PlayExtendedPuzzle(84, "SQ")["result"]!["solved"]!.GetValue<bool>(),
+            "folding output cannot substitute for changing phase spacing");
+        Equal(false, PlayExtendedPuzzle(85, "DAHFSIQ")["result"]!["solved"]!.GetValue<bool>(),
+            "projecting before area cannot substitute for accumulated phase");
+        Equal(5, Level(85)["state"]!["station"]!["before"]!.GetValue<int>(),
+            "final station leaves room to compare sine on either side of area");
+        var radicalGuide = Level(84)["result"]!["heightGuide"]!;
+        Equal("3/2", radicalGuide["fromX"]!.GetValue<string>(),
+            "exact nested-radical comparison finds the lowest nonlinear-phase target");
+        Equal("1", radicalGuide["toX"]!.GetValue<string>(),
+            "equal highest nonlinear-phase targets retain the leftmost position");
         True(!Level(82)["state"]!.AsObject().ContainsKey("crop"),
             "the bamboo's full authored domain needs no redundant Crop control");
 
@@ -2630,6 +2641,8 @@ static class ContractTests
     {
         var legacyPictureGoals = new Dictionary<int, (string x, string y)[]>
         {
+            [64] = [("0", "1"), ("1/3", "9/8"), ("2/3", "11/8"), ("1", "3/2"),
+                    ("4/3", "11/8"), ("5/3", "9/8"), ("2", "1"), ("4", "1")],
             [72] = [("0", "0"), ("1", "1"), ("2", "0")],
             [73] = [("1", "7/6"), ("2", "4/3"), ("3", "3/2")],
             [74] = [("3/2", "0"), ("2", "1/2"), ("2", "-1/2"), ("5/2", "0")],
@@ -2865,7 +2878,7 @@ static class ContractTests
 
         var witnesses = new Dictionary<int, string>
         {
-            [72] = "H", [73] = "IH", [74] = "NAHH", [75] = "HQNAQ", [76] = "ASAH", [77] = "HQQQNAHH"
+            [64] = "DSQHA", [72] = "H", [73] = "IH", [74] = "NAHH", [75] = "HQNAQ", [76] = "ASAH", [77] = "HQQQNAHH"
         };
         foreach (int source in legacyPictureGoals.Keys)
         {
@@ -2919,6 +2932,22 @@ static class ContractTests
                 ["type"] = "import", ["artifact"] = PictureChallenge(forgedLegacyChallengeGoals)
             }
         }, "forged near-legacy picture challenge positions remain rejected");
+
+        var oldWaveGoals = GoalJson(legacyPictureGoals[64].Select((goal, index) => (goal.x, y: index.ToString())));
+        var oldWaveChallenge = PictureChallenge(oldWaveGoals);
+        oldWaveChallenge["sourceId"] = 64;
+        var restoredWaveChallenge = Ok(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = oldWaveChallenge }
+        });
+        Equal(oldWaveGoals.ToJsonString(), restoredWaveChallenge["state"]!["goals"]!.ToJsonString(),
+            "legacy uneven-wave challenges retain their own heights and original positions");
+        oldWaveChallenge = Clone(oldWaveChallenge).AsObject();
+        oldWaveChallenge["goals"]![1]!["x"] = "1/7";
+        Invalid(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = oldWaveChallenge }
+        }, "unknown uneven-wave checkpoint layouts remain rejected");
 
         foreach (int source in new[] { 76, 77 })
         {

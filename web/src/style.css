@@ -44,6 +44,12 @@ h1, h2, h3, p { margin-top: 0; }
 .scene-tag { font-size: 10px; letter-spacing: 1.6px; color: #81916d; }
 #flight-svg { width: 100%; height: 100%; display: block; }
 .flight-diagram { position: relative; width: 100%; height: 100%; }
+.game-shell:has(.has-flight-callouts) { height:auto; min-height:max(640px,100dvh); }
+.canvas-side:has(.has-flight-callouts) { flex:1 0 auto; }
+.scene.has-flight-callouts { flex:1 0 var(--flight-height); min-height:var(--flight-height); }
+.has-flight-callouts .flight-diagram { min-height:var(--flight-height); padding-block:var(--callout-top) var(--callout-bottom); }
+.flight-callout-leaders { position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
+.flight-callout-leaders .target-leaders { opacity:.38; }
 .flight-annotations { position: absolute; inset: 0; pointer-events: none; }
 .flight-annotations>div { position: absolute; inset: 0; }
 .flight-label { position: absolute; height: 28px; transform: translateX(-50%); text-align: center; }
@@ -155,13 +161,14 @@ tr[data-status=miss] .equation-verdict[data-status=waiting] { color: var(--miss-
 .machine-sample { font-size: 11px; color: #4c663e; background: #ffffff80; border-radius: 5px; padding: 4px 7px; white-space: nowrap; }
 .tangent-sample { font-size: 10px; color: #a27546; white-space: nowrap; }
 .source-machine { background: #f0f3e7; }.flow-connector { color: #91a47b; flex-shrink: 0; margin-top: 118px; }
-.flow-plot { display: block; width: 100%; height: 112px; overflow: visible; }
+.flow-plot-frame { position: relative; width: 100%; min-width: 0; height: 112px; }
+.flow-plot { display: block; width: 100%; height: 100%; overflow: visible; }
 .flow-axis { fill: none; stroke: #a7b599; stroke-width: .8; }
 .flight-zero-line, .flow-zero-line { fill: none; stroke: #788d65; stroke-width: 1.15; vector-effect: non-scaling-stroke; }
 .flight-zero-line { stroke: #9aa58f; }
 .flight-height-axis { fill: none; stroke: #c5ceba; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .axis-math.zero-label { color: #61764f; }
-.flow-zero { color: #61764f; font-size: 12px; text-align: center; line-height: 1.4; }
+.flow-zero { position: absolute; transform: translate(-50%,-50%); pointer-events: none; color: #61764f; font-size: 12px; text-align: center; line-height: 1; }
 .flow-before { fill: none; stroke: #91a483; stroke-width: 1.6; stroke-dasharray: 3 4; }
 .flow-curve { fill: none; stroke: #486c3b; stroke-width: 2.2; stroke-linejoin: round; }
 .flow-probe { fill: none; stroke: #82976d; stroke-width: .8; stroke-dasharray: 2 3; opacity: .5; }
@@ -184,6 +191,8 @@ tr[data-status=miss] .equation-verdict[data-status=waiting] { color: var(--miss-
 .flow-target[data-match=miss] { stroke: var(--miss); stroke-dasharray: 3 2; }
 .flow-target[data-status=hit] { fill: var(--hit); stroke: #fffef8; stroke-width: 1.5; }
 .flow-target[data-status=miss] { fill: var(--miss); stroke: #fffef8; stroke-width: 1.5; stroke-dasharray: none; }
+.favorite-row:has(.favorite-error) { flex-wrap: wrap; }
+.favorite-error { flex-basis: 100%; margin: 0; }
 @container flow (max-width:600px) {
   .flow-controls { padding: 8px 12px 3px; }
   .flow-control-heading { flex-wrap: wrap; font-size: 11px; gap: 2px 10px; }
@@ -196,7 +205,7 @@ tr[data-status=miss] .equation-verdict[data-status=waiting] { color: var(--miss-
   .machine-body { display: grid; grid-template-columns: 104px minmax(0,1fr); align-items: center; padding: 6px 10px; gap: 8px; }
   .machine-meta { min-height: 0; gap: 4px; }.machine-icon { font-size: 18px; min-height: 26px; }
   .machine-sample { font-size: 10px; padding: 3px 6px; }
-  .flow-plot { height: 86px; }
+  .flow-plot-frame { height: 86px; }
   .flow-connector { align-self: center; height: 14px; margin-top: 0; transform: rotate(90deg); }
 }
 @media(max-height:940px) {
@@ -208,7 +217,7 @@ tr[data-status=miss] .equation-verdict[data-status=waiting] { color: var(--miss-
     .machine-meta { min-height: 0; gap: 4px; }
     .machine-icon { font-size: 18px; min-height: 26px; }
     .machine-sample { font-size: 10px; padding: 3px 6px; }
-    .flow-plot { height: 86px; }
+    .flow-plot-frame { height: 86px; }
     .flow-connector { margin-top: 41px; }
     .flow-machine.calculus-machine { flex-basis: 576px; }
     .calculus-machine>.machine-body { flex-basis: 252px; width: 252px; }
@@ -260,6 +269,13 @@ details { border-top: 1px solid var(--line); padding-top: 14px; margin: 16px 0; 
   .game-shell:has(.scene[data-view=function]) { height: auto; min-height: max(640px,100dvh); }
   .canvas-side:has(.scene[data-view=function]), .scene[data-view=function] { flex: 1 0 auto; }
   .scene[data-view=function] { overflow: visible; }.scene[data-view=function] .equation-layout { min-height: 0; }
+  /* The vertical chain needs room for a complete transformation, not just
+     whatever remains after the editor. Keep its viewport stable as cards
+     are added; the document can grow to keep both inspection and play usable. */
+  .game-shell:has(.scene[data-view=flow]) { height: auto; min-height: max(640px,100dvh); }
+  .canvas-side:has(.scene[data-view=flow]) { flex: 1 0 auto; }
+  .scene[data-view=flow] { flex: 0 0 auto; }
+  .flow-line { flex: none; height: clamp(260px,42dvh,420px); }
   .playground { gap: 7px; }.scene-toolbar { gap: 10px; padding: 8px 0 6px; min-height: 47px; }.view-tabs { padding: 2px; gap: 0; border-radius: 10px; }.view-tabs button { padding: 4px 9px; min-height: 32px; gap: 5px; font-size: 10px; }.view-tabs svg { width: 15px; }.scene[data-view=function], .scene[data-view=flow] { margin-bottom: 2px; border-radius: 11px; }
   .scene-tag { font-size: 8px; letter-spacing: 1.2px; }.equation-layout { padding: 14px; gap: 16px; }.equation-formula { font-size: 20px; padding: 12px 5px; }.value-table th { font-size: 9px; padding: 0 5px 8px; }.value-table td { font-size: 12px; padding: 10px 5px; }
   .value-table .gap-comparison th { font-size: 10px; padding: 10px 5px; }.gap-comparison th small { font-size: 9px; }
@@ -270,6 +286,9 @@ details { border-top: 1px solid var(--line); padding-top: 14px; margin: 16px 0; 
 @media(max-height:620px) and (max-width:600px) { .puzzle-tip { display: none; }.site-header { gap: 6px 12px; padding-top: 8px; }.puzzle-heading h1 { font-size: 24px; } }
 @media(max-height:520px) and (min-width:601px) {
   .game-shell { min-height: 370px; }
+  .game-shell:has(.scene[data-view=flow]), .game-shell:has(.has-flight-callouts) { height: auto; min-height: max(370px,100dvh); }
+  .scene[data-view=flow] { flex: none; }
+  .flow-line { flex: none; height: 260px; }
   .playground { flex-direction: row; align-items: stretch; gap: 16px; }.canvas-side { min-width: 0; width: auto; margin: 0; }.scene-toolbar { gap: 12px; min-height: 41px; padding: 3px 0 7px; }.view-tabs button { font-size: 10px; padding: 3px 8px; min-height: 28px; }.view-tabs svg { width: 14px; }.scene[data-view=function], .scene[data-view=flow] { margin-bottom: 0; }.equation-layout { padding: 14px; gap: 14px; }
 }
 @media(prefers-reduced-motion:reduce) { *, *:before, *:after { animation: none!important; transition: none!important; scroll-behavior: auto!important; } }

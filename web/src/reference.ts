@@ -258,6 +258,14 @@ async function relationReference(known:Set<number>,examples:ReferenceExamples) {
   return current(currentLesson[1],currentLesson[2])+visible.reverse().map(([id,title,body])=>recall([id],title,body)).join('');
 }
 
+async function changingPhaseReference(examples:ReferenceExamples) {
+  const [linear,curved]=await Promise.all([examples.example(50,'HS'),examples.example(50,'HQS')]);
+  return '<p>Sine advances a quarter-turn whenever its input rises by one. A straight input reaches successive heights at equal horizontal distances. A steeper input reaches them closer together, so a curved phase can make the crests crowd together.</p>'+strip([curved.stages[2],curved.stages[3]],['Growing input slope','Changing wave spacing'],[move('S')])+compare('Equal height advances need different distances.',[
+    {label:'Straight phase',stage:linear.stages.at(-1)!},
+    {label:'Curved phase',stage:curved.stages.at(-1)!,before:linear.stages.at(-1)!}
+  ])+'<p>Squaring after Sine instead folds the output and preserves its zeros. '+viewButton('flow')+' follows the incoming height into the circle.</p>'+tag(84);
+}
+
 async function waveReference(known:Set<number>,examples:ReferenceExamples) {
   // Hidden future lessons must not delay the reference the player opened.
   const wave=await examples.example(4,'HS');
@@ -303,7 +311,9 @@ async function waveReference(known:Set<number>,examples:ReferenceExamples) {
       {label:'Squared again',stage:narrowed.stages.at(-1)!,before:rounded.stages.at(-1)!}
     ],[{index:1,x:'1'}])+`<p>${tex('0<a<1\\quad\\Longrightarrow\\quad a^2<a')}.</p><p>A single missed point is evidence about shape, not a reason to rebuild everything. In ${viewButton('function')}, note which exact heights already agree; use ${viewButton('flow')} to look for a change that preserves them.</p>`+tag(80);
   }
-  if(known.has(55))return current('Input and output changes control different wave features.',roles)+recall([80],'Agreement at peaks is not agreement between them',shoulders)+recall([81],'Place the movable sine',movable)+recall([54],'Amplitude and baseline',range)+recall([53],'Folding lobes',fold)+recall([79],'Input shift and scale order',inputOrder)+recall([52,51],'Period and phase',scaleLesson+phaseLesson)+recall([50],'Quarter-turn projection',cycle);
+  const changing=known.has(84)?await changingPhaseReference(examples):'';
+  if(known.has(55))return current('Input and output changes control different wave features.',roles)+recall([84],'Changing phase changes spacing',changing)+recall([80],'Agreement at peaks is not agreement between them',shoulders)+recall([81],'Place the movable sine',movable)+recall([54],'Amplitude and baseline',range)+recall([53],'Folding lobes',fold)+recall([79],'Input shift and scale order',inputOrder)+recall([52,51],'Period and phase',scaleLesson+phaseLesson)+recall([50],'Quarter-turn projection',cycle);
+  if(known.has(84))return current('Input slope controls the spacing of quarter-turns.',changing)+recall([53],'Folding the output preserves its zeros',fold)+recall([52],'A constant input scale changes period',scaleLesson);
   if(known.has(80))return current('Matching peaks does not fix the whole curve.',shoulders)+recall([53],'Folding signed lobes',fold);
   if(known.has(54))return current('Amplitude and baseline are separate.',range)+recall([53],'Folding lobes',fold)+recall([52,51],'Period and phase',scaleLesson+phaseLesson)+recall([50],'Quarter-turn projection',cycle);
   return current('Squaring folds signed lobes.',fold)+recall([52],'Period and amplitude',scaleLesson)+recall([51],'Phase and baseline',phaseLesson)+recall([50],'Quarter-turn projection',cycle);
@@ -349,7 +359,7 @@ async function togetherReference(known:Set<number>,examples:ReferenceExamples) {
   const [slope,wave,steps,area,circle,water,bamboo]=await Promise.all([
     examples.example(50,'NAQD'),examples.example(4,'HS'),examples.example(4,'HF'),
     examples.example(4,'HFSI'),examples.circleExample('1','0','3/4'),
-    examples.example(50,'HSH'),examples.example(82,'H')
+    examples.example(50,'HSH'),examples.example(81,'H')
   ]);
   const slopeCard=markers(32,34)+'<p>A flat place in an input is a zero in its derivative.</p>'+strip([slope.stages.at(-2)!,slope.stages.at(-1)!],['Input curve','Slope output'],[move('D')]);
   const waveCard=markers(50,54)+'<p>Sine reads input height as a circular phase.</p>'+strip([wave.stages.at(-2)!,wave.stages.at(-1)!],['Input phase','Circular height'],[move('S')]);
@@ -372,8 +382,8 @@ async function togetherReference(known:Set<number>,examples:ReferenceExamples) {
     artLessons.push([75,'Build a pointed leaf from a roof',card]);
   }
   if(known.has(83)) {
-    const petal=await examples.example(83,'Q');
-    const card='<p>Squaring a roof keeps its zero tips and unit peak, but draws fractional shoulders inward. In a squared-height equation, the positive and negative branches become one pointed petal.</p>'+relationSketch(petal,'One solved outline supplies one petal.')+'<p>The garden rotates this same kernel-supplied petal five times around a centre. That repetition is decorative; the puzzle still checks only this one exact construction.</p>'+tag(83);
+    const petal=await examples.example(66,'HQ');
+    const card='<p>When the right side is the square of a nonnegative roof, the solved heights are positive and negative copies of that roof. This independent example uses a half-height roof: the branches keep its zero tips and meet at their pointed ends.</p>'+relationSketch(petal,'A half-height roof supplies a thinner petal.')+'<p>The garden rotates your completed petal five times around a centre. That repetition is decorative; the puzzle checks one exact construction.</p>'+tag(83);
     artLessons.push([83,'One pointed petal can make a five-petal flower',card]);
   }
   if(known.has(76))artLessons.push([76,'Fit phase, amplitude and baseline',rippleCard]);
@@ -396,7 +406,12 @@ async function togetherReference(known:Set<number>,examples:ReferenceExamples) {
     return current(lesson[1],lesson[2])+visibleArt.reverse().map(([id,title,body])=>recall([id],title,body)).join('');
   }
   const artRecall=visibleArt.reverse().map(([id,title,body])=>recall([id],title,body)).join('');
-  const reading='<p>A long construction remains a sequence of familiar local relationships. Each Flow card names the incoming curve, the operation and its output.</p>'+viewButton('flow')+tag(64);
+  const reading=await changingPhaseReference(examples)+tag(64);
+  if(known.has(85)) {
+    const accumulated=await examples.example(50,'FI');
+    const body='<p>Accumulation turns each constant input height into a straight section with that slope. Zero input holds the total still; a larger input makes the total climb more steeply.</p>'+strip([accumulated.stages[1],accumulated.stages[2]],['Different step heights','Different accumulated slopes'],[move('I')])+'<p>A constructed curve can become the input to another operation. Read its slope, its zero positions and its height separately; each relationship answers a different question.</p>'+tag(85);
+    return current('Read the roles of intermediate curves.',body)+recall([84],'Input slope controls phase spacing',reading)+recall([66],'The right side supplies paired heights',relationCard)+recall([60,62],'Thresholds and area',stepCard)+artRecall;
+  }
   if(known.has(67))return current('Mixed constructions are read one relationship at a time.',reading)+recall([66],'Paired magnitudes',relationCard)+recall([61,62],'Steps, projection and accumulation',stepCard)+recall([50,54],'Phase, amplitude and baseline',waveCard)+recall([32,34],'Slope and flat places',slopeCard)+artRecall;
   if(known.has(65))return current('Earlier relationships remain visible inside a composition.',reading)+recall([61,62],'Steps, projection and accumulation',stepCard)+recall([50,54],'Circular phase and output height',waveCard)+recall([66],'Paired magnitudes',relationCard)+recall([32,34],'Slope and flat places',slopeCard)+artRecall;
   return current('A composition can be inspected stage by stage.',reading)+recall([32,34],'Slope and flat places',slopeCard)+recall([50,54],'Circular phase and output height',waveCard)+recall([66],'Paired magnitudes',relationCard)+artRecall;
