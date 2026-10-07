@@ -1,5 +1,7 @@
 import type { Kernel } from './engine';
 import type { Point } from './types';
+import { GardenHitTest } from './garden-hit';
+import { collectionPath, ease, resampleLine, type GardenOrigin } from './garden-collection';
 import './garden.css';
 
 type SourceId = 72|73|74|75|76|77|82|83;
@@ -142,6 +144,11 @@ export class Garden {
   private revealTimer?:number;
   private morphAnimation?:SVGAnimateElement;
   private labelObserver?:ResizeObserver;
+  private hitTest?:GardenHitTest;
+  private pointed?:SVGGElement;
+  private collection?:SVGSVGElement;
+  private collectionPaths:Point[][]=[];
+  private origin?:GardenOrigin;
 
   constructor(
     private root:HTMLElement,
@@ -150,14 +157,30 @@ export class Garden {
   ) {
     root.addEventListener('click',this.click);
     root.addEventListener('keydown',this.keydown);
+    root.addEventListener('pointermove',this.point);
+    root.addEventListener('pointerleave',this.clearPoint);
+    root.addEventListener('pointercancel',this.clearPoint);
   }
 
-  async open(completed:Set<number>=new Set(),revealSource?:number) {
+  async open(completed:Set<number>=new Set(),revealSource?:number,origin?:GardenOrigin) {
     this.close();
     this.active=true;
     const version=this.generation;
     this.completed=new Set([...completed].filter(id=>SOURCE_IDS.includes(id as SourceId)));
     this.revealSource=SOURCE_IDS.includes(revealSource as SourceId)&&this.completed.has(revealSource!)?revealSource as SourceId:undefined;
+    this.origin=origin;
+    if(this.revealSource&&!this.options.reduced()) {
+      const dialog=this.root.closest('dialog');
+      dialog?.classList.add('is-collecting');
+      dialog?.style.setProperty('--garden-arrival','0');
+      this.collection=document.createElementNS('http://www.w3.org/2000/svg','svg');
+      this.collection.classList.add('garden-collection');
+      this.collection.setAttribute('aria-hidden','true');
+      if(origin)this.collection.innerHTML=origin.paths.map(points=>`<path d="${collectionPath(points)}"/>`).join('');
+      this.collection.style.color=origin?.color??'#668c3b';
+      this.collection.style.strokeWidth=String(origin?.width??3);
+      dialog?.append(this.collection);
+    }
     this.root.classList.add('garden-content');
     this.root.innerHTML='<div class="garden-loading" role="status"><img src="./cucumber.svg" width="54" height="54" alt=""><p>Gathering your curves&hellip;</p></div>';
     try {
@@ -168,6 +191,7 @@ export class Garden {
       if(!this.active||version!==this.generation)return;
       this.samples=new Map(loaded);this.canonicalMarkup=canonical;
       this.render();
+      this.hitTest=new GardenHitTest(this.root.querySelector<SVGSVGElement>('.garden-paper')!);
       this.observeLabels();
       // Arrival presents the whole picture. A shape is highlighted only after
       // deliberate pointer or keyboard navigation into the artwork.
@@ -175,6 +199,7 @@ export class Garden {
       if(this.revealSource)this.startReveal(version);
     } catch {
       if(!this.active||version!==this.generation)return;
+      this.endCollection();
       this.root.innerHTML='<div class="garden-loading garden-error" role="alert"><p>Your picture could not gather its curves.</p><button class="button" data-garden-retry>Try again</button></div>';
     }
   }
@@ -189,6 +214,8 @@ export class Garden {
     this.frame=undefined;this.revealTimer=undefined;
     this.morphAnimation=undefined;
     this.labelObserver=undefined;
+    this.hitTest=undefined;this.clearPoint();
+    this.endCollection();this.origin=undefined;this.collectionPaths=[];
     this.root.classList.remove('garden-content');
     this.root.replaceChildren();
   }
@@ -252,14 +279,9 @@ export class Garden {
     const prompt=this.revealSource?`${PIECES.find(piece=>piece.sourceId===this.revealSource)!.name} joins your garden.`:all
       ?'A cucumber vine, rooted by the water. A quiet night in your garden.'
       :'Grow a vine beside the pond, one curve at a time.';
-    let revealOrder=0;
     // Light and ripples belong to the water, behind the planted shoreline.
     const paintOrder:SourceId[]=[74,76,82,72,75,73,83,77];
-    const artwork=paintOrder.map(id=>PIECES.find(piece=>piece.sourceId===id)!).map(piece=>{
-      const markup=this.artMarkup(piece,revealOrder);
-      if(this.completed.has(piece.sourceId))revealOrder+=this.samples!.get(piece.sourceId)!.paths.length;
-      return markup;
-    }).join('');
+    const artwork=paintOrder.map(id=>this.artMarkup(PIECES.find(piece=>piece.sourceId===id)!)).join('');
     this.root.innerHTML=`<section class="garden-shell${canReveal&&!this.options.reduced()?' is-reveal-ready':''}${alreadyRevealed?' is-morphing morph-complete show-canonical':''}" aria-labelledby="garden-picture-heading" data-garden-complete="${all}"${canReveal?` data-garden-reveal="${this.revealSource}"`:''}>
       <header class="garden-heading"><p class="eyebrow">YOUR CURVES &middot; ${count} OF ${PIECES.length} BUILT</p><h2 id="garden-picture-heading">${all?'Grown from your curves':'A garden in the making'}</h2><p>${prompt}</p></header>
       <div class="garden-workspace">
@@ -303,7 +325,7 @@ export class Garden {
     this.root.closest<HTMLDialogElement>('dialog')?.scrollTo({top:0});
   }
 
-  private artMarkup(piece:Piece,revealOrder:number) {
+  private artMarkup(piece:Piece) {
     const sample=this.samples!.get(piece.sourceId)!;
     // Decorative placement follows the canonical body's bow. Puzzle equations,
     // targets and validation retain the kernel's original mathematical frame.
@@ -315,16 +337,10 @@ export class Garden {
         return petal.map(([x,y])=>[550+x*c-y*s,50+x*s+y*c] as Point);
       });
     }
+    if(piece.sourceId===this.revealSource)this.collectionPaths=[74,75,77].includes(piece.sourceId)?[joinedClosed(paths)]:paths;
     const done=this.completed.has(piece.sourceId);
     const action=done?'Revisit':'Build',name=escapeHtml(piece.name),label=escapeHtml(piece.shortName),[labelX,labelY]=piece.labelAt;
     const top=labelY<0;
-    const area=piece.sourceId===83?'<circle class="garden-area-hit" cx="550" cy="50" r="20"/>':[74,75,77].includes(piece.sourceId)
-      ?`<path class="garden-area-hit" d="${closedPathData(joinedClosed(paths))}"/>`
-      :`<rect class="garden-area-hit" x="${piece.box.x}" y="${piece.box.y}" width="${piece.box.width}" height="${piece.box.height}"/>`;
-    const openShape=[72,73,76,82].includes(piece.sourceId);
-    // Open shapes already receive their whole box. Keep the widened stroke
-    // inside that box so it cannot cover a neighbouring label at small scales.
-    const hitClip=openShape?`<defs><clipPath id="garden-hit-${piece.sourceId}"><rect x="${piece.box.x}" y="${piece.box.y}" width="${piece.box.width}" height="${piece.box.height}"/></clipPath></defs>`:'';
     const silhouette=piece.sourceId===83?paths.map(closedPathData).join(''):piece.sourceId===74?smoothClosedPath(joinedClosed(paths)):[75,77].includes(piece.sourceId)?closedPathData(joinedClosed(paths))
       :piece.sourceId===72?`${pathData(paths[0])}Z`:'';
     const fill=silhouette?`<path class="garden-piece-fill" d="${silhouette}"/>`:'';
@@ -362,21 +378,30 @@ export class Garden {
       const x=Number(vineNode(y).split(' ')[0]),pole=629+(y-46)*13/342;
       return `<g class="garden-tie"><path class="garden-tie-back" d="M${x-3} ${y}C${x-5} ${y-6} ${pole+6} ${y-7} ${pole+5} ${y}"/><path class="garden-tie-front" d="M${x-3} ${y}Q${x+4} ${y+7} ${(x+pole)/2} ${y+2}T${pole+5} ${y}"/><path class="garden-tie-tail" d="M${(x+pole)/2} ${y+2}q2 5-1 10m1-10 5 7"/></g>`;
     }).join(''):'';
-    const curvePaths=(piece.sourceId===74?[joinedClosed(paths)]:paths).map((points,index)=>{
+    const curvePaths=(piece.sourceId===74?[joinedClosed(paths)]:paths).map(points=>{
       const d=piece.sourceId===74?silhouette:pathData(points);
-      return `<path class="garden-piece-hit" ${openShape?`clip-path="url(#garden-hit-${piece.sourceId})"`:''} d="${d}"/><path class="garden-focus-path" d="${d}"/><path class="garden-art-path" pathLength="1" style="--garden-path-delay:${(revealOrder+index)*100}ms" d="${d}"/>`;
+      return `<path class="garden-focus-path" d="${d}"/><path class="garden-art-path" pathLength="1" d="${d}"/>`;
     }).join('');
     const morph=piece.sourceId===77&&done?`<path class="garden-cucumber-morph" data-garden-cucumber-morph d="${closedPathData(resampleClosed(joinedClosed(paths)))}"/>`:'';
-    return `<g class="garden-piece garden-piece-${piece.className} ${done?'is-earned':'is-missing'}${piece.sourceId===this.revealSource?' is-new-piece':''}" role="button" tabindex="0" data-garden-piece="${piece.sourceId}" data-garden-build="${piece.sourceId}" data-complete="${done}" data-garden-complete="${done}" aria-label="${action} ${name}">${hitClip}${area}<g class="garden-piece-art">${flowerBase}${fill}${curvePaths}${details}${ties}${morph}</g><g class="garden-piece-label" data-label-row="${top?'top':'bottom'}" aria-hidden="true"><rect x="${labelX}" y="${labelY}" width="0" height="0" rx="4"/><text x="${labelX}" y="${labelY}">${label}${done?'<tspan class="garden-piece-check" dx="4">&#10003;</tspan>':''}</text></g></g>`;
+    return `<g class="garden-piece garden-piece-${piece.className} ${done?'is-earned':'is-missing'}${piece.sourceId===this.revealSource?' is-new-piece':''}" role="button" tabindex="0" data-garden-piece="${piece.sourceId}" data-garden-build="${piece.sourceId}" data-complete="${done}" data-garden-complete="${done}" aria-label="${action} ${name}"><g class="garden-piece-art">${flowerBase}${fill}${curvePaths}${details}${ties}${morph}</g><g class="garden-piece-label" data-label-row="${top?'top':'bottom'}" aria-hidden="true"><rect x="${labelX}" y="${labelY}" width="0" height="0" rx="4"/><text x="${labelX}" y="${labelY}">${label}${done?'<tspan class="garden-piece-check" dx="4">&#10003;</tspan>':''}</text></g></g>`;
   }
 
   /** The outline and canonical body use the same piece box, including the reveal. */
   private alignCanonicalBody() {
     const svg=this.root.querySelector<SVGSVGElement>('.garden-canonical');
     const body=svg?.querySelector<SVGPathElement>('.garden-canonical-body');
-    const frame=svg?.getScreenCTM(),matrix=body?.getScreenCTM();
-    if(!svg||!body||!frame||!matrix)return;
-    const map=frame.inverse().multiply(matrix),bounds=this.canonicalFrame;
+    if(!svg||!body)return;
+    // Work entirely within the artwork. Firefox's nested SVG screen matrix
+    // includes a different viewport origin than its descendants' matrices.
+    // Their quotient can move the complete cucumber outside the picture.
+    let map=new DOMMatrix();
+    for(let node:Element|null=body;node&&node!==svg;node=node.parentElement) {
+      const transforms=(node as SVGGraphicsElement).transform?.baseVal;
+      let local=new DOMMatrix();
+      for(let i=0;i<(transforms?.numberOfItems??0);i++)local=local.multiply(transforms!.getItem(i).matrix);
+      map=local.multiply(map);
+    }
+    const bounds=this.canonicalFrame;
     const a=new DOMPoint(bounds.x,bounds.y).matrixTransform(map);
     const b=new DOMPoint(bounds.x+bounds.width,bounds.y+bounds.height).matrixTransform(map);
     svg.setAttribute('viewBox',`${a.x} ${a.y} ${b.x-a.x} ${b.y-a.y}`);
@@ -402,6 +427,7 @@ export class Garden {
         rect.setAttribute('width',String(bounds.width+paddingX*2));rect.setAttribute('height',String(bounds.height+paddingY*2));
         rect.setAttribute('rx',String(5/scale));
       });
+      this.hitTest?.refresh();
     };
     this.labelObserver=new ResizeObserver(layout);this.labelObserver.observe(paper);layout();
   }
@@ -409,8 +435,6 @@ export class Garden {
   private startReveal(version:number) {
     const shell=this.root.querySelector<HTMLElement>('.garden-shell');
     if(!shell)return;
-    const pathCount=this.root.querySelectorAll('.garden-piece.is-new-piece .garden-art-path').length;
-    this.root.querySelectorAll<SVGPathElement>('.is-new-piece .garden-art-path').forEach((path,index)=>path.style.setProperty('--garden-path-delay',`${index*80}ms`));
     if(this.options.reduced()) {
       shell.classList.add('is-revealing','trace-complete');
       if(this.revealSource===77) {
@@ -421,19 +445,55 @@ export class Garden {
       this.revealMessage();
       return;
     }
-    this.frame=requestAnimationFrame(()=>{
-      this.frame=requestAnimationFrame(()=>{
-        if(!this.active||version!==this.generation)return;
-        shell.classList.add('is-revealing');
-      });
-    });
-    this.revealTimer=window.setTimeout(()=>{
+    const paper=this.root.querySelector<SVGSVGElement>('.garden-paper')!,overlay=this.collection!;
+    const closed=[74,75,77,83].includes(this.revealSource!);
+    const sample=this.samples!.get(this.revealSource!)!;
+    const fallback=fittedPaths(sample.paths,{...PIECES.find(piece=>piece.sourceId===this.revealSource)!,orientation:'horizontal',mirror:false,
+      box:{x:innerWidth*.3,y:innerHeight*.3,width:innerWidth*.4,height:Math.min(180,innerHeight*.25)}});
+    const original=this.origin?.paths??fallback;
+    const origins=closed?[joinedClosed(original)]:original;
+    // Carry the single crafted petal; its four decorative copies bloom with
+    // the flower after arrival instead of crossing one another in transit.
+    const targets=this.revealSource===83?this.collectionPaths.slice(0,1):this.collectionPaths;
+    const paths=targets.map((target,index)=>({
+      from:resampleLine(origins[index%origins.length]),to:resampleLine(target)
+    }));
+    overlay.innerHTML=paths.map(({from})=>`<path d="${collectionPath(from)}"/>`).join('');
+    const strokes=Array.from(overlay.querySelectorAll('path'));
+    let last:number|undefined,elapsed=0,placed=false;
+    const animate=(time:number)=>{
       if(!this.active||version!==this.generation)return;
-      this.revealTimer=undefined;
-      shell.classList.add('trace-complete');
-      if(this.revealSource===77)this.morphCucumber(shell,version);
-      else this.revealMessage();
-    },Math.max(900,pathCount*80+650));
+      // Preserve the visible journey after a slow frame or a backgrounded tab.
+      // Wall-clock catch-up would make the picture and moving curve jump ahead.
+      last??=time;elapsed+=Math.min(50,Math.max(0,time-last));last=time;
+      const travel=ease((elapsed-200)/1100),arrival=ease((elapsed-100)/850);
+      const matrix=paper.getScreenCTM();
+      this.root.closest('dialog')?.style.setProperty('--garden-arrival',String(arrival));
+      if(matrix)paths.forEach(({from,to},index)=>{
+        strokes[index].setAttribute('d',collectionPath(to.map(([x,y],i)=>{
+          const destination=new DOMPoint(x,y).matrixTransform(matrix);
+          return [from[i][0]+(destination.x-from[i][0])*travel,from[i][1]+(destination.y-from[i][1])*travel];
+        })));
+      });
+      // The same continuous outline travels first; colour and connected details
+      // appear only when it settles. No whole-picture pop or second drop motion.
+      overlay.style.color=travel>.5?'#e5d99f':this.origin?.color??'#668c3b';
+      overlay.style.strokeWidth=String((this.origin?.width??3)*(1-travel)+1.6*travel);
+      overlay.style.opacity=String((this.origin?1:ease(elapsed/180))*(1-ease((elapsed-1330)/300)));
+      if(elapsed>=1300&&!placed) {
+        placed=true;shell.classList.add('is-revealing','trace-complete');
+        if(this.revealSource===77)this.morphCucumber(shell,version);else this.revealMessage();
+      }
+      if(elapsed<1700)this.frame=requestAnimationFrame(animate);
+      else {this.frame=undefined;this.endCollection();this.hitTest?.refresh();}
+    };
+    this.frame=requestAnimationFrame(animate);
+  }
+
+  private endCollection() {
+    this.collection?.remove();this.collection=undefined;
+    const dialog=this.root.closest('dialog');
+    dialog?.classList.remove('is-collecting');dialog?.style.removeProperty('--garden-arrival');
   }
 
   private canonicalBodyPoints(count=100):Point[]|undefined {
@@ -482,12 +542,30 @@ export class Garden {
   }
 
   private click=(event:MouseEvent)=>{
-    const source=(event.target as Element).closest<SVGGElement>('[data-garden-build]');
+    const target=event.target as Element;
+    const direct=event.detail===0||target.closest('.garden-piece-label');
+    const source=direct?target.closest<SVGGElement>('[data-garden-build]'):target.closest('.garden-paper')?this.hitTest?.at(event.clientX,event.clientY):undefined;
     if(source&&this.root.contains(source)){this.activate(Number(source.dataset.gardenBuild));return;}
     const button=(event.target as Element).closest<HTMLButtonElement>('button');
     if(!button||!this.root.contains(button))return;
     if(button.hasAttribute('data-garden-retry')){void this.open(this.completed,this.revealSource);return;}
     if(button.hasAttribute('data-garden-done'))this.options.onFinish();
+  };
+
+  private point=(event:PointerEvent)=>{
+    if(event.pointerType==='touch')return;
+    const target=event.target as Element;
+    const source=target.closest('.garden-piece-label')?.closest<SVGGElement>('[data-garden-piece]')
+      ??(target.closest('.garden-paper')?this.hitTest?.at(event.clientX,event.clientY):undefined);
+    if(source===this.pointed)return;
+    this.clearPoint();this.pointed=source??undefined;
+    this.pointed?.classList.add('is-pointed');
+    this.root.querySelector('.garden-paper')?.classList.toggle('is-pointing',!!this.pointed);
+  };
+
+  private clearPoint=()=>{
+    this.pointed?.classList.remove('is-pointed');this.pointed=undefined;
+    this.root.querySelector('.garden-paper')?.classList.remove('is-pointing');
   };
 
   private keydown=(event:KeyboardEvent)=>{

@@ -12,6 +12,7 @@ import { ShapeNotes, chapterArt } from './notes';
 import { puzzleHints } from './hints';
 import { discoveryObservation, isDiscovery } from './discovery';
 import { Garden } from './garden';
+import { gardenOrigin } from './garden-collection';
 import { installBlockTooltip } from './block-tooltip';
 import { along, drawnPaths, flightPoints, flightStrokes, nearestIndex, strokePosition, sampledPosition, travelledPaths } from './geometry';
 import { functionView, flow, cropFlowPath, cucumberPose, interpolate, launcherPose, operationTex, path, sizeFlightAnnotations, targetDescription, targetMark, targetStatus, tex, transform, updateFlowProbe, updateFlowCrop, flightView, type Camera, type Flight } from './views';
@@ -888,12 +889,13 @@ $('hints-content').onclick=event=>{
 $('menu-version').onclick=()=>open('releases-dialog','menu-version');
 $('ending-create').onclick=()=>$('nav-create').click();
 function showGarden(returnId:string,revealSource?:number,parent?:string) {
+  const origin=revealSource&&!reduced?gardenOrigin($('scene').querySelector<SVGPathElement>('#flight-trail,.flow-machine:last-child .flow-curve')):undefined;
   const back=$<HTMLButtonElement>('garden-back');
   back.type=parent?'button':'submit';
   back.setAttribute('aria-label',parent?'Back to puzzle list':'Back to game');back.title=parent?'Back to puzzle list':'Back to game';
   if(parent){back.dataset.back=returnId;back.dataset.backDialog=parent;}
   else {delete back.dataset.back;delete back.dataset.backDialog;}
-  open('garden-dialog',parent?'menu-open':returnId);void garden.open(completed,revealSource);
+  open('garden-dialog',parent?'menu-open':returnId);void garden.open(completed,revealSource,origin);
 }
 $('ending-garden').onclick=()=>showGarden('ending-garden');
 $('picture-open').onclick=()=>showGarden('picture-open');

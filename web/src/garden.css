@@ -10,22 +10,21 @@
 .garden-heading>p:last-child { margin:0; color:#70805f; font-size:12px; }
 .garden-workspace { width:min(960px,100%); max-width:100%; min-width:0; min-height:0; margin:auto; padding:0 24px 10px; display:grid; place-items:center; }
 .garden-board { position:relative; width:min(900px,100%,calc((100dvh - 200px)*1.38686)); aspect-ratio:760/548; overflow:hidden; border:1px solid #385d51; border-radius:24px; background:#224b49; box-shadow:0 15px 45px #25473430; }
-.garden-paper { display:block; width:100%; height:100%; }
+.garden-paper { display:block; width:100%; height:100%; pointer-events:all; }
+.garden-paper.is-pointing { cursor:pointer; }
 .garden-water-wash { fill:url(#garden-water); opacity:.52; }
 .garden-speckles { fill:#ffebad; opacity:.55; pointer-events:none; }
 .garden-landscape { pointer-events:none; }
 .garden-label-bands { fill:#122f39; pointer-events:none; }
-.garden-piece { cursor:pointer; outline:none; }
-.garden-area-hit { fill:transparent; stroke:none; pointer-events:fill; }
-.garden-piece-hit,.garden-focus-path { fill:none; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke; }
-.garden-piece-hit { stroke:transparent; stroke-width:24; pointer-events:stroke; }
-.garden-piece-cucumber .garden-piece-hit { pointer-events:none; }
+.garden-piece { outline:none; pointer-events:none; }
+.garden-piece-art { pointer-events:none; }
+.garden-focus-path { fill:none; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke; }
 .garden-focus-path { stroke:#fff0ae; stroke-width:4; opacity:0; pointer-events:none; }
-.garden-piece:hover .garden-focus-path { opacity:.28; }
+.garden-piece.is-pointed .garden-focus-path { opacity:.28; }
 .garden-piece:focus-visible .garden-focus-path { opacity:.65; }
 .garden-art-path { fill:none; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke; }
 .garden-piece.is-missing .garden-art-path { stroke:#a4bbb1; stroke-width:1; stroke-dasharray:3 7; opacity:.28; }
-.garden-piece.is-missing:is(:hover,:focus-visible) .garden-art-path { opacity:.75; }
+.garden-piece.is-missing:is(.is-pointed,:focus-visible) .garden-art-path { opacity:.75; }
 .garden-piece.is-earned .garden-art-path { stroke-width:2.25; vector-effect:none; stroke-dasharray:none; stroke-dashoffset:0; }
 .garden-piece-bank.is-earned .garden-art-path { stroke:#849576; stroke-width:1; opacity:.25; }
 .garden-piece-ripple.is-earned .garden-art-path { stroke:#9db7af; stroke-width:1.15; stroke-dasharray:.36 .08 .37 .19; }
@@ -51,17 +50,20 @@
 .garden-piece.is-missing .garden-piece-label text { fill:#c3cebd; }
 .garden-piece-check { fill:#bad49e; font-size:.82em; }
 .garden-paper.compact-labels .garden-piece-check { display:none; }
-.garden-piece:is(:hover,:focus-visible) .garden-piece-label rect { stroke:#fff0be; stroke-width:2; stroke-opacity:1; fill:#345651; fill-opacity:1; }
-.garden-shell.is-reveal-ready .is-new-piece .garden-piece-art { transform-box:fill-box; transform-origin:center; transform:translateY(-44px) scale(1.15); opacity:0; }
-.garden-shell.is-reveal-ready.is-revealing .is-new-piece .garden-piece-art { transform:none; opacity:1; transition:transform .7s cubic-bezier(.2,.8,.3,1),opacity .35s ease; }
-.garden-shell.is-reveal-ready:not(.trace-complete) .is-new-piece .garden-art-path { stroke-dasharray:1; stroke-dashoffset:1; vector-effect:none; }
-.garden-shell.is-reveal-ready.is-revealing:not(.trace-complete) .is-new-piece .garden-art-path { stroke-dashoffset:0; transition:stroke-dashoffset .56s ease var(--garden-path-delay); }
+.garden-piece:is(.is-pointed,:focus-visible) .garden-piece-label rect { stroke:#fff0be; stroke-width:2; stroke-opacity:1; fill:#345651; fill-opacity:1; }
+.garden-shell.is-reveal-ready .is-new-piece .garden-piece-art { opacity:0; }
+.garden-shell.is-reveal-ready.is-revealing .is-new-piece .garden-piece-art { opacity:1; transition:opacity .5s ease; }
+#garden-dialog.is-collecting { background:rgb(248 244 223 / var(--garden-arrival,0)); border-color:rgb(202 216 185 / var(--garden-arrival,0)); box-shadow:none; overflow:visible; }
+#garden-dialog.is-collecting::backdrop { background:rgb(42 63 48 / calc(.24 * var(--garden-arrival,0))); backdrop-filter:blur(calc(5px * var(--garden-arrival,0))); }
+#garden-dialog.is-collecting>.dialog-top,#garden-dialog.is-collecting .garden-shell { opacity:var(--garden-arrival,0); }
+#garden-dialog.is-collecting .garden-loading { opacity:0; }
+.garden-collection { position:fixed; inset:0; width:100vw; height:100dvh; overflow:visible; pointer-events:none; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; z-index:4; transition:color .4s ease; }
 .garden-cucumber-morph { fill:none; stroke:#315f42; stroke-width:4; stroke-linecap:round; stroke-linejoin:round; opacity:0; pointer-events:none; vector-effect:non-scaling-stroke; }
 .garden-shell.is-morphing .garden-piece-cucumber .garden-art-path { opacity:0; }
 .garden-shell.is-morphing .garden-cucumber-morph { opacity:1; }
 .garden-canonical { opacity:0; filter:blur(5px); pointer-events:none; transition:opacity .7s ease,filter .7s ease; }
 .garden-shell.show-canonical .garden-canonical { opacity:1; filter:none; }
-.garden-shell.show-canonical .garden-piece-cucumber .garden-piece-fill { opacity:0; }
+.garden-shell.show-canonical .garden-piece-cucumber .garden-piece-fill { opacity:0; transition:opacity .7s ease; }
 .garden-shell.show-canonical .garden-cucumber-morph { opacity:0; transition:opacity .35s ease; }
 .garden-footer { min-width:0; min-height:66px; padding:9px max(24px,calc((100% - 1072px)/2)); display:flex; align-items:center; justify-content:space-between; gap:18px; border-top:1px solid #d9dfc9; background:#fbfaed; }
 .garden-status { min-width:0; margin:0; color:#647457; font-size:12px; }
@@ -99,9 +101,9 @@
 }
 
 @media(prefers-reduced-motion:reduce) {
-  .garden-art-path,.garden-piece-art,.garden-canonical,.garden-cucumber-morph { transition:none!important; }
+  .garden-art-path,.garden-piece-art,.garden-piece-fill,.garden-canonical,.garden-cucumber-morph { transition:none!important; }
 }
-body.reduced-motion .garden-art-path,body.reduced-motion .garden-piece-art,body.reduced-motion .garden-canonical,body.reduced-motion .garden-cucumber-morph { transition:none!important; }
+body.reduced-motion .garden-art-path,body.reduced-motion .garden-piece-art,body.reduced-motion .garden-piece-fill,body.reduced-motion .garden-canonical,body.reduced-motion .garden-cucumber-morph { transition:none!important; }
 
 .garden-stem-details,.garden-reed-details,.garden-bank-details,.garden-moonlight,.garden-ripple-echo,.garden-bamboo-nodes,.garden-flower-details { pointer-events:none; }
 .is-missing .garden-bamboo-nodes,.is-missing .garden-flower-details { opacity:0; }
