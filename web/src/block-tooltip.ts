@@ -2,7 +2,7 @@
 export function installBlockTooltip(root:HTMLElement) {
   const tip=document.createElement('div');tip.id='block-tooltip';tip.className='block-tooltip';
   tip.setAttribute('role','tooltip');tip.hidden=true;document.body.append(tip);
-  let owner:HTMLButtonElement|undefined,dismissed:HTMLButtonElement|undefined;
+  let owner:HTMLButtonElement|undefined,dismissed:HTMLButtonElement|undefined,keyboardFocus=false;
   const hide=()=>{owner?.removeAttribute('aria-describedby');owner=undefined;tip.hidden=true;};
   const block=(target:EventTarget|null)=>(target instanceof Element?target.closest<HTMLButtonElement>('.ingredient[data-block-name]'):null);
   const show=(button:HTMLButtonElement)=>{
@@ -22,10 +22,11 @@ export function installBlockTooltip(root:HTMLElement) {
       if(!button.matches(':focus-visible'))hide();dismissed=undefined;
     }
   });
-  root.addEventListener('focusin',event=>{const button=block(event.target);if(button?.matches(':focus-visible'))show(button);});
+  root.addEventListener('focusin',event=>{const button=block(event.target);if(button&&(keyboardFocus||button.matches(':focus-visible')))show(button);});
   root.addEventListener('focusout',()=>{hide();dismissed=undefined;});
-  root.addEventListener('pointerdown',()=>{dismissed=owner;hide();});
-  document.addEventListener('keydown',event=>{if(event.key==='Escape'){dismissed=owner;hide();}});
+  root.addEventListener('pointerdown',()=>{keyboardFocus=false;dismissed=owner;hide();});
+  document.addEventListener('pointerdown',()=>{keyboardFocus=false;},true);
+  document.addEventListener('keydown',event=>{keyboardFocus=true;if(event.key==='Escape'){dismissed=owner;hide();}});
   window.addEventListener('resize',hide);window.addEventListener('scroll',hide,true);
   new MutationObserver(()=>{if(owner&&!owner.isConnected)hide();}).observe(root,{childList:true});
 }

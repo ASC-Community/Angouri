@@ -5,10 +5,7 @@ import { circleSketch, compare, diagramChoices, lesson, move, recall, relationSk
 export interface ReferenceExamples {
   example(sourceId:number,ops:string):Promise<Result>;
   circleExample(x:string,y:string,radius:string,goals?:string[][]):Promise<Result>;
-  cropExample(from:string,to:string):Promise<Result>;
 }
-
-const finalDrawing=(result:Result):Result['stages'][number]=>({...result.stages.at(-1)!,points:result.points,paths:result.paths});
 
 const tag=(source:number)=>`<p class="note-reference" data-reference-lesson="${source}">${lesson(source)}</p>`;
 const markers=(...sources:number[])=>sources.map(source=>`<span data-reference-lesson="${source}" hidden></span>`).join('');
@@ -246,8 +243,16 @@ async function relationReference(known:Set<number>,examples:ReferenceExamples) {
     {label:'Roof squared',html:relationSketch(pointedRoof,'Copied roof branches meet in points.',{before:roundedRoof})}
   ])+`<p>${tex('h^2=a\\ \\Longrightarrow\\ h=\\pm\\sqrt a')} ${tex('\\qquad')} ${tex('h^2=a^2\\ \\Longrightarrow\\ h=\\pm a\\quad(a\\ge0)')}</p>`+tag(66);
   const geometry='<p>The zeros of a circular roof locate the loop’s horizontal edges. Its maximum is the squared radius. Scaling height while keeping those zeros creates a different loop, rather than simply resizing a circle.</p>'+tag(49);
+  let translation='';
+  if(known.has(78)) {
+    const [centred,shifted]=await Promise.all([examples.example(48,'QNA'),examples.example(48,'NAQNA')]);
+    translation='<p>The zero of the expression entering Square becomes the roof’s centre. Moving that zero moves both branches sideways. Adding to the finished squared height changes the reach above and below; it does not move the centre sideways.</p>'+diagramChoices('Move the centre through the input.',[
+      {label:'Original zero',html:relationSketch(centred,'A reference loop centred at two.')},
+      {label:'Shifted zero',html:relationSketch(shifted,'A reference loop centred at three.',{before:centred})}
+    ])+tag(78);
+  }
   const synthesis='<p>Several visible pieces may come from one signed shape. Track its zeros, its scale, and which operation makes negative regions visible again.</p>'+tag(71);
-  const lessons:[number,string,string][]=[[48,'Positive, zero or negative',equation],[68,'Adding to squared height',growth],[69,'Squared height and scale',scale],[70,'Where real heights exist',regions],[66,'Rounded or pointed ends',magnitudes],[49,'Geometry and the right side',geometry],[71,'Read a loop in parts',synthesis]];
+  const lessons:[number,string,string][]=[[48,'Positive, zero or negative',equation],[78,'Move the zero, move the loop',translation],[68,'Adding to squared height',growth],[69,'Squared height and scale',scale],[70,'Where real heights exist',regions],[66,'Rounded or pointed ends',magnitudes],[49,'Geometry and the right side',geometry],[71,'Read a loop in parts',synthesis]];
   const visible=lessons.filter(([id])=>known.has(id));
   const currentLesson=visible.pop()!;
   return current(currentLesson[1],currentLesson[2])+visible.reverse().map(([id,title,body])=>recall([id],title,body)).join('');
@@ -269,7 +274,20 @@ async function waveReference(known:Set<number>,examples:ReferenceExamples) {
     {label:'Halve input',stage:period.stages.at(-1)!,before:wave.stages.at(-1)!},
     {label:'Halve output',stage:amplitude.stages.at(-1)!,before:wave.stages.at(-1)!}
   ])+tag(52);
-  if(!known.has(53))return current('Input and output scale have different effects.',scaleLesson)+recall([51],'Phase and baseline',phaseLesson)+recall([50],'Quarter-turn projection',cycle);
+  let inputOrder='';
+  if(known.has(79)) {
+    const [shiftScale,scaleShift]=await Promise.all([examples.example(4,'HAHS'),examples.example(4,'HHAS')]);
+    inputOrder='<p>A halve before sine slows the phase. It also halves any shift that comes before it. Reversing those two input blocks preserves period but places the peaks differently.</p>'+compare('Same period, different phase.',[
+      {label:'Shift then scale input',stage:shiftScale.stages.at(-1)!},
+      {label:'Scale then shift input',stage:scaleShift.stages.at(-1)!,before:shiftScale.stages.at(-1)!}
+    ])+`<p>${tex('S((u+1)/2)\\ne S(u/2+1)')}</p>`+tag(79);
+  }
+  const movable='<p>A movable sine block still separates two jobs. Read the expression entering sine in '+viewButton('flow')+': it sets where the wave reaches each quarter-turn. Blocks after sine change those output heights. Removing the fixed station changes the editor, not this relationship.</p>'+scaleLesson+tag(81);
+  if(!known.has(53)) {
+    if(known.has(81))return current('A movable sine still has an input and an output.',movable)+recall([79],'A scale also changes an earlier shift',inputOrder)+recall([51],'Phase and baseline',phaseLesson);
+    if(known.has(79))return current('Input order changes the phase of a wide wave.',inputOrder)+recall([52],'Period and amplitude',scaleLesson)+recall([51],'Phase and baseline',phaseLesson);
+    return current('Input and output scale have different effects.',scaleLesson)+recall([51],'Phase and baseline',phaseLesson)+recall([50],'Quarter-turn projection',cycle);
+  }
   const folded=await examples.example(4,'HSQ');
   const fold='<p>Squaring a sine output folds negative lobes upward while keeping every zero fixed.</p>'+strip([wave.stages.at(-1)!,folded.stages.at(-1)!],['Signed wave','Squared wave'],[move('Q')])+tag(53);
   const range='<p>Output scaling changes peak-to-trough range. Output lifting changes the middle height.</p>'+compare('Range or middle height?',[
@@ -277,7 +295,16 @@ async function waveReference(known:Set<number>,examples:ReferenceExamples) {
     {label:'Raised baseline',stage:baseline.stages.at(-1)!,before:wave.stages.at(-1)!}
   ])+tag(54);
   const roles='<p>Upstream changes control horizontal phase and period. Downstream changes control folding, amplitude and baseline. The distinctions in the earlier comparisons remain valid when several operations are present.</p>'+tag(55);
-  if(known.has(55))return current('Input and output changes control different wave features.',roles)+recall([54],'Amplitude and baseline',range)+recall([53],'Folding lobes',fold)+recall([52,51],'Period and phase',scaleLesson+phaseLesson)+recall([50],'Quarter-turn projection',cycle);
+  let shoulders='';
+  if(known.has(80)) {
+    const [rounded,narrowed]=await Promise.all([examples.example(50,'HSQ'),examples.example(50,'HSQQ')]);
+    shoulders='<p>Two curves can agree at every zero and peak yet disagree between them. Squaring preserves zero and one while lowering each height strictly between them. A lift or a halve would move a peak that already fits.</p>'+compare('Same endpoints and peak. Different shoulders.',[
+      {label:'Squared wave',stage:rounded.stages.at(-1)!},
+      {label:'Squared again',stage:narrowed.stages.at(-1)!,before:rounded.stages.at(-1)!}
+    ],[{index:1,x:'1'}])+`<p>${tex('0<a<1\\quad\\Longrightarrow\\quad a^2<a')}.</p><p>A single missed point is evidence about shape, not a reason to rebuild everything. In ${viewButton('function')}, note which exact heights already agree; use ${viewButton('flow')} to look for a change that preserves them.</p>`+tag(80);
+  }
+  if(known.has(55))return current('Input and output changes control different wave features.',roles)+recall([80],'Agreement at peaks is not agreement between them',shoulders)+recall([81],'Place the movable sine',movable)+recall([54],'Amplitude and baseline',range)+recall([53],'Folding lobes',fold)+recall([79],'Input shift and scale order',inputOrder)+recall([52,51],'Period and phase',scaleLesson+phaseLesson)+recall([50],'Quarter-turn projection',cycle);
+  if(known.has(80))return current('Matching peaks does not fix the whole curve.',shoulders)+recall([53],'Folding signed lobes',fold);
   if(known.has(54))return current('Amplitude and baseline are separate.',range)+recall([53],'Folding lobes',fold)+recall([52,51],'Period and phase',scaleLesson+phaseLesson)+recall([50],'Quarter-turn projection',cycle);
   return current('Squaring folds signed lobes.',fold)+recall([52],'Period and amplitude',scaleLesson)+recall([51],'Phase and baseline',phaseLesson)+recall([50],'Quarter-turn projection',cycle);
 }
@@ -319,23 +346,24 @@ async function stepReference(known:Set<number>,examples:ReferenceExamples) {
 }
 
 async function togetherReference(known:Set<number>,examples:ReferenceExamples) {
-  const [slope,wave,steps,area,circle,fullWave,keptLobe]=await Promise.all([
+  const [slope,wave,steps,area,circle,water,bamboo]=await Promise.all([
     examples.example(50,'NAQD'),examples.example(4,'HS'),examples.example(4,'HF'),
     examples.example(4,'HFSI'),examples.circleExample('1','0','3/4'),
-    examples.cropExample('0','4'),examples.cropExample('0','2')
+    examples.example(50,'HSH'),examples.example(82,'H')
   ]);
   const slopeCard=markers(32,34)+'<p>A flat place in an input is a zero in its derivative.</p>'+strip([slope.stages.at(-2)!,slope.stages.at(-1)!],['Input curve','Slope output'],[move('D')]);
   const waveCard=markers(50,54)+'<p>Sine reads input height as a circular phase.</p>'+strip([wave.stages.at(-2)!,wave.stages.at(-1)!],['Input phase','Circular height'],[move('S')]);
   const stepCard=markers(61,62)+'<p>Floor fixes jump positions; sine can map its integer heights; accumulation turns signed regions into a continuous total.</p>'+strip([steps.stages.at(-1)!,area.stages.at(-2)!,area.stages.at(-1)!],['Integer steps','Circular heights','Accumulated total'],[move('S'),move('I')]);
   const relationCard=markers(66)+'<p>A squared-height equation can return positive and negative heights of one magnitude.</p>'+circleSketch([circle],{centre:true,spoke:true,bounds:[-1,3,-2,2]})+`<p>${tex('h^2=\\frac9{16}-(x-1)^2')}</p>`;
-  const cropCard='<p>Crop keeps a chosen horizontal interval and removes the rest of the drawing. It does not move the curve or change any retained height.</p>'+strip([finalDrawing(fullWave),finalDrawing(keptLobe)],['Whole wave: 0 to 4','Kept lobe: 0 to 2'],['<strong>Crop</strong>'])+`<p>${tex('0\\le x\\le2')}</p>`+tag(72);
+  const bambooCard='<p>A straight line has one constant inclination. Halving its height keeps the zero fixed and halves the rise over every horizontal interval.</p>'+strip(bamboo.stages,['Starting line','Half the rise'],[move('H')])+tag(82);
+  const waterCard='<p>Scaling after sine changes the height while keeping its zeros in place. The drawing frame is already fixed, so fit the curve with blocks. Create lets you choose your own crop.</p>'+strip([water.stages.at(-2)!,water.stages.at(-1)!],['A wide wave','Half its height'],[move('H')])+tag(72);
   const moonCard="<p>The zeros of the right side set a loop's horizontal edges. Its maximum squared height sets its thickness, so a smaller maximum makes a thinner loop without moving those zeros. At one position, call the right-side value "+tex('a')+'.</p>'+circleSketch([circle],{centre:true,spoke:true,bounds:[-1,3,-2,2]})+`<p>${tex('h^2=a\\qquad h=\\pm\\sqrt a')}</p>`+tag(74);
-  const rippleCard='<p>Changes before sine set phase and period. Changes afterward set amplitude and baseline. Crop then keeps the useful part without changing those fitted heights.</p>'+strip([wave.stages.at(-2)!,wave.stages.at(-1)!],['Input phase','Fitted wave height'],[move('S')])+tag(76);
-  const artLessons:[number,string,string][]=[[72,'Crop changes extent, not height',cropCard]];
+  const rippleCard='<p>Changes before sine set phase and period. Changes afterward set amplitude and baseline. The fixed frame keeps the useful part without changing those fitted heights.</p>'+strip([wave.stages.at(-2)!,wave.stages.at(-1)!],['Input phase','Fitted wave height'],[move('S')])+tag(76);
+  const artLessons:[number,string,string][]=[[82,'Set the inclination of a straight support',bambooCard],[72,'Fit height inside a fixed frame',waterCard]];
   if(known.has(73)) {
     const anchored=await examples.example(37,'I');
-    const card='<p>Accumulation is still anchored at zero before the finished curve is cropped. The crop changes which part is drawn; it does not restart the accumulated amount at its left edge.</p>'+strip(anchored.stages,['Input','Area accumulated from zero'],[move('I')])+`<p>${tex('F(x)=\\int_0^x h(u)\\,\\mathrm{d}u')}</p>`+tag(73);
-    artLessons.push([73,'Cropping does not move the area anchor',card]);
+    const card='<p>Accumulation stays anchored at zero even when the drawing frame starts later. The frame does not restart the accumulated amount at its left edge.</p>'+strip(anchored.stages,['Input','Area accumulated from zero'],[move('I')])+`<p>${tex('F(x)=\\int_0^x h(u)\\,\\mathrm{d}u')}</p>`+tag(73);
+    artLessons.push([73,'The frame keeps the same area anchor',card]);
   }
   if(known.has(74))artLessons.push([74,'Zeros and squared height size a loop',moonCard]);
   if(known.has(75)) {
@@ -343,7 +371,12 @@ async function togetherReference(known:Set<number>,examples:ReferenceExamples) {
     const card='<p>A line can first become a nonnegative roof with two zeros. When the squared-height equation uses the square of that roof, its solved branches are positive and negative copies that meet at those zeros.</p>'+relationSketch(paired,'Copied roof branches make a pointed outline.')+tag(75);
     artLessons.push([75,'Build a pointed leaf from a roof',card]);
   }
-  if(known.has(76))artLessons.push([76,'Fit a wave before framing it',rippleCard]);
+  if(known.has(83)) {
+    const petal=await examples.example(83,'Q');
+    const card='<p>Squaring a roof keeps its zero tips and unit peak, but draws fractional shoulders inward. In a squared-height equation, the positive and negative branches become one pointed petal.</p>'+relationSketch(petal,'One solved outline supplies one petal.')+'<p>The garden rotates this same kernel-supplied petal five times around a centre. That repetition is decorative; the puzzle still checks only this one exact construction.</p>'+tag(83);
+    artLessons.push([83,'One pointed petal can make a five-petal flower',card]);
+  }
+  if(known.has(76))artLessons.push([76,'Fit phase, amplitude and baseline',rippleCard]);
   if(known.has(77)) {
     const [arch,broad,rounded,pointed]=await Promise.all([examples.example(8,'NA'),examples.example(13,'QNA'),examples.example(66,''),examples.example(66,'Q')]);
     const roofs=compare('A flatter bowl makes a broader roof.',[

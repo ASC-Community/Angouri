@@ -6,6 +6,26 @@ import { stationScene, updateStationScene } from './station-scene';
 import { cropVerdict, cropWindow, updateCropWindow, probePoints } from './crop';
 export type Camera = { min: number; max: number; minX?:number; maxX?:number };
 export type Flight = { phase:'ready'|'releasing'|'flying'|'landed'; position:number; release?:number };
+const CUCUMBER_VIEWBOX=64,CUCUMBER_IMAGE_SIZE=58;
+const CUCUMBER_BODY_TOP:[number,number]=[34.12,8.4],CUCUMBER_BODY_BOTTOM:[number,number]=[27.08,58.56];
+const cucumberBodyMidpoint:[number,number]=[(CUCUMBER_BODY_TOP[0]+CUCUMBER_BODY_BOTTOM[0])/2,(CUCUMBER_BODY_TOP[1]+CUCUMBER_BODY_BOTTOM[1])/2];
+const cucumberImageScale=CUCUMBER_IMAGE_SIZE/CUCUMBER_VIEWBOX;
+const cucumberForward=[(CUCUMBER_BODY_TOP[0]-CUCUMBER_BODY_BOTTOM[0])*cucumberImageScale,(CUCUMBER_BODY_TOP[1]-CUCUMBER_BODY_BOTTOM[1])*cucumberImageScale] as [number,number];
+const cucumberForwardAngle=Math.atan2(cucumberForward[1],cucumberForward[0]);
+const cucumberHalfLength=Math.hypot(...cucumberForward)/2;
+export const cucumberFlightGeometry={
+  imageX:-cucumberBodyMidpoint[0]*cucumberImageScale,
+  imageY:-cucumberBodyMidpoint[1]*cucumberImageScale,
+  imageSize:CUCUMBER_IMAGE_SIZE
+};
+/** The canonical body's bottom sits in the pouch while its chord follows the launch tangent. */
+export function cucumberPose(position:[number,number],angle:number,pull:number,scale=1) {
+  const centrePullback=(92-cucumberHalfLength)*scale*pull;
+  return {
+    transform:`translate(${(position[0]-centrePullback*Math.cos(angle)).toFixed(2)} ${(position[1]-centrePullback*Math.sin(angle)).toFixed(2)})`,
+    degrees:(angle-cucumberForwardAngle)*180/Math.PI
+  };
+}
 /** Keep the loaded artwork and its interactive grip on the same projected tangent. */
 export function launcherPose(state:State,camera:Camera,origin:[number,number],tangent:[number,number],scale=1) {
   const start=transform(state,camera,origin),ahead=transform(state,camera,[origin[0]+tangent[0],origin[1]+tangent[1]]);
@@ -188,7 +208,7 @@ function flightRig(index:number) {
   const id=(name:string)=>index?`${name}-${index}`:name;
   return `<g data-flight-stroke="${index}">
     <g id="${id('launcher')}" aria-hidden="true"><ellipse cx="0" cy="28" rx="18" ry="3" fill="#dce5ce"/><path d="m-2 25 1-15-10-18m10 18 13-18" fill="none" stroke="#8c7955" stroke-width="7" stroke-linecap="round"/><path d="m-3 24 1-14-9-17m10 17 11-17" fill="none" stroke="#b4a078" stroke-width="2" stroke-linecap="round"/><path id="${id('band-back')}" class="slingshot-band"/><path id="${id('band-front')}" class="slingshot-band"/></g>
-    <g id="${id('cucumber')}" aria-hidden="true"><g id="${id('flight-motion')}"><path class="speed-lines" d="M-32-8h-14m13 8h-21m22 8h-13"/></g><g id="${id('flight-spin')}"><image href="./cucumber.svg" x="-29" y="-29" width="58" height="58"/></g></g>
+    <g id="${id('cucumber')}" aria-hidden="true"><g id="${id('flight-motion')}"><path class="speed-lines" d="M-32-8h-14m13 8h-21m22 8h-13"/></g><g id="${id('flight-spin')}"><image href="./cucumber.svg" x="${cucumberFlightGeometry.imageX}" y="${cucumberFlightGeometry.imageY}" width="${cucumberFlightGeometry.imageSize}" height="${cucumberFlightGeometry.imageSize}"/></g></g>
     <g id="${id('launcher-front')}" aria-hidden="true"><path id="${id('slingshot-pouch')}" class="slingshot-pouch" d="M3-8Q-5 0 3 8"/></g>
   </g>`;
 }

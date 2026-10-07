@@ -1114,22 +1114,25 @@
       },
       {
         "x": "1",
-        "y": "1"
+        "y": "1/2"
       },
       {
         "x": "2",
         "y": "0"
       }
     ],
-    "inventory": {},
-    "limit": 0,
-    "name": "Keep one lobe",
-    "hint": "Keep the useful part without changing its heights.",
+    "inventory": {
+      "H": 1,
+      "A": 1
+    },
+    "limit": 1,
+    "name": "Shape the bank",
+    "hint": "Keep the endpoints in place while fitting the height of the bank.",
     "chapter": 10,
-    "outline": "sin(pi*x/2)",
+    "outline": "sin(pi*x/2)/2",
     "crop": {
       "from": "0",
-      "to": "4",
+      "to": "2",
       "targetFrom": "0",
       "targetTo": "2"
     }
@@ -1165,13 +1168,13 @@
       "Q": 1
     },
     "limit": 5,
-    "name": "Grow a stem",
-    "hint": "Build a flowing stroke, then frame it. Area still begins at zero.",
+    "name": "Grow a vine",
+    "hint": "Build a flowing stroke. Its signed area still begins at zero.",
     "chapter": 10,
     "outline": "x^3/6-x^2+2*x",
     "crop": {
-      "from": "0",
-      "to": "4",
+      "from": "1",
+      "to": "3",
       "targetFrom": "1",
       "targetTo": "3"
     }
@@ -1266,7 +1269,7 @@
       "A": 2
     },
     "limit": 8,
-    "name": "Point a leaf",
+    "name": "Shape a reed",
     "hint": "Build a roof whose magnitude becomes both sides of the leaf.",
     "chapter": 10,
     "outline": "(1-(x-2)^2/4)^2",
@@ -1304,12 +1307,12 @@
     },
     "limit": 7,
     "name": "Settle a ripple",
-    "hint": "Place the wave, fit its height, then keep the useful stroke.",
+    "hint": "Use the wave landmarks to distinguish phase, period, amplitude and baseline.",
     "chapter": 10,
     "outline": "(sin(pi*(x-1)/2)+1)/2",
     "crop": {
-      "from": "0",
-      "to": "4",
+      "from": "1",
+      "to": "3",
       "targetFrom": "1",
       "targetTo": "3"
     }
@@ -1356,6 +1359,244 @@
     "hint": "Fit a broad roof on the right. Solving for both heights rounds its ends.",
     "chapter": 10,
     "outline": "(1-(x-2)^8/256)/4",
+    "relation": "height-squared"
+  },
+  {
+    "id": 78,
+    "source": "x-2",
+    "degree": 1,
+    "endpoint": 4,
+    "targets": [
+      {
+        "x": "0",
+        "y": "0"
+      },
+      {
+        "x": "1",
+        "y": "1"
+      },
+      {
+        "x": "1",
+        "y": "-1"
+      },
+      {
+        "x": "8/5",
+        "y": "4/5"
+      },
+      {
+        "x": "8/5",
+        "y": "-4/5"
+      },
+      {
+        "x": "2",
+        "y": "0"
+      }
+    ],
+    "inventory": {
+      "A": 2,
+      "N": 1
+    },
+    "limit": 4,
+    "name": "Move a loop with blocks",
+    "hint": "Move the zero before Square. The roof and both branches share that centre.",
+    "chapter": 7,
+    "station": {
+      "id": "station",
+      "op": "Q",
+      "before": 1,
+      "after": 2
+    },
+    "relation": "height-squared"
+  },
+  {
+    "id": 79,
+    "source": "x",
+    "degree": 1,
+    "endpoint": 4,
+    "targets": [
+      {
+        "x": "0",
+        "y": "sqrt(2)/2"
+      },
+      {
+        "x": "1",
+        "y": "1"
+      },
+      {
+        "x": "2",
+        "y": "sqrt(2)/2"
+      },
+      {
+        "x": "3",
+        "y": "0"
+      },
+      {
+        "x": "4",
+        "y": "-sqrt(2)/2"
+      }
+    ],
+    "inventory": {
+      "A": 1,
+      "H": 1
+    },
+    "limit": 3,
+    "name": "Shift a wider wave",
+    "hint": "Halving the input also halves an earlier shift. Follow both through the sine station.",
+    "chapter": 8,
+    "station": {
+      "id": "station",
+      "op": "S",
+      "before": 2,
+      "after": 0
+    }
+  },
+  {
+    "id": 80,
+    "source": "sin(pi*x/2)^2",
+    "degree": 0,
+    "endpoint": 4,
+    "targets": [
+      {
+        "x": "0",
+        "y": "0"
+      },
+      {
+        "x": "1/3",
+        "y": "1/16"
+      },
+      {
+        "x": "1",
+        "y": "1"
+      },
+      {
+        "x": "2",
+        "y": "0"
+      },
+      {
+        "x": "3",
+        "y": "1"
+      },
+      {
+        "x": "4",
+        "y": "0"
+      }
+    ],
+    "inventory": {
+      "Q": 1,
+      "H": 1,
+      "A": 1
+    },
+    "limit": 1,
+    "name": "Keep the peaks, fit between",
+    "hint": "Which change preserves zero and one while lowering a height between them?",
+    "chapter": 8
+  },
+  {
+    "id": 81,
+    "source": "x-2",
+    "degree": 1,
+    "endpoint": 4,
+    "targets": [
+      {
+        "x": "0",
+        "y": "0"
+      },
+      {
+        "x": "1",
+        "y": "sqrt(2)/2"
+      },
+      {
+        "x": "2",
+        "y": "1"
+      },
+      {
+        "x": "3",
+        "y": "sqrt(2)/2"
+      },
+      {
+        "x": "4",
+        "y": "0"
+      }
+    ],
+    "inventory": {
+      "A": 2,
+      "H": 1,
+      "S": 1
+    },
+    "limit": 4,
+    "name": "Build the wide wave",
+    "hint": "Place the sine block yourself. Which earlier changes set the spacing of its zeros?",
+    "chapter": 8
+  },
+  {
+    "id": 82,
+    "source": "x",
+    "degree": 1,
+    "endpoint": 4,
+    "targets": [
+      {
+        "x": "0",
+        "y": "0"
+      },
+      {
+        "x": "1",
+        "y": "1/2"
+      },
+      {
+        "x": "4",
+        "y": "2"
+      }
+    ],
+    "inventory": {
+      "H": 1,
+      "A": 1
+    },
+    "limit": 1,
+    "name": "Raise the bamboo",
+    "hint": "Choose the move that sets the straight line's inclination.",
+    "chapter": 10,
+    "outline": "x/2"
+  },
+  {
+    "id": 83,
+    "source": "1-(x-2)^2/4",
+    "degree": 2,
+    "endpoint": 4,
+    "targets": [
+      {
+        "x": "0",
+        "y": "0"
+      },
+      {
+        "x": "1",
+        "y": "3/4"
+      },
+      {
+        "x": "1",
+        "y": "-3/4"
+      },
+      {
+        "x": "2",
+        "y": "1"
+      },
+      {
+        "x": "2",
+        "y": "-1"
+      },
+      {
+        "x": "4",
+        "y": "0"
+      }
+    ],
+    "inventory": {
+      "Q": 1,
+      "H": 1
+    },
+    "limit": 1,
+    "name": "Shape a flower petal",
+    "hint": "A familiar pointed leaf can become a petal. Keep its tips; change the shoulders.",
+    "chapter": 10,
+    "outline": "(1-(x-2)^2/4)^2",
     "relation": "height-squared"
   }
 ]

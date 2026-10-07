@@ -51,7 +51,10 @@ test('undoing a focused block keeps focus in the recipe for continued editing',a
   await idle(page);
   await expect(page.getByRole('button',{name:'Empty slot 2'})).toBeFocused();
   await page.keyboard.press('Tab');
-  await expect(page.getByRole('button',{name:/Place Add one/})).toBeFocused();
+  const add=page.getByRole('button',{name:/Place Add one/});
+  await expect(add).toBeFocused();
+  await expect(add).toHaveAttribute('aria-describedby','block-tooltip');
+  await expect(page.getByRole('tooltip')).toContainText('Add one');
 });
 
 test('native dialog Escape and menu Back restore the documented openers',async({page})=>{

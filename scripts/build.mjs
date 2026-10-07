@@ -17,8 +17,8 @@ await cp(published,publicFramework,{recursive:true,filter:source=>{
 }});
 // Derive the dotted cucumber “i” from the same artwork used in the wordmark and game.
 const cucumber=await readFile(join(root,'web/public/cucumber.svg'),'utf8');
-const artwork=cucumber.replace(/^<svg[^>]*>/,'').replace(/<\/svg>\s*$/,'').trim();
-await writeFile(join(root,'web/public/favicon.svg'),`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><clipPath id="logo-tip"><rect x="0" y="9" width="64" height="55"/></clipPath></defs><circle cx="32" cy="12" r="4" fill="#2a4334"/><g transform="translate(4.8 12) scale(.85)"><g clip-path="url(#logo-tip)">${artwork}</g></g></svg>\n`);
+const artwork=cucumber.replace(/^<svg[^>]*>/,'').replace(/<\/svg>\s*$/,'').replace(/<path data-cucumber-part="stem"[^>]*\/>/,'').replace(/[ \t]+$/gm,'').trim();
+await writeFile(join(root,'web/public/favicon.svg'),`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32.86" cy="10" r="4" fill="#2a4334"/><g transform="translate(3 9) scale(.85)">${artwork}</g></svg>\n`);
 await build({configFile:join(root,'web/vite.config.ts')});
 console.log('Static bundle ready in dist/. Preview with npm run preview.');
 if(process.argv.includes('--stage')) {

@@ -1,6 +1,6 @@
 import { renderBrand } from './brand';
 
-renderBrand(document.querySelector<HTMLElement>('.brand')!,'../cucumber.svg');
+renderBrand(document.querySelector<HTMLElement>('.brand')!);
 
 const brands:Record<string,string>={
   'github.com':'github','discord.gg':'discord','twitter.com':'twitter',

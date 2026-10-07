@@ -128,6 +128,12 @@ static class ContractTests
     {
         try
         {
+            if (args.Contains("--placement-performance-only", StringComparer.Ordinal))
+            {
+                PiecewisePresentationContract();
+                Console.WriteLine($"PASS: {assertions} focused placement performance correctness assertions");
+                return 0;
+            }
             if (args.Contains("--crop-only", StringComparer.Ordinal))
             {
                 ExtendedPuzzleContract();
@@ -2479,10 +2485,12 @@ static class ContractTests
             [58] = "NF", [59] = "HF", [60] = "AHF", [61] = "FS", [62] = "FSI",
             [63] = "AHFSIQNA", [64] = "DSQHA", [65] = "AHFSINAQNA",
             [66] = "Q", [67] = "DAHFSINAQNAQ", [68] = "A", [69] = "HH",
-            [70] = "N", [71] = "AHHQNAHQ", [72] = "", [73] = "IH",
-            [74] = "NAHH", [75] = "HQNAQ", [76] = "ASAH", [77] = "HQQQNAHH"
+            [70] = "N", [71] = "AHHQNAHQ", [72] = "H", [73] = "IH",
+            [74] = "NAHH", [75] = "HQNAQ", [76] = "ASAH", [77] = "HQQQNAHH",
+            [78] = "AQNA", [79] = "AHS", [80] = "Q", [81] = "HAS",
+            [82] = "H", [83] = "Q"
         };
-        int[] relationSources = [48, 49, 66, 67, 68, 69, 70, 71, 74, 75, 77];
+        int[] relationSources = [48, 49, 66, 67, 68, 69, 70, 71, 74, 75, 77, 78, 83];
 
         foreach ((int source, string witness) in witnesses)
         {
@@ -2496,9 +2504,9 @@ static class ContractTests
                 $"extended source {source} independently authored witness solves exactly");
             True(!string.IsNullOrWhiteSpace(result["constructedLatex"]!.GetValue<string>()),
                 $"extended source {source} has a constructed equation");
-            if (source is >= 72 and <= 77)
+            if (source is >= 72 and <= 77 or 82 or 83)
             {
-                True(result["picture"]!["paths"]!.AsArray().Count > 0,
+                True(result["picture"] is JsonObject picture && picture["paths"] is JsonArray paths && paths.Count > 0,
                     $"art source {source} supplies its informational reference picture");
                 True(!result["picture"]!.AsObject().ContainsKey("hit"),
                     $"art source {source} picture does not add a sampled win condition");
@@ -2586,6 +2594,13 @@ static class ContractTests
             }
         }
 
+        Equal(false, PlayExtendedPuzzle(82, "A")["result"]!["solved"]!.GetValue<bool>(),
+            "lifting the bamboo misses its exact inclination");
+        Equal(false, PlayExtendedPuzzle(83, "H")["result"]!["solved"]!.GetValue<bool>(),
+            "halving the leaf cannot substitute for shaping the petal shoulders");
+        True(!Level(82)["state"]!.AsObject().ContainsKey("crop"),
+            "the bamboo's full authored domain needs no redundant Crop control");
+
         Equal(10, Level(67)["state"]!["goals"]!.AsArray().Count,
             "mixed finale retains all ten relation targets");
         var legacy = Level(3)["result"]!.AsObject();
@@ -2629,22 +2644,29 @@ static class ContractTests
         var initial = Level(72);
         var initialCrop = initial["result"]!["crop"]!.AsObject();
         Equal("0", initialCrop["from"]!.GetValue<string>(), "authored Crop starts at its initial left bound");
-        Equal("4", initialCrop["to"]!.GetValue<string>(), "authored Crop starts at its initial right bound");
+        Equal("2", initialCrop["to"]!.GetValue<string>(), "authored frame starts at its fixed right bound");
         Equal("0", initialCrop["required"]!["from"]!.GetValue<string>(), "authored Crop exposes required left bound");
         Equal("2", initialCrop["required"]!["to"]!.GetValue<string>(), "authored Crop exposes required right bound");
-        Equal(false, initialCrop["hit"]!.GetValue<bool>(), "initial full wave has not matched the required crop");
+        Equal(true, initialCrop["hit"]!.GetValue<bool>(), "the authored frame is already fitted");
+        Equal(false, initialCrop["editable"]!.GetValue<bool>(), "authored drawing frames are fixed");
         True(initial["result"]!["picture"]!["paths"]!.AsArray().Count > 0,
             "authored picture supplies an informational reference silhouette");
         True(!initial["result"]!["picture"]!.AsObject().ContainsKey("hit"),
             "informational picture does not impose a second success predicate");
-        Equal(false, initial["result"]!["solved"]!.GetValue<bool>(), "landmarks alone do not bypass the Crop goal");
+        Equal(false, initial["result"]!["solved"]!.GetValue<bool>(), "the water still needs its height fitted with a block");
 
-        var cropped = Act(initial["state"]!, new JsonObject
-        {
-            ["type"] = "crop", ["from"] = "0", ["to"] = "2"
-        });
-        Equal(true, cropped["result"]!["crop"]!["hit"]!.GetValue<bool>(), "exact required Crop bounds match");
-        Equal(true, cropped["result"]!["solved"]!.GetValue<bool>(), "matching exact landmarks and Crop solves");
+        Invalid(new JsonObject { ["state"] = Clone(initial["state"]!),
+            ["action"] = new JsonObject { ["type"] = "crop", ["from"] = "0", ["to"] = "4" } },
+            "authored crop edits are rejected rather than becoming puzzle busywork");
+        var oldCropOnly = Clone(initial["state"]!).AsObject();
+        oldCropOnly["inventory"] = new JsonObject(); oldCropOnly["limit"] = 0;
+        oldCropOnly["goals"] = GoalJson(legacyPictureGoals[72]);
+        oldCropOnly["crop"] = new JsonObject { ["from"] = "0", ["to"] = "4" };
+        var upgraded = Ok(new JsonObject { ["state"] = oldCropOnly, ["action"] = new JsonObject { ["type"] = "evaluate" } });
+        Equal("2", upgraded["state"]!["crop"]!["to"]!.GetValue<string>(), "legacy movable cuts upgrade to the authored frame");
+        Equal(1, upgraded["state"]!["limit"]!.GetValue<int>(), "legacy crop-only lesson upgrades its inventory");
+        var cropped = PlayExtendedPuzzle(72, "H");
+        Equal(true, cropped["result"]!["solved"]!.GetValue<bool>(), "the right block solves within the fixed frame");
         Contains(cropped["result"]!["equationLatex"]!.GetValue<string>(), @"\text{for}",
             "simplified equation uses native Provided presentation");
         Contains(cropped["result"]!["constructedLatex"]!.GetValue<string>(), @"0 \le x \le 2",
@@ -2804,8 +2826,8 @@ static class ContractTests
             "outside-Crop relation checkpoints retain their exact expected left side");
 
         var reset = Act(cropped["state"]!, new JsonObject { ["type"] = "reset" });
-        Equal("4", reset["state"]!["crop"]!["to"]!.GetValue<string>(),
-            "authored reset restores the initial Crop interval");
+        Equal("2", reset["state"]!["crop"]!["to"]!.GetValue<string>(),
+            "authored reset keeps its fixed drawing interval");
         var remixed = Act(cropped["state"]!, new JsonObject { ["type"] = "remix" });
         Equal("2", remixed["state"]!["crop"]!["to"]!.GetValue<string>(),
             "moving an authored construction to Create preserves its Crop");
@@ -2834,12 +2856,16 @@ static class ContractTests
             "shared challenge with a different valid kept interval has no authored Crop requirement");
         True(!differentCropChallenge["result"]!["crop"]!.AsObject().ContainsKey("required"),
             "shared challenge omits authored Crop target metadata");
+        differentCropChallenge = Act(differentCropChallenge["state"]!, new JsonObject
+        {
+            ["type"] = "insert", ["id"] = "water-scale", ["op"] = "H", ["index"] = 0
+        });
         Equal(true, differentCropChallenge["result"]!["solved"]!.GetValue<bool>(),
             "shared challenge solves against its exported kept-interval targets");
 
         var witnesses = new Dictionary<int, string>
         {
-            [72] = "", [73] = "IH", [74] = "NAHH", [75] = "HQNAQ", [76] = "ASAH", [77] = "HQQQNAHH"
+            [72] = "H", [73] = "IH", [74] = "NAHH", [75] = "HQNAQ", [76] = "ASAH", [77] = "HQQQNAHH"
         };
         foreach (int source in legacyPictureGoals.Keys)
         {
@@ -3075,6 +3101,16 @@ static class ContractTests
         foreach ((double x, double y) in new[] { (0.5, 0.0), (1.5, 0.0), (2.5, -1.0), (3.5, -1.0) })
             Equal(y, PointY(roundedSine["points"]!.AsArray(), x),
                 $"floor of quarter-turn sine owns exact lobe interior x={x}");
+
+        var nestedSine = ImportCreation(50, ["S", "S"])["result"]!.AsObject();
+        Equal("True,True,True,True,True",
+            string.Join(',', nestedSine["checkpoints"]!.AsArray()
+                .Select(checkpoint => checkpoint!["hit"]!.GetValue<bool>())),
+            "nested sine keeps exact quarter-turn hits at every authored checkpoint");
+        var shiftedNestedSine = ImportCreation(50, ["A", "S", "S"])["result"]!.AsObject();
+        True(shiftedNestedSine["checkpoints"]!.AsArray().All(checkpoint =>
+                !checkpoint!["hit"]!.GetValue<bool>()),
+            "shifted nested sine keeps exact quarter-turn misses at every authored checkpoint");
 
         var ceilingSine = ImportCreation(50, ["S", "C"])["result"]!.AsObject();
         foreach ((double x, double y) in new[] { (0.5, 1.0), (1.5, 1.0), (2.5, 0.0), (3.5, 0.0) })
@@ -4391,13 +4427,6 @@ static class ContractTests
         }
         if (stationOp is not null)
             True(stationPlaced, $"extended source {sourceId} witness contains fixed {stationOp} station");
-        if (sourceId is 72 or 73 or 76)
-            response = Act(response["state"]!, new JsonObject
-            {
-                ["type"] = "crop",
-                ["from"] = sourceId == 72 ? "0" : "1",
-                ["to"] = sourceId == 72 ? "2" : "3"
-            });
         return response;
     }
 

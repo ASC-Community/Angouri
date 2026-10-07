@@ -87,6 +87,13 @@ tr[data-status=miss] .equation-verdict[data-status=waiting] { color: var(--miss-
 @keyframes confirm-result { 0% { transform: scale(.65); } 65% { transform: scale(1.15); } 100% { transform: scale(1); } }
 [data-status=miss] .target-result { color: var(--miss-ink); }
 .scene[data-view=flow] { display: flex; flex: 0 1 auto; flex-direction: column; overflow: hidden; max-width: 1300px; container: flow / inline-size; }
+/* Desktop Flow scrolls along the chain. Let the document grow when its
+   controls and full-height cards need more room above the shared recipe. */
+@media(min-width:601px) and (min-height:521px) {
+  .game-shell:has(.scene[data-view=flow]) { height:auto; min-height:max(640px,100dvh); }
+  .canvas-side:has(.scene[data-view=flow]) { flex:1 0 auto; }
+  .scene[data-view=flow] { flex:0 0 auto; }
+}
 .flow-controls { flex-shrink: 0; padding: 13px 20px 7px; border-bottom: 1px solid #e1e7d7; background: #fafbf3; }
 .flow-control-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 12px; }
 .flow-control-heading label { display: flex; align-items: center; gap: 5px; white-space: nowrap; }

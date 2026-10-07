@@ -38,6 +38,10 @@ module internal Piecewise =
     }
 
     let private exactZeroEntity = MathS.FromString("0")
+    let private exactOneEntity = MathS.FromString("1")
+    let private exactNegativeOneEntity = MathS.FromString("-1")
+    let private piEntity = MathS.FromString("pi")
+    let private twoEntity = MathS.FromString("2")
 
     // Crop changes interval ownership, not the algebra inside each segment.
     // Keep the expensive exact transformations bounded and reuse them while a
@@ -48,6 +52,8 @@ module internal Piecewise =
     let private simplifiedExpressionOrder = Queue<string>()
     let private derivativeCache = Dictionary<string,Entity>()
     let private derivativeOrder = Queue<string>()
+    let private exactEqualityCache = Dictionary<string,bool>()
+    let private exactEqualityOrder = Queue<string>()
 
     let private boundedExpressionCached (cache: Dictionary<string,'value>) (order: Queue<string>) key create =
         match lock expressionCacheGate (fun () ->
@@ -132,6 +138,55 @@ module internal Piecewise =
         let remainder = value.Numerator % value.Denominator
         if remainder <> BigInteger.Zero && value.Numerator.Sign > 0 then quotient+BigInteger.One else quotient
 
+    let tryRationalEntity (value: Entity) =
+        value.InnerSimplified.ToString() |> tryParseRational
+
+    let private trySineLandmarkEquality (left: Entity) (right: Entity) =
+        let landmark value =
+            if value = exactNegativeOneEntity then Some -1
+            elif value = exactZeroEntity then Some 0
+            elif value = exactOneEntity then Some 1
+            else None
+        let quarterTurnPhase (sine: Entity.Sinf) =
+            match sine.Argument with
+            | :? Entity.Divf as division when division.Divisor = twoEntity ->
+                match division.Dividend with
+                | :? Entity.Mulf as product when product.Multiplier = piEntity -> Some product.Multiplicand
+                | :? Entity.Mulf as product when product.Multiplicand = piEntity -> Some product.Multiplier
+                | _ -> None
+            | _ -> None
+        let rec sineEqualsLandmark depth (sine: Entity.Sinf) expected =
+            if depth > 64 then None
+            else
+                // Every S block is sin(pi * input / 2). Recognizing that exact
+                // phase shape lets quarter-turn landmarks bypass a much more
+                // expensive general simplification of nested sine constants.
+                match quarterTurnPhase sine with
+                | None -> None
+                | Some phase ->
+                    match tryRationalEntity phase with
+                    | Some rational when rational.Denominator = BigInteger.One ->
+                        let remainder = rational.Numerator % BigInteger(4)
+                        let normalized = if remainder.Sign < 0 then remainder+BigInteger(4) else remainder
+                        let actual =
+                            if normalized = BigInteger.One then 1
+                            elif normalized = BigInteger(3) then -1
+                            else 0
+                        Some (actual = expected)
+                    | Some _ -> Some false
+                    | None ->
+                        match phase with
+                        | :? Entity.Sinf as inner ->
+                            // The inner sine is in [-1,1]. In that interval the
+                            // outer sine reaches -1, 0 or 1 only when its input is
+                            // the same corresponding landmark.
+                            sineEqualsLandmark (depth+1) inner expected
+                        | _ -> None
+        match left,right with
+        | (:? Entity.Sinf as sine),target -> landmark target |> Option.bind (sineEqualsLandmark 0 sine)
+        | target,(:? Entity.Sinf as sine) -> landmark target |> Option.bind (sineEqualsLandmark 0 sine)
+        | _ -> None
+
     let exactEqual (left: Entity) (right: Entity) =
         if left = right then true
         else
@@ -140,13 +195,19 @@ module internal Piecewise =
             // values cannot involve AngouriMath's approximate evaluator or numeric
             // downcasting, and structural equality above already handled a match.
             | (:? Entity.Number.Rational),(:? Entity.Number.Rational) -> false
-            // Algebraic constants need the full symbolic pass. In particular, do not
-            // use Signum().InnerSimplified here: AngouriMath may obtain its integer
-            // result by numerically evaluating and tolerance-downcasting the sign.
-            | _ -> (left-right).Simplify() = exactZeroEntity
-
-    let tryRationalEntity (value: Entity) =
-        value.InnerSimplified.ToString() |> tryParseRational
+            | _ ->
+                match trySineLandmarkEquality left right with
+                | Some equal -> equal
+                | None ->
+                    // Algebraic constants need the full symbolic pass. In particular,
+                    // do not use Signum().InnerSimplified here: AngouriMath may obtain
+                    // its integer result by numerically evaluating and tolerance-downcasting the sign.
+                    let leftText,rightText = left.ToString(),right.ToString()
+                    let key =
+                        if String.CompareOrdinal(leftText,rightText) <= 0 then leftText+"\u001f"+rightText
+                        else rightText+"\u001f"+leftText
+                    boundedExpressionCached exactEqualityCache exactEqualityOrder key (fun () ->
+                        (left-right).Simplify() = exactZeroEntity)
 
     let private containsIntegral (value: Entity) =
         value.Nodes |> Seq.exists (fun node -> node :? Entity.Integralf)
@@ -220,6 +281,26 @@ module internal Piecewise =
             let candidate = (toEntity slope * x + toEntity intercept).InnerSimplified
             if exactEqual simplified candidate then Some (slope,intercept) else None
         | _ -> None
+
+    let tryAffineRange (x: Entity.Variable) fn =
+        let endpoints =
+            fn.Segments
+            |> List.map (fun segment ->
+                tryAffine x segment.Expression
+                |> Option.map (fun (slope,intercept) ->
+                    let at point = add (multiply slope point) intercept
+                    [at segment.Start;at segment.End]))
+        if endpoints |> List.exists Option.isNone then None
+        else
+            let values = endpoints |> List.choose id |> List.collect id
+            match values with
+            | [] -> None
+            | first::rest ->
+                let low,high =
+                    rest |> List.fold (fun (low,high) value ->
+                        (if compareRational value low < 0 then value else low),
+                        (if compareRational value high > 0 then value else high)) (first,first)
+                Some (low,high)
 
     let private tryQuarterTurnSineTransform (x: Entity.Variable) (expression: Entity) =
         let simplified = expression.InnerSimplified

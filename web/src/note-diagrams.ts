@@ -9,7 +9,7 @@ export const lesson=(sourceId:number)=>{
 };
 export const move=(op:Op)=>`<span class="note-operation ${OPS[op].color}" aria-label="${OPS[op].name}">${operationTex(op)}</span>`;
 export const viewButton=(view:'function'|'flow')=>{const label=view==='function'?'Equation':'Flow';return `<button class="note-view-button" data-view="${view}" aria-label="Open ${label} view">${icon(view,16)}<span>${label}</span></button>`;};
-export const recall=(sources:number[],title:string,body:string)=>`<section class="note-recall"><h4 class="note-recall-heading"><span class="note-lesson-numbers">${sources.map(puzzleLabel).join(', ')}</span><span>${title}</span></h4>${body}</section>`;
+export const recall=(sources:number[],title:string,body:string)=>`<section class="note-recall" data-recall-sources="${sources.join(',')}"><h4 class="note-recall-heading"><span class="note-lesson-numbers">${sources.map(puzzleLabel).join(', ')}</span><span>${title}</span></h4>${body}</section>`;
 
 type NoteChoice={label:string;stage:Stage;before?:Stage};
 // KaTeX stays in HTML: WebKit can misplace its descendants in foreignObject.

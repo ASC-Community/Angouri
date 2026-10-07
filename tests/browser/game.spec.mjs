@@ -72,10 +72,13 @@ test('replayed and directly linked opening puzzles stay focused without a full-e
   await ready(page,'/#level=2&view=flight');await expect(page.locator('.game-shell')).toHaveClass(/intro/);await expect(page.locator('.game-shell')).not.toHaveClass(/landing/);
   for(const viewport of [{width:1440,height:900},{width:320,height:568},{width:844,height:390}]) {
     await page.setViewportSize(viewport);
-    const label=await page.locator('.zero-label .katex-html').boundingBox(),target=await page.locator('[data-ring="0"] .ring-outer').boundingBox();
-    expect(label.x+label.width).toBeLessThan(target.x-1);
-    const axis=await page.locator('.flight-height-axis').boundingBox(),tick=await page.locator('#axis-labels .flight-label').first().boundingBox(),targetCenter=target.x+target.width/2;
-    expect(Math.abs(axis.x+axis.width/2-targetCenter)).toBeLessThanOrEqual(1);expect(Math.abs(tick.x+tick.width/2-targetCenter)).toBeLessThanOrEqual(1);
+    await expect.poll(async()=>{
+      const label=await page.locator('.zero-label .katex-html').boundingBox(),target=await page.locator('[data-ring="0"] .ring-outer').boundingBox();
+      const axis=await page.locator('.flight-height-axis').boundingBox(),tick=await page.locator('#axis-labels .flight-label').first().boundingBox();
+      if(!label||!target||!axis||!tick)return false;
+      const targetCenter=target.x+target.width/2;
+      return label.x+label.width<target.x-1&&Math.abs(axis.x+axis.width/2-targetCenter)<=1&&Math.abs(tick.x+tick.width/2-targetCenter)<=1;
+    }).toBe(true);
   }
   expect(await page.evaluate(()=>window.angouri.view)).toBe('function');await expect(page.locator('#scene')).toHaveAttribute('data-view','flight');
   await place(page,'A');await throwIt(page);await page.locator('#launch').click();await idle(page);
@@ -129,7 +132,7 @@ test('pickup previews legal gaps and cancelling keeps the acknowledged recipe',a
 test('chapter selection groups puzzles without changing the construction until a puzzle is chosen',async({page})=>{
   await ready(page,'/#level=4&view=flight');await place(page,'H');const before=await snapshot(page);
   await menu(page,'puzzles-open');await expect(page.locator('.chapter-group:not(.extra-puzzles)')).toHaveCount(10);
-  await expect(page.locator('#level-nav .challenge-label')).toHaveCount(18);await expect(puzzleOption(page,71)).toContainText('Chapter challenge');await expect(puzzleOption(page,67)).toContainText('Final mastery');
+  await expect(page.locator('#level-nav .challenge-label')).toHaveCount(20);await expect(puzzleOption(page,71)).toContainText('Chapter challenge');await expect(puzzleOption(page,67)).toContainText('Final mastery');
   await expect(page.locator('.chapter-group[open]')).toHaveCount(1);await expect(page.locator('.chapter-group[open]>summary')).toContainText('Bowls and arches');
   const reflection=page.locator('.chapter-group').nth(1).locator('summary');await reflection.focus();await page.keyboard.press('Enter');
   await expect(page.locator('.parallel-lesson,.parallel-options,#puzzle-variations')).toHaveCount(0);
@@ -166,16 +169,16 @@ test('shape notes connect earlier lessons without changing a recipe, history, vi
   expect(await page.locator('#notes-content .note-plot').count()).toBeGreaterThan(0);
   const original=await page.locator('#notes-content').innerHTML();
   await expect(page.locator('[data-note="3"]')).toHaveCount(0);
-  await page.locator('[data-note="0"]').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
-  await page.locator('[data-note="2"]').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
+  await page.locator('[data-note-lesson="10"]').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
+  await page.locator('[data-note-lesson="4"]').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
   expect(await page.locator('#notes-content').innerHTML()).toBe(original);
-  await expect(page.locator('[data-note="2"]')).toHaveAttribute('aria-pressed','true');await expect(page.locator('.katex-error')).toHaveCount(0);
+  await expect(page.locator('[data-note-lesson="4"]')).toHaveAttribute('aria-pressed','true');await expect(page.locator('.katex-error')).toHaveCount(0);
   await page.getByRole('button',{name:'Back to puzzle',exact:true}).click();await expect(page.locator('#ideas-open')).toBeFocused();
   expect(await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history,view:window.angouri.view,scroll:document.querySelector('.flow-line').scrollTop,save:localStorage.getItem('angouri:vine:v1:progress')}))).toEqual(before);
   await page.locator('#ideas-open').click();await page.keyboard.press('Escape');await expect(page.locator('#ideas-open')).toBeFocused();
   for(const view of ['function','flow']) {
-    await page.locator('#ideas-open').click();await page.locator('[data-note="0"]').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
-    const shortcut=page.locator(`.note-view-button[data-view="${view}"]`);
+    await page.locator('#ideas-open').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
+    const shortcut=page.locator(`.note-view-button[data-view="${view}"]`).first();
     expect(await shortcut.locator('svg').innerHTML()).toBe(await page.locator(`#tab-${view} svg`).innerHTML());
     await shortcut.click();await expect(page.locator('#ideas-dialog')).not.toBeVisible();await expect(page.locator(`#tab-${view}`)).toBeFocused();await expect(page.locator('#scene')).toHaveAttribute('data-view',view);
     expect(await snapshot(page)).toEqual(before.state);expect(await page.evaluate(()=>window.angouri.history)).toEqual(before.history);
@@ -183,29 +186,16 @@ test('shape notes connect earlier lessons without changing a recipe, history, vi
   expect(await page.locator('.flow-line').evaluate(el=>el.scrollTop)).toBe(before.scroll);
 });
 
-test('the full 1.5 lesson remains in later chapters and returns on replay',async({page})=>{
+test('the full 1.5 reference survives replay and stays available in Create',async({page})=>{
   await ready(page,'/#level=25&view=function');
-  const openHeight=async()=>{
-    await page.locator('#ideas-open').click();
-    const tab=page.locator('[data-note="0"]');if(await tab.isVisible())await tab.click();
-    await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
-    await expect(page.locator('#notes-content')).toContainText(/gap|difference/i);
-    await expect(page.locator('#notes-content [data-note-target]')).toHaveCount(0);
-  };
-  const lesson=()=>page.locator('#notes-content').evaluate(el=>{const copy=el.cloneNode(true);copy.querySelector('.note-question')?.remove();return copy.innerHTML;});
-  await openHeight();const original=await lesson();await page.keyboard.press('Escape');
-  for(const level of [7,23,25]) {
-    await choosePuzzle(page,level);await openHeight();expect(await lesson()).toBe(original);
-    await expect(page.locator('.note-view-button[data-view="function"]')).toBeVisible();
-    await expect(page.locator('.note-view-button[data-view="flow"]')).toBeVisible();
-    await page.keyboard.press('Escape');
-  }
-  await page.reload();await page.waitForFunction(()=>window.angouri?.state?.sourceId===25);
-  await openHeight();expect(await lesson()).toBe(original);await page.keyboard.press('Escape');
-  await choosePuzzle(page,24);await page.locator('#ideas-open').click();
-  await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
-  await expect(page.locator('#notes-content [data-reference-lesson="25"]')).toHaveCount(0);
-  await expect(page.locator('#notes-content')).not.toContainText('Plan the gap first');
+  const openCurrent=async()=>{await page.locator('#ideas-open').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');};
+  await openCurrent();await expect(page.locator('#notes-content')).toContainText('difference');
+  const original=await page.locator('#notes-content').innerHTML();await page.keyboard.press('Escape');
+  await choosePuzzle(page,24);await openCurrent();await expect(page.locator('#notes-content [data-reference-lesson="25"]')).toHaveCount(0);await page.keyboard.press('Escape');
+  await choosePuzzle(page,25);await openCurrent();expect(await page.locator('#notes-content').innerHTML()).toBe(original);await page.keyboard.press('Escape');
+  await menu(page,'nav-create');await idle(page);await openCurrent();await page.locator('[data-note="0"]').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
+  await expect(page.locator('#notes-content [data-reference-lesson="25"]')).toHaveCount(1);
+  await expect(page.locator('#notes-content')).toContainText('difference');
 });
 
 test('Hints gently invite help after distinct stalled rearrangements, never while building or throwing',async({page})=>{
@@ -260,16 +250,17 @@ test('minimal openings hide notes, while later puzzles scope them and Create sho
   const openNotes=async()=>{await page.locator('#ideas-open').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');};
   const closeNotes=()=>page.getByRole('button',{name:'Back to puzzle',exact:true}).click();
   await expect(page.locator('#ideas-open')).toBeHidden();await choosePuzzle(page,2);await expect(page.locator('#ideas-open')).toBeHidden();
-  const chapters=[[1,2,3,24,25],[6,8,9,26],[7,10,4,27,28],[12,13,29,30,31,11],[32,33,34,35,36],[37,38,39,40,41,42],[43,44,48,68,69,70,66,49,71],[50,51,52,53,54,55],[56,57,58,59,60,61,62,63],[72,73,74,75,76,77,64,65,67]];
+  const chapters=[[1,2,3,24,25],[6,8,9,26],[7,10,4,27,28],[12,13,29,30,31,11],[32,33,34,35,36],[37,38,39,40,41,42],[43,44,48,78,68,69,70,66,49,71],[50,51,52,79,81,53,54,80,55],[56,57,58,59,60,61,62,63],[82,72,73,74,75,83,76,77,64,65,67]];
   const route=chapters.flat();
   for(const level of route.slice(2)) {
     await choosePuzzle(page,level);const before=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history,save:localStorage.getItem('angouri:vine:v1:progress')}));
     await openNotes();const allowed=route.slice(0,route.indexOf(level)+1),chapter=chapters.findIndex(ids=>ids.includes(level));
-    await expect(page.locator('[data-note]')).toHaveCount(chapter+1);
+    await expect(page.locator('[data-note]')).toHaveCount(0);
+    expect(await page.locator('[data-note-lesson]').count()).toBeGreaterThan(0);
     if(level===3||level===24)await expect(page.locator('#notes-content [data-view="function"]')).toBeVisible();
     if(level===24)await expect(page.locator('#notes-content [data-view="flow"]')).toBeVisible();
     if(level===3)await expect(page.locator('#notes-content [data-view="flow"]')).toHaveCount(0);
-    for(const tab of chapter?await page.locator('[data-note]').all():[null]) {
+    for(const tab of await page.locator('[data-note-lesson]').all()) {
       if(tab)await tab.click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
       await expect(page.locator('[data-retry-notes]')).toHaveCount(0);
       const references=await page.locator('#notes-content [data-reference-lesson]').evaluateAll(nodes=>nodes.map(el=>Number(el.dataset.referenceLesson)));
@@ -336,36 +327,53 @@ test('throw reveals targets in sequence, lands once, and only then awards comple
 
 test('the loaded pose and release follow the initial tangent without a rotation jump',async({page})=>{
   await page.emulateMedia({reducedMotion:'no-preference'});await ready(page);
-  for(const [level,ops,slope] of [[1,'H',2],[16,'',0],[17,'',-1]]) {
+  const canonical=await page.evaluate(async()=>{
+    const source=await (await fetch('./cucumber.svg')).text(),host=document.createElement('div');
+    host.style.cssText='position:fixed;visibility:hidden';host.innerHTML=source;document.body.append(host);
+    const svg=host.querySelector('svg'),body=svg.querySelector('[data-body-frame]'),frame=body.dataset.bodyFrame.split(' ').map(Number),bend=Number(body.dataset.bodyBend);
+    const matrix=body.parentElement.transform.baseVal.consolidate().matrix,top=new DOMPoint(frame[0]+frame[2]/2,frame[1]).matrixTransform(matrix),bottom=new DOMPoint(frame[0]+frame[2]/2+bend,frame[1]+frame[3]).matrixTransform(matrix);
+    const viewBox=svg.getAttribute('viewBox').split(' ').map(Number);host.remove();return {top,bottom,viewBox};
+  });
+  for(const [level,ops,slope] of [[1,'H',2],[16,'H',0],[17,'',-1]]) {
     await choosePuzzle(page,level);for(const op of ops)await place(page,op);
     await page.waitForTimeout(350);
-    const loaded=await page.evaluate(()=>{
+    const loaded=await page.evaluate(canonical=>{
       const launcher=document.querySelector('#launcher').transform.baseVal.consolidate().matrix;
-      const body=document.querySelector('#flight-spin').transform.baseVal.consolidate().matrix;
+      const spin=document.querySelector('#flight-spin'),image=spin.querySelector('image'),matrix=spin.getCTM(),scale=Number(image.getAttribute('width'))/canonical.viewBox[2];
+      const point=p=>new DOMPoint(Number(image.getAttribute('x'))+(p.x-canonical.viewBox[0])*scale,Number(image.getAttribute('y'))+(p.y-canonical.viewBox[1])*scale).matrixTransform(matrix);
+      const top=point(canonical.top),bottom=point(canonical.bottom),forward=[top.x-bottom.x,top.y-bottom.y],magnitude=Math.hypot(...forward),aimMagnitude=Math.hypot(launcher.a,launcher.b);
       const cucumber=document.querySelector('#cucumber').transform.baseVal.consolidate().matrix;
+      const pouch=document.querySelector('#slingshot-pouch'),seat=new DOMPoint(0,0).matrixTransform(pouch.getCTM());
       const start=new DOMPoint(40,-12).matrixTransform(launcher);
       const delta=[cucumber.e-start.x,cucumber.f-start.y];
-      return {slope:window.angouri.result.startSlope,forward:[body.b,-body.a],aim:[launcher.a,launcher.b],delta};
-    });
+      return {slope:window.angouri.result.startSlope,forward:forward.map(v=>v/magnitude),aim:[launcher.a/aimMagnitude,launcher.b/aimMagnitude],delta,seatGap:Math.hypot(bottom.x-seat.x,bottom.y-seat.y)};
+    },canonical);
     expect(loaded.slope).toBe(slope);
     expect(loaded.forward[0]).toBeCloseTo(loaded.aim[0],5);expect(loaded.forward[1]).toBeCloseTo(loaded.aim[1],5);
+    expect(loaded.seatGap).toBeLessThan(.05);
     expect(loaded.delta[0]*loaded.aim[1]-loaded.delta[1]*loaded.aim[0]).toBeCloseTo(0,1);
     expect(loaded.delta[0]*loaded.aim[0]+loaded.delta[1]*loaded.aim[1]).toBeLessThan(-60);
-    await page.evaluate(()=>{
+    await page.evaluate(canonical=>{
       window.launchFrames=[];
       const sample=()=>{
-        const matrix=document.querySelector('#flight-spin').transform.baseVal.consolidate().matrix;
+        const spin=document.querySelector('#flight-spin'),image=spin.querySelector('image'),matrix=spin.getCTM(),scale=Number(image.getAttribute('width'))/canonical.viewBox[2];
+        const point=p=>new DOMPoint(Number(image.getAttribute('x'))+(p.x-canonical.viewBox[0])*scale,Number(image.getAttribute('y'))+(p.y-canonical.viewBox[1])*scale).matrixTransform(matrix);
+        const top=point(canonical.top),bottom=point(canonical.bottom),pouch=document.querySelector('#slingshot-pouch');
+        const pathPoint=(selector,end)=>{const path=document.querySelector(selector),point=path.getPointAtLength(end?path.getTotalLength():0);return point.matrixTransform(path.getCTM());};
+        const pouchPoint=end=>{const point=pouch.getPointAtLength(end?pouch.getTotalLength():0);return point.matrixTransform(pouch.getCTM());};
+        const gap=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
         const c=document.querySelector('#cucumber').transform.baseVal.consolidate().matrix;
-        window.launchFrames.push({phase:window.angouri.flight.phase,p:window.angouri.flight.position,angle:Math.atan2(matrix.b,matrix.a),x:c.e,y:c.f});
+        window.launchFrames.push({phase:window.angouri.flight.phase,p:window.angouri.flight.position,angle:Math.atan2(top.y-bottom.y,top.x-bottom.x),x:c.e,y:c.f,backGap:gap(pathPoint('#band-back',true),pouchPoint(false)),frontGap:gap(pathPoint('#band-front',true),pouchPoint(true))});
         if(window.angouri.flight.position<.07)requestAnimationFrame(sample);
       };requestAnimationFrame(sample);
-    });
+    },canonical);
     await page.locator('#launch').click();await page.waitForFunction(()=>window.angouri.flight.position>.08);
-    const frames=await page.evaluate(()=>window.launchFrames),release=frames.filter(f=>f.phase==='releasing');expect(release.length).toBeGreaterThan(1);
+    const frames=await page.evaluate(()=>window.launchFrames),release=frames.filter(f=>f.phase==='releasing'),flying=frames.filter(f=>f.phase==='flying');expect(release.length).toBeGreaterThan(1);expect(flying.length).toBeGreaterThan(1);
     expect(Math.max(...release.map(f=>f.angle))-Math.min(...release.map(f=>f.angle))).toBeLessThan(.001);
     const a=release[0],b=release.at(-1),dx=b.x-a.x,dy=b.y-a.y;
     expect(dx*loaded.aim[1]-dy*loaded.aim[0]).toBeCloseTo(0,1);expect(dx*loaded.aim[0]+dy*loaded.aim[1]).toBeGreaterThan(0);
     for(let i=1;i<frames.length;i++)expect(Math.abs(frames[i].angle-frames[i-1].angle)).toBeLessThan(.08);
+    expect(Math.max(...frames.map(f=>f.backGap),...frames.map(f=>f.frontGap))).toBeLessThan(.05);
   }
 });
 
@@ -431,7 +439,8 @@ test('fullscreen keeps three views visible and occasional tasks in the visual me
       await choosePuzzle(page,level);
       const minimumHeight=viewport.width>600&&viewport.height<=520?370:640;
       await expect.poll(()=>page.evaluate(()=>({width:document.documentElement.scrollWidth,height:document.documentElement.scrollHeight}))).toEqual({...viewport,height:Math.max(minimumHeight,viewport.height)});
-      await page.locator('#launch').scrollIntoViewIfNeeded();await expect(page.locator('#launch')).toBeInViewport();await expect(page.locator('#palette')).toBeInViewport();
+      const launch=page.locator('#launch');if(await launch.isVisible()){await launch.scrollIntoViewIfNeeded();await expect(launch).toBeInViewport();}
+      await page.locator('#palette').scrollIntoViewIfNeeded();await expect(page.locator('#palette')).toBeInViewport();
       expect(await page.locator('#axis-labels .flight-label').evaluateAll(labels=>labels.every(el=>{const r=el.getBoundingClientRect(),s=document.querySelector('#scene').getBoundingClientRect();return r.bottom<=s.bottom+.5&&r.top>=s.top-.5;}))).toBe(true);
       const collisions=await page.locator('.target-label .katex-html').evaluateAll(labels=>{
         const rings=[...document.querySelectorAll('.ring-outer')],ticks=[...document.querySelectorAll('#axis-labels .katex-html')];
@@ -505,23 +514,21 @@ test('all mathematical notation is KaTeX, and all three views reflect the same t
   await expect(page.locator('#scene [data-part],#scene button')).toHaveCount(0);await expect(page.locator('.katex-error')).toHaveCount(0);
 });
 
-test('ten chapters cover 63 puzzles, then end with a chapter record and AngouriMath credit',async({page})=>{
+test('ten chapters cover 69 puzzles, then end with a chapter record and AngouriMath credit',async({page})=>{
   test.setTimeout(300000);
   await ready(page);
-  const chapters=[[[1,'H'],[2,'A'],[3,'AH'],[24,'AHAH'],[25,'AHHAHA']],[[6,'N'],[8,'NA'],[9,'NHA'],[26,'NAHAHAH']],[[7,'Q'],[10,'HQ'],[4,'HQNA'],[27,'AQ'],[28,'AHQNAH']],[[12,'Q'],[13,'QNA'],[29,'Q'],[30,'QNA'],[31,'HHQQNA'],[11,'QHQNAA']],[[32,'DA'],[33,'QD'],[34,'AQD'],[35,'QD'],[36,'HHNAQDA']],[[37,'AI'],[38,'AI'],[39,'NAI'],[40,'HIA'],[41,'DI'],[42,'HHNAINA']],[[43,{x:'2',y:'0',radius:'1'}],[44,{x:'3/2',y:'1/2',radius:'1'}],[48,'QNA'],[68,'A'],[69,'HH'],[70,'N'],[66,'Q'],[49,'HAQNAAAA'],[71,'AHHQNAHQ']]];
-  chapters.push([[50,'S'],[51,'AS'],[52,'HS'],[53,'SQ'],[54,'SQHA'],[55,'ASHQA']],[[56,'F'],[57,'C'],[58,'NF'],[59,'HF'],[60,'AHF'],[61,'FS'],[62,'FSI'],[63,'AHFSIQNA']],[[72,''],[73,'IH'],[74,'NAHH'],[75,'HQNAQ'],[76,'ASAH'],[77,'HQQQNAHH'],[64,'DSQHA'],[65,'AHFSINAQNA'],[67,'DAHFSINAQNAQ']]);
+  const chapters=[[[1,'H'],[2,'A'],[3,'AH'],[24,'AHAH'],[25,'AHHAHA']],[[6,'N'],[8,'NA'],[9,'NHA'],[26,'NAHAHAH']],[[7,'Q'],[10,'HQ'],[4,'HQNA'],[27,'AQ'],[28,'AHQNAH']],[[12,'Q'],[13,'QNA'],[29,'Q'],[30,'QNA'],[31,'HHQQNA'],[11,'QHQNAA']],[[32,'DA'],[33,'QD'],[34,'AQD'],[35,'QD'],[36,'HHNAQDA']],[[37,'AI'],[38,'AI'],[39,'NAI'],[40,'HIA'],[41,'DI'],[42,'HHNAINA']],[[43,{x:'2',y:'0',radius:'1'}],[44,{x:'3/2',y:'1/2',radius:'1'}],[48,'QNA'],[78,'AQNA'],[68,'A'],[69,'HH'],[70,'N'],[66,'Q'],[49,'HAQNAAAA'],[71,'AHHQNAHQ']]];
+  chapters.push([[50,'S'],[51,'AS'],[52,'HS'],[79,'AHS'],[81,'HAS'],[53,'SQ'],[54,'SQHA'],[80,'Q'],[55,'ASHQA']],[[56,'F'],[57,'C'],[58,'NF'],[59,'HF'],[60,'AHF'],[61,'FS'],[62,'FSI'],[63,'AHFSIQNA']],[[82,'H'],[72,'H'],[73,'IH'],[74,'NAHH'],[75,'HQNAQ'],[83,'Q'],[76,'ASAH'],[77,'HQQQNAHH'],[64,'DSQHA'],[65,'AHFSINAQNA'],[67,'DAHFSINAQNAQ']]);
   const lessons=chapters.flatMap((levels,chapter)=>levels.map(([level,recipe],step)=>({level,recipe,chapter:chapter+1,step:step+1,total:levels.length})));
-  expect(lessons).toHaveLength(63);
+  expect(lessons).toHaveLength(69);
   for(const [index,{level,recipe,chapter,step,total}] of lessons.entries()) {
     if(index){await page.locator('#launch').click();await idle(page);}
     expect((await snapshot(page)).sourceId).toBe(level);
     await expect(page.locator('#level-category')).toContainText(`CHAPTER ${chapter}`);
     await expect(page.locator(chapter===10?'#chapter-step':'#level-category')).toContainText(`${step} OF ${total}`);
     if(typeof recipe==='string')await placeRecipe(page,recipe);else await setCircle(page,recipe);
-    const crop={72:['0','2'],73:['1','3'],76:['1','3']}[level];
-    if(crop)for(const [key,value] of [['from',crop[0]],['to',crop[1]]]){const field=page.locator(`[data-crop-exact="${key}"]`);await field.fill(value);await field.press('Enter');await idle(page);}
     expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(true);await throwIt(page);
-    if(level===77){await expect(page.locator('#garden-dialog')).toBeVisible();await page.keyboard.press('Escape');}
+    if([82,72,73,74,75,83,76,77].includes(level)){await expect(page.locator('#garden-dialog')).toBeVisible();await page.keyboard.press('Escape');}
     if([1,2].includes(level)) {await expect(page.locator('#success')).toBeHidden();await expect(page.locator('.view-tabs')).toBeHidden();}
     else {const choice=(await snapshot(page)).limit===1;await expect(page.locator('#success')).toBeVisible({visible:!choice});for(const view of ['function','flow','flight']){await changeView(page,view);await expect(page.locator('#success')).toBeVisible({visible:!choice});}}
     if(step===total&&chapter<10)await expect(page.locator('#launch')).toHaveText('Next chapter');
@@ -531,7 +538,7 @@ test('ten chapters cover 63 puzzles, then end with a chapter record and AngouriM
   await expect(page.locator('#launch')).toHaveText('Finish');await expect(page.locator('#chapter-step')).toContainText('FINAL MASTERY');
   const finalRecipe=await snapshot(page),history=await page.evaluate(()=>window.angouri.history);
   await page.locator('#launch').click();await expect(page.locator('#ending-dialog')).toBeVisible();await expect(page.locator('#ending-title')).toHaveText('A whole garden of ideas.');
-  await expect(page.locator('.ending-chapter.complete')).toHaveCount(10);await expect(page.locator('#ending-progress')).toHaveText('63 of 63 puzzles complete');
+  await expect(page.locator('.ending-chapter.complete')).toHaveCount(10);await expect(page.locator('#ending-progress')).toHaveText('69 of 69 puzzles complete');
   const credit=page.locator('.ending-credit a');await expect(credit).toContainText('AngouriMath');await expect(credit).toHaveAttribute('href','https://github.com/asc-community/AngouriMath');expect(await credit.locator('img').evaluate(img=>img.complete&&img.naturalWidth>0)).toBe(true);
   expect(await snapshot(page)).toEqual(finalRecipe);expect(await page.evaluate(()=>window.angouri.history)).toEqual(history);
   await page.locator('#ending-create').click();await expect(page.locator('#leave-dialog')).toBeVisible();await discardNavigation(page);await idle(page);expect((await snapshot(page)).mode).toBe('remix');expect((await snapshot(page)).circle).toEqual(finalRecipe.circle);
@@ -542,14 +549,14 @@ test('ten chapters cover 63 puzzles, then end with a chapter record and AngouriM
 test('finishing after jumping ahead celebrates that flight without claiming unfinished chapters',async({page})=>{
   await ready(page,'/#level=67&view=flight');await placeRecipe(page,'DAHFSINAQNAQ');await throwIt(page);
   await expect(page.locator('#launch')).toHaveText('Finish');await page.locator('#launch').click();await expect(page.locator('#ending-title')).toHaveText('Your garden, shaped.');
-  await expect(page.locator('#ending-progress')).toHaveText('1 of 63 puzzles complete');await expect(page.locator('.ending-chapter.complete')).toHaveCount(0);
+  await expect(page.locator('#ending-progress')).toHaveText('1 of 69 puzzles complete');await expect(page.locator('.ending-chapter.complete')).toHaveCount(0);
   const finalRecipe=await snapshot(page);await page.locator('#ending-create').click();await expect(page.locator('#leave-dialog')).toBeVisible();
   await page.locator('#leave-cancel').click();expect(await snapshot(page)).toEqual(finalRecipe);await page.locator('#launch').click();
   for(const viewport of [{width:1440,height:900},{width:390,height:844},{width:320,height:568},{width:844,height:390}]) {
     await page.setViewportSize(viewport);expect(await page.locator('#ending-dialog').evaluate(el=>el.scrollWidth-el.clientWidth)).toBeLessThanOrEqual(1);
     await page.locator('#ending-dialog').evaluate(el=>el.scrollTop=el.scrollHeight);await expect(page.getByRole('button',{name:'Back to final puzzle',exact:true})).toBeInViewport();
   }
-  await page.locator('#ending-revisit').click();await expect(page.locator('#puzzles-dialog')).toBeVisible();await expect(page.locator('.chapter-group[open]>summary')).toContainText('The shape garden');
+  await page.locator('#ending-revisit').click();await expect(page.locator('#puzzles-dialog')).toBeVisible();await expect(page.locator('.chapter-group[open]>summary')).toContainText('The moonlit garden');
   await page.keyboard.press('Escape');await expect(page.locator('#launch')).toHaveText('Finish');await page.reload();await page.waitForFunction(()=>window.angouri?.state);
   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([67]);
 });
@@ -643,16 +650,39 @@ test('creation changes its source under Start and preserves the recipe through U
   await menu(page,'nav-create');await idle(page);for(const op of ['A','A','Q','Q','Q'])await place(page,op);
   const supported=await snapshot(page);await place(page,'Q');expect(await snapshot(page)).toEqual(supported);await expect(page.locator('#feedback')).toContainText('preview');
   await menu(page,'share-open');await page.locator('#share-kind').selectOption('challenge');await idle(page);
-  await expect(page.locator('#share-message')).toHaveText("This construction's checkpoint values exceed the supported challenge target range.");await expect(page.locator('#copy-link')).toBeDisabled();await expect(page.locator('#share-link')).toHaveValue('');expect(await snapshot(page)).toEqual(supported);
+  await expect(page.locator('#share-message')).toHaveText(/checkpoint height is outside the supported challenge range/i);await expect(page.locator('#copy-link')).toBeDisabled();await expect(page.locator('#share-link')).toHaveValue('');expect(await snapshot(page)).toEqual(supported);
 });
 
 test('the italic wordmark and dotted favicon share the thrown cucumber artwork',async({page})=>{
   await ready(page);
-  const paths=await page.evaluate(()=>[document.querySelector('link[rel="icon"]').getAttribute('href'),document.querySelector('.brand img').getAttribute('src'),document.querySelector('#cucumber image').getAttribute('href')]);
-  expect(paths).toEqual(['./favicon.svg','./cucumber.svg','./cucumber.svg']);
+  const paths=await page.evaluate(()=>[document.querySelector('link[rel="icon"]').getAttribute('href'),document.querySelector('#cucumber image').getAttribute('href')]);
+  expect(paths).toEqual(['./favicon.svg','./cucumber.svg']);
   await expect(page.locator('#brand-math annotation')).toHaveText('\\mathit{angour}');await expect(page.locator('.brand-dot')).toBeVisible();
   const [mascot,favicon]=await Promise.all([page.request.get('/cucumber.svg'),page.request.get('/favicon.svg')]);
-  const artwork=(await mascot.text()).replace(/^<svg[^>]*>/,'').replace(/<\/svg>\s*$/,'').trim();expect(await favicon.text()).toContain(artwork);
+  const artwork=await mascot.text(),icon=await favicon.text();
+  const body=await page.evaluate(source=>new DOMParser().parseFromString(source,'image/svg+xml').querySelector('[data-body-frame]').getAttribute('d'),artwork);
+  await expect(page.locator('.brand-cucumber [data-body-frame]')).toHaveAttribute('d',body);
+  await expect(page.locator('.brand-cucumber [data-cucumber-part="stem"]')).toHaveCount(0);
+  await expect(page.locator('.brand-cucumber')).toHaveCSS('clip-path','none');
+  expect(icon).toContain(body);expect(icon).not.toContain('clipPath');expect(icon).not.toContain('data-cucumber-part="stem"');
+  for(const width of [1440,390]) {
+    await page.setViewportSize({width,height:900});await page.evaluate(()=>document.fonts.ready);
+    const alignment=await page.evaluate(()=>{
+    const math=document.querySelector('.brand .mathit'),style=getComputedStyle(math),probe=document.createElement('span');
+    probe.style.cssText='display:inline-block;width:1px;height:0';math.append(probe);
+    const baseline=probe.getBoundingClientRect();probe.remove();
+    const context=document.createElement('canvas').getContext('2d');
+    context.font=`${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    const letter=context.measureText('n'),scale=baseline.width;
+    const body=document.querySelector('.brand-cucumber [data-body-frame]'),matrix=body.getScreenCTM();
+    const top=new DOMPoint(11.5,5).matrixTransform(matrix),bottom=new DOMPoint(3.5,62).matrixTransform(matrix);
+    const dot=document.querySelector('.brand-dot').getBoundingClientRect(),dx=top.x-bottom.x,dy=top.y-bottom.y;
+    return {angle:Math.atan2(dx,-dy)*180/Math.PI,dotGap:Math.abs((dot.x+dot.width/2-top.x)*dy-(dot.y+dot.height/2-top.y)*dx)/Math.hypot(dx,dy),
+      crownGap:(top.y-baseline.top)/scale+letter.actualBoundingBoxAscent,tailGap:(bottom.y-baseline.top)/scale-letter.actualBoundingBoxDescent};
+    });
+    expect(alignment.angle).toBeCloseTo(17,1);expect(alignment.dotGap).toBeLessThan(.1);
+    expect(Math.abs(alignment.crownGap)).toBeLessThan(.5);expect(Math.abs(alignment.tailGap)).toBeLessThan(.5);
+  }
   await expect(page.locator('#vine-path')).toHaveCount(0);await expect(page.locator('#launcher')).toBeVisible();
 });
 
@@ -793,8 +823,11 @@ test('mobile reduced motion and unavailable storage remain playable',async({page
 test('About preserves the original projects and contributors and returns to the game',async({page})=>{
   await page.goto('/about/');for(const name of ['AngouriMath','MxEngine','GenericTensor','MonoBind','DotnetBenchmarks','WhiteBlackGoose','MomoDeve','Happypig375','TheSeems'])await expect(page.locator('main')).toContainText(name);
   await expect(page.locator('#brand-math annotation')).toHaveText('\\mathit{angour}');await expect(page.locator('.brand-dot')).toBeVisible();
-  await expect(page.locator('.brand img')).toHaveAttribute('src','../cucumber.svg');
-  await expect(page.locator('.brand img')).toHaveCSS('width','24px');
+  const mascot=await page.request.get('/cucumber.svg'),artwork=await mascot.text();
+  const body=await page.evaluate(source=>new DOMParser().parseFromString(source,'image/svg+xml').querySelector('[data-body-frame]').getAttribute('d'),artwork);
+  await expect(page.locator('.brand-cucumber [data-body-frame]')).toHaveAttribute('d',body);
+  await expect(page.locator('.brand-cucumber [data-cucumber-part="stem"]')).toHaveCount(0);
+  await expect(page.locator('.brand-cucumber')).toBeVisible();
   await expect(page.locator('.archive-note')).toHaveCount(0);await expect(page.locator('main')).not.toContainText('preserved from the original');
   await expect(page.locator('.name-origin')).toContainText('cucumber');await expect(page.locator('.name-origin [lang="el"]')).toHaveText('αγγούρι');
   for(const brand of ['github','discord','twitter','reddit','telegram','habr'])expect(await page.locator(`.social-icon use[href="../social.svg#${brand}"]`).count()).toBeGreaterThan(0);
@@ -897,7 +930,9 @@ test('Reflection carries signed gap tracking from its introduction to the raised
   expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(false);
   await page.locator('#reset').click();await idle(page);for(const op of 'AHHHNA')await place(page,op);
   expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(true);expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([]);
-  await page.locator('#ideas-open').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');await expect(page.locator('#notes-content')).toContainText(/gap|difference/i);
+  await page.locator('#ideas-open').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
+  expect(await page.locator('[data-note-lesson]').evaluateAll((items)=>items.map((item)=>item.getAttribute('data-note-lesson')))).toEqual(['26','9','24']);
+  await expect(page.locator('#notes-content')).toContainText(/existing offset|negated/i);
   await page.locator('.note-view-button[data-view="function"]').first().click();await expect(page.locator('.gap-comparison')).toHaveAttribute('data-gap-match','true');
 });
 
@@ -959,7 +994,8 @@ test('throwing in Equation confirms the preview marks in sequence or immediately
   await expect(page.locator('.equation-verdict[data-status="hit"]')).toHaveCount(3);await expect(page.locator('#launch')).toHaveText('Next puzzle');
   await expect(page.locator('.equation-verdict').first()).toHaveCSS('background-color','rgb(93, 128, 70)');
   await menu(page,'settings-open');await page.getByRole('checkbox',{name:/Skip animation/}).check();await page.keyboard.press('Escape');
-  await page.locator('#undo').click();await idle(page);await expect(page.locator('.equation-verdict[data-status="waiting"] svg')).toHaveCount(3);
+  await page.keyboard.press('Control+z');await idle(page);await expect(page.locator('.equation-verdict[data-status="waiting"] svg')).toHaveCount(3);
+  await place(page,'H'); // A wrong choice keeps the zeros and makes Throw available.
   await expect(page.locator('tr[data-status="miss"] .equation-verdict path')).toHaveCSS('stroke','rgb(166, 80, 75)');
   await page.locator('#launch').click();expect(await page.evaluate(()=>window.angouri.flight.phase)).toBe('landed');
   await expect(page.locator('.equation-verdict[data-status="hit"]')).toHaveCount(2);await expect(page.locator('.equation-verdict[data-status="miss"]')).toHaveCount(1);await expect(page.locator('#success')).toBeHidden();
@@ -1009,7 +1045,10 @@ test('Flow confirmation never introduces transient overflow or resizes its panel
   await page.emulateMedia({reducedMotion:'no-preference'});await ready(page,'/#level=4&view=flow');for(const op of ['H','Q','N','A'])await place(page,op);
   for(const viewport of [{width:1440,height:900},{width:1280,height:720},{width:390,height:844}]) {
     await page.setViewportSize(viewport);await page.evaluate(()=>document.fonts.ready);
-    if(viewport.width>600)expect(await page.locator('.flow-line').evaluate(el=>el.scrollHeight-el.clientHeight)).toBeLessThanOrEqual(1);
+    if(viewport.width>600)expect(await page.locator('.flow-line').evaluate(el=>{
+      const style=getComputedStyle(el),scrollbar=el.offsetHeight-el.clientHeight-parseFloat(style.borderTopWidth)-parseFloat(style.borderBottomWidth);
+      return el.scrollHeight-el.clientHeight-Math.max(0,scrollbar);
+    })).toBeLessThanOrEqual(1);
     await page.evaluate(()=>{
       const read=()=>['.flow-goals','.flow-line','#scene','.play-dock'].map(selector=>{
         const el=document.querySelector(selector);return {selector,width:el.clientWidth,height:el.clientHeight,contentWidth:el.scrollWidth,contentHeight:el.scrollHeight};
@@ -1098,15 +1137,20 @@ test('return slots sit above all remaining stock without moving the existing pil
   await expect(top).toHaveClass(/return-target/);await expect(lower).toHaveCount(1);expect(await lower.boundingBox()).toEqual(single);
   await page.keyboard.press('Escape');await page.mouse.up();await expect(lower).toHaveCount(0);expect(await snapshot(page)).toEqual(before);
   await menu(page,'nav-create');await idle(page);await page.setViewportSize({width:320,height:568});await page.mouse.move(0,0);
-  const reusable=await top.boundingBox(),creationLayout=await page.locator('#palette').boundingBox();
+  const documentBox=locator=>locator.evaluate(element=>{const rect=element.getBoundingClientRect();return {x:rect.x+scrollX,y:rect.y+scrollY,width:rect.width,height:rect.height};});
+  const reusable=await documentBox(top),creationLayout=await page.locator('#palette').evaluate(element=>({width:element.clientWidth,height:element.clientHeight}));
   await page.locator('.part-body').click();await expect(top).toHaveAttribute('data-stock','reusable');await expect(lower).toHaveCount(3);
-  expect(await lower.first().boundingBox()).toEqual(reusable);expect(await page.locator('#palette').boundingBox()).toEqual(creationLayout);
+  expect(await documentBox(lower.first())).toEqual(reusable);expect(await page.locator('#palette').evaluate(element=>({width:element.clientWidth,height:element.clientHeight}))).toEqual(creationLayout);
   await top.click();await idle(page);await expect(lower).toHaveCount(2);await expect(top).toHaveAttribute('data-stock','reusable');
-  await choosePuzzle(page,25);await place(page,'A');await page.locator('.part-body').click();
+  await choosePuzzle(page,25);await expect(page.locator('.ingredient-stack:has([data-op="A"]) .stock-total')).toHaveText('6');await place(page,'A');await page.locator('.part-body').click();
   const condensed=page.locator('.ingredient-stack:has([data-op="A"])');
-  await expect(condensed.locator('.stock-deck i')).toHaveCount(5);await expect(condensed.locator('.ingredient')).toHaveAttribute('data-stock','5');
-  await condensed.locator('[data-return]').click();await idle(page);await expect(condensed.locator('.stock-deck i')).toHaveCount(4);
-  await expect(condensed.locator('.stock-total annotation')).toHaveText('6');
+  await expect(condensed.locator('.stock-deck i')).toHaveCount(3);await expect(condensed.locator('.ingredient')).toHaveAttribute('data-stock','5');await expect(condensed.locator('.stock-total')).toHaveText('5');
+  await condensed.locator('[data-return]').click();await idle(page);await expect(condensed.locator('.stock-deck i')).toHaveCount(2);
+  await expect(condensed.locator('.stock-total')).toHaveText('6');
+  const condensedLayout=await page.locator('#palette').evaluate(element=>({width:element.clientWidth,height:element.clientHeight}));
+  for(const remaining of [5,4,3,2,1,0]){await place(page,'A');await expect(condensed.locator('.stock-total')).toHaveText(String(remaining));}
+  await expect(condensed.locator('.ingredient')).toBeDisabled();await expect(condensed.locator('.stock-deck i')).toHaveCount(0);
+  expect(await page.locator('#palette').evaluate(element=>({width:element.clientWidth,height:element.clientHeight}))).toEqual(condensedLayout);
 });
 
 test('a stack consists of whole blocks and pickup only lifts the top copy',async({page})=>{
@@ -1123,12 +1167,12 @@ test('a stack consists of whole blocks and pickup only lifts the top copy',async
 test('emulated touch can drag, immediately throw, then return by tapping its stack',async({browser,browserName})=>{
   test.skip(browserName!=='chromium','This check uses Chromium touch-event injection.');
   const context=await browser.newContext({viewport:{width:390,height:844},hasTouch:true,isMobile:true,reducedMotion:'reduce'});
-  const page=await context.newPage();await ready(page,'http://127.0.0.1:4174/#level=6&view=flight');
-  const source=await page.locator('[data-op="N"]').boundingBox(),target=await page.locator('[data-insert="0"]').boundingBox();
+  const page=await context.newPage();await ready(page,'http://127.0.0.1:4174/#level=4&view=flight');
+  const source=await page.locator('[data-op="H"]').boundingBox(),target=await page.locator('[data-insert="0"]').boundingBox();
   const from={x:source.x+source.width/2,y:source.y+source.height/2},to={x:target.x+target.width/2,y:target.y+target.height/2};
   const session=await context.newCDPSession(page);await session.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[from]});
   for(let i=1;i<=5;i++)await session.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:from.x+(to.x-from.x)*i/5,y:from.y+(to.y-from.y)*i/5}]});
-  await session.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await idle(page);expect((await snapshot(page)).nodes.map(n=>n.op)).toEqual(['N']);
-  await page.locator('#launch').tap();await expect(page.locator('#success')).toBeVisible();await page.locator('.part-body').tap();await page.locator('[data-return]').tap();await idle(page);
+  await session.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await idle(page);expect((await snapshot(page)).nodes.map(n=>n.op)).toEqual(['H']);
+  await page.locator('#launch').tap();await page.waitForFunction(()=>window.angouri.flight.phase==='landed');await page.locator('.part-body').tap();await page.locator('[data-return]').tap();await idle(page);
   expect((await snapshot(page)).nodes).toHaveLength(0);await context.close();
 });

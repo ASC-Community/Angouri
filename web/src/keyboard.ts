@@ -1,4 +1,5 @@
 const DATA_KEYS = ['op','insert','stage','circleValue','circleHandle','circleTarget','cropRange','cropExact','cropAdd','cropClear'] as const;
+const NATIVE_TAB_STOPS = 'button:not([tabindex]), a[href]:not([tabindex]), summary:not([tabindex])';
 
 type DataKey = typeof DATA_KEYS[number];
 
@@ -16,6 +17,23 @@ function enabled(element: HTMLElement | null): element is HTMLElement {
     && !(element instanceof HTMLInputElement && element.disabled)
     && !element.hidden
     && !element.closest('[hidden]');
+}
+
+/**
+ * Safari can omit buttons and links from Tab navigation when its page-tab
+ * preference is off. Explicit zero indices keep the app's native DOM order,
+ * while leaving roving tablists and deliberately removed controls alone.
+ */
+export function installTabStops(documentRoot: Document = document) {
+  const add=(root: ParentNode)=>root.querySelectorAll<HTMLElement>(NATIVE_TAB_STOPS).forEach(element=>element.tabIndex=0);
+  add(documentRoot);
+  const observer=new MutationObserver(records=>records.forEach(record=>record.addedNodes.forEach(node=>{
+    if(!(node instanceof Element))return;
+    if(node.matches(NATIVE_TAB_STOPS))(node as HTMLElement).tabIndex=0;
+    add(node);
+  })));
+  observer.observe(documentRoot.documentElement,{childList:true,subtree:true});
+  return ()=>observer.disconnect();
 }
 
 /** Remember focus before render code replaces the palette or recipe markup. */

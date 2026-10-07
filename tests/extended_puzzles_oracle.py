@@ -110,6 +110,9 @@ def source_expr(text: str) -> Expr:
     if text == "4-(x-2)^2":
         centered = add(X, const(-2))
         return add(const(4), scale(q(-1), mul(centered, centered)))
+    if text == "1-(x-2)^2/4":
+        centered = add(X, const(-2))
+        return add(const(1), scale(q("-1/4"), mul(centered, centered)))
     if text == "(x-2)^2-1":
         centered = add(X, const(-2))
         return add(mul(centered, centered), const(-1))

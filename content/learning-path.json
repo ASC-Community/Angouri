@@ -1,0 +1,754 @@
+{
+  "chapters": [
+    [
+      1,
+      2,
+      3,
+      24,
+      25
+    ],
+    [
+      6,
+      8,
+      9,
+      26
+    ],
+    [
+      7,
+      10,
+      4,
+      27,
+      28
+    ],
+    [
+      12,
+      13,
+      29,
+      30,
+      31,
+      11
+    ],
+    [
+      32,
+      33,
+      34,
+      35,
+      36
+    ],
+    [
+      37,
+      38,
+      39,
+      40,
+      41,
+      42
+    ],
+    [
+      43,
+      44,
+      48,
+      78,
+      68,
+      69,
+      70,
+      66,
+      49,
+      71
+    ],
+    [
+      50,
+      51,
+      52,
+      79,
+      81,
+      53,
+      54,
+      80,
+      55
+    ],
+    [
+      56,
+      57,
+      58,
+      59,
+      60,
+      61,
+      62,
+      63
+    ],
+    [
+      82,
+      72,
+      73,
+      74,
+      75,
+      83,
+      76,
+      77,
+      64,
+      65,
+      67
+    ]
+  ],
+  "lessons": [
+    {
+      "id": 1,
+      "prerequisites": [],
+      "idea": "Scale preserves zeros"
+    },
+    {
+      "id": 2,
+      "prerequisites": [
+        1
+      ],
+      "idea": "A lift preserves height differences"
+    },
+    {
+      "id": 3,
+      "prerequisites": [
+        1,
+        2
+      ],
+      "idea": "A later scale changes an earlier lift"
+    },
+    {
+      "id": 24,
+      "prerequisites": [
+        3
+      ],
+      "idea": "Interleave lifts and scales for fractional baselines"
+    },
+    {
+      "id": 25,
+      "prerequisites": [
+        24
+      ],
+      "idea": "Separate height gap from baseline"
+    },
+    {
+      "id": 6,
+      "prerequisites": [
+        1
+      ],
+      "idea": "Reflection reverses signed height"
+    },
+    {
+      "id": 8,
+      "prerequisites": [
+        6,
+        2
+      ],
+      "idea": "Place a reflected bowl"
+    },
+    {
+      "id": 9,
+      "prerequisites": [
+        8,
+        1
+      ],
+      "idea": "Scale a bowl before placing its roof"
+    },
+    {
+      "id": 26,
+      "prerequisites": [
+        9,
+        24
+      ],
+      "idea": "Account for an existing offset"
+    },
+    {
+      "id": 7,
+      "prerequisites": [
+        6
+      ],
+      "idea": "Squaring folds signed heights together"
+    },
+    {
+      "id": 10,
+      "prerequisites": [
+        7,
+        1
+      ],
+      "idea": "Scaling before a square changes its result twice"
+    },
+    {
+      "id": 4,
+      "prerequisites": [
+        10,
+        8
+      ],
+      "idea": "Build a roof from a line"
+    },
+    {
+      "id": 27,
+      "prerequisites": [
+        7,
+        3
+      ],
+      "idea": "The zero before squaring sets the fold position"
+    },
+    {
+      "id": 28,
+      "prerequisites": [
+        27,
+        9,
+        24
+      ],
+      "idea": "Fit an off-centre arch"
+    },
+    {
+      "id": 12,
+      "prerequisites": [
+        7,
+        1
+      ],
+      "idea": "Squaring fixes zero and one but lowers heights between them"
+    },
+    {
+      "id": 13,
+      "prerequisites": [
+        12,
+        8
+      ],
+      "idea": "Turn a flattened bowl into a roof"
+    },
+    {
+      "id": 29,
+      "prerequisites": [
+        12
+      ],
+      "idea": "Squaring a cubic produces a sixth power"
+    },
+    {
+      "id": 30,
+      "prerequisites": [
+        29,
+        13
+      ],
+      "idea": "Transfer the roof finish to a sixth power"
+    },
+    {
+      "id": 31,
+      "prerequisites": [
+        12,
+        10,
+        24
+      ],
+      "idea": "Normalize a bowl before repeated flattening"
+    },
+    {
+      "id": 11,
+      "prerequisites": [
+        31,
+        4
+      ],
+      "idea": "Construct and flatten the bowl"
+    },
+    {
+      "id": 32,
+      "prerequisites": [
+        3,
+        8
+      ],
+      "idea": "Input height and output slope are different quantities"
+    },
+    {
+      "id": 33,
+      "prerequisites": [
+        32,
+        7
+      ],
+      "idea": "A fold creates a changing slope"
+    },
+    {
+      "id": 34,
+      "prerequisites": [
+        33,
+        27
+      ],
+      "idea": "Moving an input turning point moves its zero slope"
+    },
+    {
+      "id": 35,
+      "prerequisites": [
+        33,
+        12
+      ],
+      "idea": "Several flat places become several slope zeros"
+    },
+    {
+      "id": 36,
+      "prerequisites": [
+        34,
+        35,
+        25
+      ],
+      "idea": "Shape the input and fit the slope output"
+    },
+    {
+      "id": 37,
+      "prerequisites": [
+        2
+      ],
+      "idea": "Input height controls growth of anchored area"
+    },
+    {
+      "id": 38,
+      "prerequisites": [
+        37,
+        27
+      ],
+      "idea": "Signed area cancels across a shifted zero"
+    },
+    {
+      "id": 39,
+      "prerequisites": [
+        38,
+        4
+      ],
+      "idea": "Several sign regions alternate growth and loss"
+    },
+    {
+      "id": 40,
+      "prerequisites": [
+        37,
+        3
+      ],
+      "idea": "Scale accumulated change separately from its starting height"
+    },
+    {
+      "id": 41,
+      "prerequisites": [
+        32,
+        40
+      ],
+      "idea": "Accumulation recovers change but not the lost constant"
+    },
+    {
+      "id": 42,
+      "prerequisites": [
+        39,
+        40,
+        28
+      ],
+      "idea": "Place input signs and then fit accumulated output"
+    },
+    {
+      "id": 43,
+      "prerequisites": [
+        9
+      ],
+      "idea": "A circle keeps a fixed distance from its centre"
+    },
+    {
+      "id": 44,
+      "prerequisites": [
+        43
+      ],
+      "idea": "Translate the centre without changing the radius"
+    },
+    {
+      "id": 48,
+      "prerequisites": [
+        43,
+        4
+      ],
+      "idea": "A roof can define both signs of height"
+    },
+    {
+      "id": 78,
+      "prerequisites": [
+        48,
+        44,
+        27
+      ],
+      "idea": "An input shift before Square moves the loop centre"
+    },
+    {
+      "id": 68,
+      "prerequisites": [
+        48,
+        2
+      ],
+      "idea": "Adding squared height separates the branches"
+    },
+    {
+      "id": 69,
+      "prerequisites": [
+        68,
+        10
+      ],
+      "idea": "Two squared-height halves halve visible height"
+    },
+    {
+      "id": 70,
+      "prerequisites": [
+        48,
+        6
+      ],
+      "idea": "Real branches exist only where the right side is nonnegative"
+    },
+    {
+      "id": 66,
+      "prerequisites": [
+        48,
+        12
+      ],
+      "idea": "A roof and its square have different cap shapes"
+    },
+    {
+      "id": 49,
+      "prerequisites": [
+        78,
+        69,
+        43
+      ],
+      "idea": "Translate geometric centre and radius into a block-built roof"
+    },
+    {
+      "id": 71,
+      "prerequisites": [
+        49,
+        70,
+        66,
+        24
+      ],
+      "idea": "A signed roof and magnitude operation create several visible pieces"
+    },
+    {
+      "id": 50,
+      "prerequisites": [
+        43
+      ],
+      "idea": "Sine projects quarter-turn input onto height"
+    },
+    {
+      "id": 51,
+      "prerequisites": [
+        50,
+        3
+      ],
+      "idea": "Input shift moves phase; output lift moves baseline"
+    },
+    {
+      "id": 52,
+      "prerequisites": [
+        50,
+        1
+      ],
+      "idea": "Input scale changes period; output scale changes amplitude"
+    },
+    {
+      "id": 79,
+      "prerequisites": [
+        51,
+        52,
+        3
+      ],
+      "idea": "An input scale also scales an earlier phase shift"
+    },
+    {
+      "id": 81,
+      "prerequisites": [
+        79
+      ],
+      "idea": "Rebuild input scaling when the sine block is movable"
+    },
+    {
+      "id": 53,
+      "prerequisites": [
+        50,
+        7
+      ],
+      "idea": "Squaring folds signed wave lobes and keeps their zeros"
+    },
+    {
+      "id": 54,
+      "prerequisites": [
+        53,
+        25
+      ],
+      "idea": "Fit a folded wave amplitude and baseline"
+    },
+    {
+      "id": 80,
+      "prerequisites": [
+        53,
+        12
+      ],
+      "idea": "Shared peaks do not determine the heights between them"
+    },
+    {
+      "id": 55,
+      "prerequisites": [
+        81,
+        54,
+        80
+      ],
+      "idea": "Locate wave landmarks before fitting its vertical range"
+    },
+    {
+      "id": 56,
+      "prerequisites": [
+        1
+      ],
+      "idea": "Floor holds the integer below an input"
+    },
+    {
+      "id": 57,
+      "prerequisites": [
+        56
+      ],
+      "idea": "Ceiling differs between integer thresholds"
+    },
+    {
+      "id": 58,
+      "prerequisites": [
+        57,
+        6
+      ],
+      "idea": "Negation before rounding changes threshold ownership"
+    },
+    {
+      "id": 59,
+      "prerequisites": [
+        56,
+        52
+      ],
+      "idea": "Input scale changes step width; output scale changes step height"
+    },
+    {
+      "id": 60,
+      "prerequisites": [
+        59,
+        79
+      ],
+      "idea": "A scaled input lift shifts thresholds"
+    },
+    {
+      "id": 61,
+      "prerequisites": [
+        56,
+        50
+      ],
+      "idea": "Integer phases project through the sine cycle"
+    },
+    {
+      "id": 62,
+      "prerequisites": [
+        61,
+        38
+      ],
+      "idea": "Signed constant steps accumulate into straight pieces"
+    },
+    {
+      "id": 63,
+      "prerequisites": [
+        62,
+        60,
+        25
+      ],
+      "idea": "Shape a continuous result from discontinuous input"
+    },
+    {
+      "id": 82,
+      "prerequisites": [
+        1
+      ],
+      "idea": "Scale a straight line into a bamboo support"
+    },
+    {
+      "id": 72,
+      "prerequisites": [
+        52,
+        1
+      ],
+      "idea": "Scale a planted bank inside its fixed frame"
+    },
+    {
+      "id": 73,
+      "prerequisites": [
+        42,
+        40
+      ],
+      "idea": "A cropped drawing still accumulates from zero"
+    },
+    {
+      "id": 74,
+      "prerequisites": [
+        49,
+        69
+      ],
+      "idea": "Fit circular width and squared-height thickness"
+    },
+    {
+      "id": 75,
+      "prerequisites": [
+        66,
+        28
+      ],
+      "idea": "A squared roof gives a pointed leaf"
+    },
+    {
+      "id": 83,
+      "prerequisites": [
+        75,
+        66
+      ],
+      "idea": "A pointed leaf can become one repeated flower petal"
+    },
+    {
+      "id": 76,
+      "prerequisites": [
+        81,
+        79,
+        54,
+        80
+      ],
+      "idea": "Distinguish phase and period from amplitude and baseline at extra landmarks"
+    },
+    {
+      "id": 77,
+      "prerequisites": [
+        31,
+        66,
+        69
+      ],
+      "idea": "Combine a broad roof with rounded caps and fitted thickness"
+    },
+    {
+      "id": 64,
+      "prerequisites": [
+        36,
+        55
+      ],
+      "idea": "A nonlinear input winds sine at unequal horizontal intervals"
+    },
+    {
+      "id": 65,
+      "prerequisites": [
+        63,
+        60,
+        66
+      ],
+      "idea": "Build a finite step window before shaping its accumulated ramp"
+    },
+    {
+      "id": 67,
+      "prerequisites": [
+        65,
+        64,
+        71,
+        77
+      ],
+      "idea": "Connect slope, thresholds, projection, area and paired heights"
+    },
+    {
+      "id": 14,
+      "prerequisites": [
+        32
+      ],
+      "idea": "Read the slope of a bowl"
+    },
+    {
+      "id": 5,
+      "prerequisites": [
+        14,
+        9
+      ],
+      "idea": "Fit the slope of a cubic"
+    },
+    {
+      "id": 15,
+      "prerequisites": [
+        5,
+        4
+      ],
+      "idea": "Find and fit the roof hidden in a derivative"
+    },
+    {
+      "id": 22,
+      "prerequisites": [
+        15,
+        31
+      ],
+      "idea": "Repeatedly flatten a derivative"
+    },
+    {
+      "id": 16,
+      "prerequisites": [
+        37
+      ],
+      "idea": "Read positive accumulated area"
+    },
+    {
+      "id": 19,
+      "prerequisites": [
+        16,
+        38
+      ],
+      "idea": "Cancel signed accumulated area"
+    },
+    {
+      "id": 17,
+      "prerequisites": [
+        19,
+        40
+      ],
+      "idea": "Fit the accumulated range"
+    },
+    {
+      "id": 20,
+      "prerequisites": [
+        17,
+        2
+      ],
+      "idea": "Choose a new starting amount"
+    },
+    {
+      "id": 21,
+      "prerequisites": [
+        20,
+        41
+      ],
+      "idea": "Recover a curve from its slope"
+    },
+    {
+      "id": 18,
+      "prerequisites": [
+        21,
+        28
+      ],
+      "idea": "Turn an accumulated shape into a roof"
+    },
+    {
+      "id": 23,
+      "prerequisites": [
+        18,
+        42
+      ],
+      "idea": "Centre and fold an accumulated S curve"
+    },
+    {
+      "id": 45,
+      "prerequisites": [
+        44
+      ],
+      "idea": "Opposite diameter endpoints determine centre and radius"
+    },
+    {
+      "id": 46,
+      "prerequisites": [
+        45
+      ],
+      "idea": "Two perpendicular bisectors locate a centre"
+    },
+    {
+      "id": 47,
+      "prerequisites": [
+        46
+      ],
+      "idea": "Transfer equal-distance geometry to a new constellation"
+    }
+  ]
+}

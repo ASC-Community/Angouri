@@ -9,10 +9,6 @@ export function isDiscovery(state:State) {
 }
 export function discoveryObservation(state:State,result:Result,selected?:string) {
   if(!isDiscovery(state))return '';
-  if(state.sourceId===72) {
-    if(!result.crop)return '';
-    return `<span class="discovery-operation teal" aria-hidden="true">${icon('crop',16)}</span><span>Move the cuts to keep part of the curve. Heights inside stay the same.</span>`;
-  }
   if(state.circle)return circleEdited(state,result)?`${icon(state.sourceId===43?'resize':'move',16)}<span>${state.sourceId===43?'A larger radius reaches farther in every direction.':'Moving the centre moves the whole loop.'}</span>`:'';
   const edits=state.nodes.filter(node=>node.id!==state.station?.id);
   if(!edits.length)return '';
@@ -31,7 +27,9 @@ export function discoveryObservation(state:State,result:Result,selected?:string)
       N:'The sign changes. Real heights appear where the right side is nonnegative.',
       Q:'Squaring restores both signs of the incoming magnitude, including outside the old loop.'
     };
-    finding=state.sourceId===66&&op==='Q'
+    finding=state.sourceId===83&&op==='Q'
+      ?'Squaring keeps the petal tips at zero and one while drawing its shoulders inward. The two height branches form one pointed petal.'
+      :state.sourceId===66&&op==='Q'
       ?'The solved heights change from square roots of the roof to positive and negative copies of it. The rounded ends become pointed.'
       :state.sourceId===69&&edits.every(node=>node.op==='H')&&edits.length===2?`Two halves of ${tex('h^2')} make one half of ${tex('|h|')}.`:effects[op]??'';
   } else {
@@ -42,7 +40,9 @@ export function discoveryObservation(state:State,result:Result,selected?:string)
       S:`One input unit is a quarter-turn: ${tex('0,1,0,-1,0')}.`,
       F:'Down to the whole step. Whole numbers stay put.',C:'Up to the whole step. Whole numbers stay put.'
     };
-    finding=effects[op];
+    finding=state.sourceId===82
+      ?op==='H'?'The straight line stays planted at zero while its rise and inclination are halved.':'The straight line rises without changing its inclination, so it no longer starts at zero.'
+      :state.sourceId===80&&op==='Q'?'Zero and one stay fixed. Squaring lowers the heights between them, so matching peaks alone does not determine a curve.':effects[op];
   }
   return finding?`<span class="discovery-operation ${OPS[op].color}" aria-hidden="true">${operationTex(op)}</span><span>${finding}</span>`:'';
 }

@@ -1,5 +1,6 @@
 export type View = 'flight' | 'function' | 'flow';
 import extensions from '../../content/extended-puzzles.json';
+import learningPath from '../../content/learning-path.json';
 export type Op = 'H' | 'A' | 'N' | 'Q' | 'D' | 'I' | 'S' | 'F' | 'C';
 export interface Part { id: string; op: Op }
 export interface Station { id: string; op: Op; before: number; after: number }
@@ -88,16 +89,16 @@ export const LEVELS = [
 ];
 // Stable source ids keep creations and links independent of the teaching order.
 export const CHAPTERS = [
-  { name:'Height', idea:'Lift and scale', color:'sage', zero:29, before:'M3 29Q18-13 33 29', after:'M3 29Q18 9 33 29', levels:[1,2,3,24,25] },
-  { name:'Reflection', idea:'Turn, then place', color:'blue', zero:18, before:'M3 18Q18 46 33 18', after:'M3 18Q18-10 33 18', levels:[6,8,9,26] },
-  { name:'Bowls and arches', idea:'Build in parts', color:'lilac', zero:23, before:'M3 33L33 13', after:'M3 3Q18 43 33 3', levels:[7,10,4,27,28] },
-  { name:'Flat tops', idea:'Familiar moves, new silhouettes', color:'peach', zero:30, before:'M3 4Q18 56 33 4', after:'M3 4C7 29 11 30 18 30C25 30 29 29 33 4', levels:[12,13,29,30,31,11] },
-  { name:'Slopes', idea:'Shape what changes', color:'sea', zero:23, before:'M3 3Q18 43 33 3', after:'M3 32L33 14', levels:[32,33,34,35,36] },
-  { name:'Accumulation', idea:'Shape what builds up', color:'teal', zero:29, before:'M3 18H33', after:'M3 29L33 7', levels:[37,38,39,40,41,42] },
-  { name:'Loops', idea:'One equation. Both sides.', color:'lilac', zero:18, before:'M4 18Q18-10 32 18', after:'M32 18A14 14 0 1 1 4 18A14 14 0 1 1 32 18', levels:[43,44,48,68,69,70,66,49,71] },
-  { name:'Waves', idea:'A circle unfolds', color:'rose', zero:18, before:'M3 32L33 4', after:'M3 18C8-1 13-1 18 18S28 37 33 18', levels:[50,51,52,53,54,55] },
-  { name:'Steps', idea:'Shape the jumps and what builds up', color:'slate', zero:30, before:'M3 30L33 3', after:'M3 30H13M13 20H23M23 10H33', levels:[56,57,58,59,60,61,62,63] },
-  { name:'The shape garden', idea:'Make a picture. Master the connections.', color:'teal', zero:18, before:'M3 18H10V4H26V18H33', after:'M3 18H8Q18-8 28 18Q18 44 8 18M28 18H33', levels:[72,73,74,75,76,77,64,65,67] }
+  { name:'Height', idea:'Lift and scale', color:'sage', zero:29, before:'M3 29Q18-13 33 29', after:'M3 29Q18 9 33 29', levels:learningPath.chapters[0] },
+  { name:'Reflection', idea:'Turn, then place', color:'blue', zero:18, before:'M3 18Q18 46 33 18', after:'M3 18Q18-10 33 18', levels:learningPath.chapters[1] },
+  { name:'Bowls and arches', idea:'Build in parts', color:'lilac', zero:23, before:'M3 33L33 13', after:'M3 3Q18 43 33 3', levels:learningPath.chapters[2] },
+  { name:'Flat tops', idea:'Familiar moves, new silhouettes', color:'peach', zero:30, before:'M3 4Q18 56 33 4', after:'M3 4C7 29 11 30 18 30C25 30 29 29 33 4', levels:learningPath.chapters[3] },
+  { name:'Slopes', idea:'Shape what changes', color:'sea', zero:23, before:'M3 3Q18 43 33 3', after:'M3 32L33 14', levels:learningPath.chapters[4] },
+  { name:'Accumulation', idea:'Shape what builds up', color:'teal', zero:29, before:'M3 18H33', after:'M3 29L33 7', levels:learningPath.chapters[5] },
+  { name:'Loops', idea:'One equation. Both sides.', color:'lilac', zero:18, before:'M4 18Q18-10 32 18', after:'M32 18A14 14 0 1 1 4 18A14 14 0 1 1 32 18', levels:learningPath.chapters[6] },
+  { name:'Waves', idea:'A circle unfolds', color:'rose', zero:18, before:'M3 32L33 4', after:'M3 18C8-1 13-1 18 18S28 37 33 18', levels:learningPath.chapters[7] },
+  { name:'Steps', idea:'Shape the jumps and what builds up', color:'slate', zero:30, before:'M3 30L33 3', after:'M3 30H13M13 20H23M23 10H33', levels:learningPath.chapters[8] },
+  { name:'The moonlit garden', idea:'Make a picture. Master the connections.', color:'teal', zero:18, before:'M3 18H10V4H26V18H33', after:'M3 18H8Q18-8 28 18Q18 44 8 18M28 18H33', levels:learningPath.chapters[9] }
 ];
 export const PUZZLE_ORDER = CHAPTERS.flatMap(chapter=>chapter.levels);
 // Earlier authored puzzles retain their IDs and rules in a small optional collection.
@@ -107,7 +108,7 @@ export const OPTIONAL_PUZZLES = [...EXTRA_PUZZLES,...GEOMETRY_PUZZLES];
 export const chapterIndex=(sourceId:number)=>CHAPTERS.findIndex(chapter=>chapter.levels.includes(sourceId));
 export const isCapstone=(sourceId:number)=>CHAPTERS.some(chapter=>chapter.levels.at(-1)===sourceId);
 export const isMastery=(sourceId:number)=>[64,65,67].includes(sourceId);
-export const isPicture=(sourceId:number)=>sourceId>=72&&sourceId<=77;
+export const isPicture=(sourceId:number)=>sourceId>=72&&sourceId<=77||sourceId===82||sourceId===83;
 export const puzzleLabel=(sourceId:number)=>{const chapter=chapterIndex(sourceId);return chapter<0?'Bonus':`${chapter+1}.${CHAPTERS[chapter].levels.indexOf(sourceId)+1}`;};
 export const CURVES = [
   { id:1, name:'Arch', latex:'x(4-x)', path:'M3 29Q18-16 33 29' },

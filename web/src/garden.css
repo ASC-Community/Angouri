@@ -9,38 +9,59 @@
 .garden-heading h2 { margin:0 0 4px; font:32px/1.05 Georgia,serif; letter-spacing:-.6px; }
 .garden-heading>p:last-child { margin:0; color:#70805f; font-size:12px; }
 .garden-workspace { width:min(960px,100%); max-width:100%; min-width:0; min-height:0; margin:auto; padding:0 24px 10px; display:grid; place-items:center; }
-.garden-board { position:relative; width:min(900px,100%,calc((100dvh - 200px)*1.79245)); aspect-ratio:760/424; overflow:hidden; border:1px solid #d8d5b8; border-radius:24px; background:linear-gradient(#fffcefdd,#f3f0d9dd),repeating-linear-gradient(8deg,transparent 0 16px,#86976308 17px 18px); box-shadow:0 15px 45px #42513618,inset 0 0 60px #b9c79a16; }
+.garden-board { position:relative; width:min(900px,100%,calc((100dvh - 200px)*1.38686)); aspect-ratio:760/548; overflow:hidden; border:1px solid #385d51; border-radius:24px; background:#224b49; box-shadow:0 15px 45px #25473430; }
 .garden-paper { display:block; width:100%; height:100%; }
 .garden-water-wash { fill:url(#garden-water); opacity:.52; }
-.garden-speckles { fill:var(--garden-gold); opacity:.35; }
+.garden-speckles { fill:#ffebad; opacity:.55; pointer-events:none; }
+.garden-landscape { pointer-events:none; }
+.garden-label-bands { fill:#122f39; pointer-events:none; }
 .garden-piece { cursor:pointer; outline:none; }
 .garden-area-hit { fill:transparent; stroke:none; pointer-events:fill; }
 .garden-piece-hit,.garden-focus-path { fill:none; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke; }
 .garden-piece-hit { stroke:transparent; stroke-width:24; pointer-events:stroke; }
-.garden-focus-path { stroke:#fff0ae; stroke-width:12; opacity:0; pointer-events:none; }
-.garden-piece:hover .garden-focus-path { opacity:.46; }
-.garden-piece:focus-visible .garden-focus-path { opacity:.95; }
+.garden-piece-cucumber .garden-piece-hit { pointer-events:none; }
+.garden-focus-path { stroke:#fff0ae; stroke-width:4; opacity:0; pointer-events:none; }
+.garden-piece:hover .garden-focus-path { opacity:.28; }
+.garden-piece:focus-visible .garden-focus-path { opacity:.65; }
 .garden-art-path { fill:none; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke; }
-.garden-piece.is-missing .garden-art-path { stroke:#b79550; stroke-width:2; stroke-dasharray:5 8; opacity:.3; }
-.garden-piece.is-earned .garden-art-path { stroke-width:4; stroke-dasharray:none; stroke-dashoffset:0; filter:drop-shadow(0 1px 0 #fff8d9); }
-.garden-piece-water-lobe .garden-art-path,.garden-piece-ripple .garden-art-path { stroke:#58898c; }
-.garden-piece-stem .garden-art-path { stroke:#5d7d52; }
-.garden-piece-moon .garden-art-path { stroke:#c09646; }
-.garden-piece-leaf .garden-art-path { stroke:#6c8f58; }
+.garden-piece.is-missing .garden-art-path { stroke:#a4bbb1; stroke-width:1; stroke-dasharray:3 7; opacity:.28; }
+.garden-piece.is-missing:is(:hover,:focus-visible) .garden-art-path { opacity:.75; }
+.garden-piece.is-earned .garden-art-path { stroke-width:2.25; vector-effect:none; stroke-dasharray:none; stroke-dashoffset:0; }
+.garden-piece-bank.is-earned .garden-art-path { stroke:#849576; stroke-width:1; opacity:.25; }
+.garden-piece-ripple.is-earned .garden-art-path { stroke:#9db7af; stroke-width:1.15; stroke-dasharray:.36 .08 .37 .19; }
+.garden-piece-stem.is-earned .garden-art-path { stroke:#91a66c; stroke-width:4.5; }
+.garden-piece-support.is-earned .garden-art-path { stroke:url(#garden-bamboo); stroke-width:8; }
+.garden-piece-flower.is-earned .garden-art-path { stroke:#d0af58; stroke-width:.65; }
+.garden-piece-flower.is-earned .garden-piece-fill { fill:url(#garden-flower); }
+.garden-piece-moon.is-earned .garden-art-path { stroke:#e7ce99; stroke-width:1.25; }
+.garden-piece-leaf .garden-art-path { stroke:#91ac75; }
 .garden-piece-cucumber .garden-art-path { stroke:#315f42; }
+.garden-piece-fill { pointer-events:none; fill:#a4bbb1; opacity:.035; }
+.garden-piece.is-earned .garden-piece-fill { opacity:1; }
+.garden-piece-moon.is-earned .garden-piece-fill { fill:url(#garden-moon); }
+.garden-piece-leaf.is-earned .garden-piece-fill { fill:url(#garden-leaf); }
+.garden-piece-bank.is-earned .garden-piece-fill { fill:url(#garden-bank); }
+.garden-piece-cucumber.is-earned .garden-piece-fill { fill:#6d9144; }
+.garden-leaf-vein { fill:none; stroke:#bec999; stroke-width:1.3; opacity:.65; pointer-events:none; }
+.garden-moon-texture { fill:#c5ac77; opacity:.17; pointer-events:none; }
+.is-missing .garden-leaf-vein,.is-missing .garden-moon-texture { opacity:0; }
 .garden-piece-label { cursor:pointer; pointer-events:all; }
-.garden-piece-label rect { fill:#fffbed; fill-opacity:.88; stroke:transparent; stroke-width:2; vector-effect:non-scaling-stroke; }
-.garden-piece-label text { fill:#536749; font-size:var(--garden-label-size,11px); font-weight:700; dominant-baseline:middle; text-anchor:middle; pointer-events:none; }
-.garden-piece.is-missing .garden-piece-label text { fill:#89734f; }
-.garden-piece-check { fill:#3d7047; font-size:.82em; }
-.garden-piece:focus-visible .garden-piece-label rect { stroke:#426940; fill:#fffef2; fill-opacity:1; }
-.garden-shell.is-reveal-ready:not(.trace-complete) .garden-piece.is-earned .garden-art-path { stroke-dasharray:1; stroke-dashoffset:1; vector-effect:none; }
-.garden-shell.is-reveal-ready.is-revealing:not(.trace-complete) .garden-piece.is-earned .garden-art-path { stroke-dashoffset:0; transition:stroke-dashoffset .56s ease var(--garden-path-delay); }
+.garden-piece-label rect { fill:#213d40; fill-opacity:.75; stroke:#6c8980; stroke-opacity:.4; stroke-width:1; vector-effect:non-scaling-stroke; }
+.garden-piece-label text { fill:#e0e4c6; font-size:var(--garden-label-size,11px); font-weight:700; dominant-baseline:middle; text-anchor:middle; pointer-events:none; }
+.garden-piece.is-missing .garden-piece-label text { fill:#c3cebd; }
+.garden-piece-check { fill:#bad49e; font-size:.82em; }
+.garden-paper.compact-labels .garden-piece-check { display:none; }
+.garden-piece:is(:hover,:focus-visible) .garden-piece-label rect { stroke:#fff0be; stroke-width:2; stroke-opacity:1; fill:#345651; fill-opacity:1; }
+.garden-shell.is-reveal-ready .is-new-piece .garden-piece-art { transform-box:fill-box; transform-origin:center; transform:translateY(-44px) scale(1.15); opacity:0; }
+.garden-shell.is-reveal-ready.is-revealing .is-new-piece .garden-piece-art { transform:none; opacity:1; transition:transform .7s cubic-bezier(.2,.8,.3,1),opacity .35s ease; }
+.garden-shell.is-reveal-ready:not(.trace-complete) .is-new-piece .garden-art-path { stroke-dasharray:1; stroke-dashoffset:1; vector-effect:none; }
+.garden-shell.is-reveal-ready.is-revealing:not(.trace-complete) .is-new-piece .garden-art-path { stroke-dashoffset:0; transition:stroke-dashoffset .56s ease var(--garden-path-delay); }
 .garden-cucumber-morph { fill:none; stroke:#315f42; stroke-width:4; stroke-linecap:round; stroke-linejoin:round; opacity:0; pointer-events:none; vector-effect:non-scaling-stroke; }
 .garden-shell.is-morphing .garden-piece-cucumber .garden-art-path { opacity:0; }
 .garden-shell.is-morphing .garden-cucumber-morph { opacity:1; }
 .garden-canonical { opacity:0; filter:blur(5px); pointer-events:none; transition:opacity .7s ease,filter .7s ease; }
 .garden-shell.show-canonical .garden-canonical { opacity:1; filter:none; }
+.garden-shell.show-canonical .garden-piece-cucumber .garden-piece-fill { opacity:0; }
 .garden-shell.show-canonical .garden-cucumber-morph { opacity:0; transition:opacity .35s ease; }
 .garden-footer { min-width:0; min-height:66px; padding:9px max(24px,calc((100% - 1072px)/2)); display:flex; align-items:center; justify-content:space-between; gap:18px; border-top:1px solid #d9dfc9; background:#fbfaed; }
 .garden-status { min-width:0; margin:0; color:#647457; font-size:12px; }
@@ -78,6 +99,56 @@
 }
 
 @media(prefers-reduced-motion:reduce) {
-  .garden-art-path,.garden-canonical,.garden-cucumber-morph { transition:none!important; }
+  .garden-art-path,.garden-piece-art,.garden-canonical,.garden-cucumber-morph { transition:none!important; }
 }
-body.reduced-motion .garden-art-path,body.reduced-motion .garden-canonical,body.reduced-motion .garden-cucumber-morph { transition:none!important; }
+body.reduced-motion .garden-art-path,body.reduced-motion .garden-piece-art,body.reduced-motion .garden-canonical,body.reduced-motion .garden-cucumber-morph { transition:none!important; }
+
+.garden-stem-details,.garden-reed-details,.garden-bank-details,.garden-moonlight,.garden-ripple-echo,.garden-bamboo-nodes,.garden-flower-details { pointer-events:none; }
+.is-missing .garden-bamboo-nodes,.is-missing .garden-flower-details { opacity:0; }
+.garden-bamboo-nodes path { fill:none; stroke:#b6b789; stroke-width:2; opacity:.7; }
+.garden-flower-details circle { fill:#ad8934; }
+.garden-flower-details path { fill:none; stroke:#b68f3e; stroke-width:.7; opacity:.5; }
+.garden-flower-base,.garden-tie { pointer-events:none; }
+.is-missing .garden-flower-base,.is-missing .garden-tie { opacity:0; }
+.garden-flower-pedicel { fill:none; stroke:#91a66c; stroke-width:2.5; stroke-linecap:round; }
+.garden-calyx { fill:#718c55; stroke:#385b40; stroke-width:.8; }
+.garden-tie path { fill:none; stroke-linecap:round; }
+.garden-tie-back { stroke:#7f8160; stroke-width:1.8; }
+.garden-tie-front,.garden-tie-tail { stroke:#c2b78b; stroke-width:1.8; }
+.garden-tie-tail { stroke-width:1.2; }
+.garden-piece.is-missing .garden-stem-details,.garden-piece.is-missing .garden-reed-details,.garden-piece.is-missing .garden-bank-details,.garden-piece.is-missing .garden-moonlight,.garden-piece.is-missing .garden-ripple-echo { opacity:0; }
+.garden-stalk,.garden-reed-stalk { fill:none; stroke:#91a66c; stroke-width:3; stroke-linecap:round; }
+.garden-fruit-stalk { fill:none; stroke:#88a365; stroke-width:4.9; stroke-linecap:round; }
+.garden-young-fruit [data-cucumber-part="face"] { display:none; }
+.garden-young-fruit { opacity:.82; }
+.garden-tendril { fill:none; stroke:#a7b581; stroke-width:1.5; stroke-linecap:round; }
+.garden-vine-leaf>path:first-of-type { stroke:#375840; stroke-width:1.6; }
+.garden-small-vein { fill:none; stroke:#bdc697; stroke-width:1.1; opacity:.55; }
+.garden-leaf-veinlets { fill:none; stroke:#bdc697; stroke-width:.7; opacity:.24; }
+.garden-flower>path { fill:#e5ca7c; stroke:#fae6ab; stroke-width:1; }
+.garden-flower>circle { fill:#a9833a; }
+.garden-wet-edge { fill:none; stroke:#102b2e; stroke-width:4; stroke-linejoin:round; }
+.garden-bank-soil { fill:url(#garden-soil); }
+.garden-planting-pocket { fill:#454936; }
+.garden-earth-cuts { fill:none; stroke:#797858; stroke-width:1.3; opacity:.48; stroke-linecap:round; }
+.garden-earth-clods { fill:#30392c; }
+.garden-bank-lip { fill:none; stroke:#9aab83; stroke-width:1.2; opacity:.35; }
+.garden-grass-blades { fill:#647f53; }
+.garden-grass-light { fill:none; stroke:#a5b68a; stroke-width:1; opacity:.6; }
+.garden-root-grass { fill:none; stroke:#819865; stroke-width:2.6; stroke-linecap:round; }
+.garden-ground-shadow,.garden-root-contact { fill:#1a3029; }
+.garden-shore-shadow { fill:#183331; }
+.garden-shore-stone { fill:url(#garden-stone); stroke:#344d3e; stroke-width:.7; }
+.garden-stone { fill:url(#garden-stone); stroke:#344d3e; stroke-width:1; }
+.garden-stone-rim { fill:none; stroke:#c1c5a0; stroke-width:1.4; opacity:.6; }
+.garden-reed-blade { fill:url(#garden-leaf); stroke:#779467; stroke-width:1; }
+.garden-moonlight>path { fill:none; stroke:#e6deb0; stroke-width:1.8; stroke-linecap:round; }
+.garden-ripple-echo { fill:none; stroke:#7fa8a9; stroke-width:1; }
+.garden-ripple-near { stroke:#8dacaa; stroke-width:1.2; }
+.garden-ripple-rear { stroke-dasharray:.22 .1 .35 .08 .25; opacity:.7; }
+.garden-ripple-outer { stroke-dasharray:.12 .13 .31 .12 .32; opacity:.38; }
+.garden-ripple-centre { stroke:#b1c8b9; stroke-width:1; opacity:.65; }
+@media(max-width:600px) {
+  .garden-stalk { vector-effect:non-scaling-stroke; stroke-width:1.1; }
+  .garden-fruit-stalk,.garden-canonical [data-cucumber-part="stem"] { vector-effect:non-scaling-stroke; stroke-width:1.4!important; }
+}

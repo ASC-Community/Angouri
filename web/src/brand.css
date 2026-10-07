@@ -1,7 +1,11 @@
 .brand { display: inline-flex; align-items: baseline; gap: 0; font-size: 30px; width: fit-content; line-height: 1; color: #2a4334; letter-spacing: normal; }
 .brand:hover { text-decoration: none; }
 .brand .katex { font-size: 1em; }
-.brand-i { position: relative; display: inline-block; width: 13px; height: 32px; margin-left: -1px; align-self: center; transform: rotate(10deg); }
-.brand-i img { position: absolute; width: 24px; max-width: none; height: 24px; left: -5px; top: 4px; clip-path: inset(14% 0 0); }
-.brand-dot { position: absolute; z-index: 1; width: 4px; height: 4px; border-radius: 50%; background: #2a4334; top: 1px; left: 5px; }
+/* The bowed body needs an optical 17° lean to follow the surrounding n/r stems:
+   its native 8° plus 9°. Anchor its complete outline to the text baseline and
+   x-height, including rounded overshoot, rather than centering its SVG box. */
+.brand-i { position: relative; display: inline-block; width: .433333em; height: .8em; margin-left: -.033333em; align-self: baseline; transform: rotate(9.01067deg); }
+.brand-cucumber { position: absolute; width: .598534em; max-width: none; height: .598534em; left: -.044646em; top: .269755em; overflow:visible; }
+/* Follow the body axis with a .083em clear gap, optically closer than a font i. */
+.brand-dot { position: absolute; z-index: 1; width: .1em; height: .1em; border-radius: 50%; background: #2a4334; top: .16024em; left: .243826em; }
 @media(max-width:600px) { .brand { font-size: 26px; } }

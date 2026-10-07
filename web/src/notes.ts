@@ -1,6 +1,7 @@
 import './notes.css';
 import { Kernel } from './engine';
-import { CHAPTERS, chapterIndex, EXTRA_PUZZLES, GEOMETRY_PUZZLES, PUZZLE_ORDER, fraction, targetHeight, type Op, type Result } from './types';
+import { CHAPTERS, chapterIndex, EXTRA_PUZZLES, GEOMETRY_PUZZLES, PUZZLE_ORDER, LEVELS, puzzleLabel, escape, fraction, targetHeight, type Op, type Result } from './types';
+import learningPath from '../../content/learning-path.json';
 import { heightAtFormula, rationalTex, tex } from './views';
 import { chapterArt, lesson, move, viewButton, recall, strip, compare, circleSketch, diagramChoices, relationSketch } from './note-diagrams';
 import { renderReference } from './reference';
@@ -21,11 +22,15 @@ export class ShapeNotes {
   private topic=0;
   private known=new Set<number>();
   private topics=new Set<number>();
+  private referenceSource=0;
+  private relevant=new Set<number>();
   private content=document.getElementById('notes-content')!;
   private index=document.getElementById('notes-index')!;
 
   constructor(private kernel:Kernel) {
     this.index.addEventListener('click',event=>{
+      const reference=(event.target as Element).closest<HTMLElement>('[data-note-lesson]');
+      if(reference){void this.selectLesson(Number(reference.dataset.noteLesson));return;}
       const button=(event.target as Element).closest<HTMLElement>('[data-note]');
       if(button)void this.select(Number(button.dataset.note));
     });
@@ -48,11 +53,28 @@ export class ShapeNotes {
     // Scope references to this puzzle, including when replaying an early lesson.
     // Create has the whole book.
     this.known=knownLessons(source);
+    const prerequisites=learningPath.lessons.find(lesson=>lesson.id===source)?.prerequisites??[];
+    this.relevant=new Set([source,...prerequisites]);
+    if(source&&!EXTRA_PUZZLES.includes(source)&&!GEOMETRY_PUZZLES.includes(source)) {
+      this.index.innerHTML=`<p class="notes-scope">This lesson and related ideas</p>`+[source,...prerequisites].map(id=>`<button data-note-lesson="${id}" aria-pressed="false"><span class="note-lesson-numbers">${puzzleLabel(id)}</span><span>${escape(LEVELS[id-1].name)}</span></button>`).join('');
+      this.index.hidden=false;
+      void this.selectLesson(source);
+      return;
+    }
     this.topics=new Set(CHAPTERS.flatMap((chapter,i)=>this.known.has(chapter.levels[0])?[i]:[]));
     const choices=CHAPTERS.flatMap((chapter,i)=>this.topics.has(i)?[`<button data-note="${i}" aria-pressed="false"><span class="note-tab-art ${chapter.color}">${chapterArt(i)}</span><span>${chapter.name}</span></button>`]:[]);
     this.index.innerHTML=choices.join('');
     this.index.hidden=choices.length<2;
     void this.select(GEOMETRY_PUZZLES.includes(source)?6:EXTRA_PUZZLES.includes(source)?EXTRA_PUZZLES.indexOf(source)<4?4:5:Math.max(0,chapterIndex(source)));
+  }
+
+  private async selectLesson(source:number) {
+    if(!this.relevant.has(source))return;
+    this.referenceSource=source;
+    const topic=Math.max(0,chapterIndex(source));
+    this.topics=new Set([topic]);
+    this.index.querySelectorAll<HTMLElement>('[data-note-lesson]').forEach(button=>button.setAttribute('aria-pressed',String(Number(button.dataset.noteLesson)===source)));
+    await this.select(topic);
   }
 
   private async select(topic:number) {
@@ -62,11 +84,23 @@ export class ShapeNotes {
     this.content.setAttribute('aria-busy','true');
     this.content.innerHTML='<p class="notes-loading">Opening the sketches…</p>';
     try {
-      const sketches=new LessonSketches(this.kernel,this.source,this.known,this.examples);
-      const html=await renderReference(topic,this.known,{example:(source,ops)=>sketches.example(source,ops),circleExample:(x,y,radius,goals)=>sketches.circleExample(x,y,radius,goals),cropExample:(from,to)=>sketches.cropExample(from,to)});
+      const focused=this.source&&!EXTRA_PUZZLES.includes(this.source)&&!GEOMETRY_PUZZLES.includes(this.source);
+      const referenceSource=focused?this.referenceSource:this.source;
+      const known=focused?knownLessons(referenceSource):this.known;
+      const sketches=new LessonSketches(this.kernel,referenceSource,known,this.examples);
+      let html=await renderReference(topic,known,{example:(source,ops)=>sketches.example(source,ops),circleExample:(x,y,radius,goals)=>sketches.circleExample(x,y,radius,goals)});
+      if(focused) {
+        const template=document.createElement('template');template.innerHTML=html;
+        const related=new Set(learningPath.lessons.find(lesson=>lesson.id===referenceSource)?.prerequisites??[]);
+        template.content.querySelectorAll<HTMLElement>('[data-recall-sources]').forEach(section=>{
+          if(!section.dataset.recallSources!.split(',').some(id=>related.has(Number(id))))section.remove();
+        });
+        html=template.innerHTML;
+      }
       if(version!==this.version)return;
-      const prompt=this.source&&topic===chapterIndex(this.source)?`<aside class="note-question"><strong>${lesson(this.source)}</strong></aside>`:'';
-      this.content.innerHTML=prompt+html;
+      const prompt=referenceSource?`<aside class="note-question"><strong>${lesson(referenceSource)}</strong></aside>`:'';
+      const links=['function',...(this.known.has(24)?['flow']:[])].filter(view=>!html.includes(`data-view="${view}"`)).map(view=>viewButton(view as 'function'|'flow')).join(' ');
+      this.content.innerHTML=prompt+html+(links?`<p class="note-actions">${links}</p>`:'');
     } catch {
       if(version!==this.version)return;
       this.content.innerHTML='<p>The sketches could not load.</p><button class="button" data-retry-notes>Try again</button>';
@@ -102,23 +136,6 @@ class LessonSketches {
         const state={...initial.state,nodes:[...ops].map((op,i)=>({id:`note-${i}`,op:op as Op}))};
         const reply=await this.kernel.run(state,{type:'evaluate'});
         if(reply.status!=='ok'||!reply.result)throw new Error('Example unavailable');
-        return reply.result;
-      })();
-      this.examples.set(key,cached);
-      void cached.catch(()=>this.examples.delete(key));
-    }
-    return cached;
-  }
-
-  cropExample(from:string,to:string) {
-    const key=`crop:${from}:${to}`;
-    let cached=this.examples.get(key);
-    if(!cached) {
-      cached=(async()=>{
-        const initial=await this.kernel.run(undefined,{type:'level',sourceId:72,mode:'remix'});
-        if(initial.status!=='ok'||!initial.state)throw new Error('Crop example unavailable');
-        const reply=await this.kernel.run({...initial.state,crop:{from,to}},{type:'evaluate'});
-        if(reply.status!=='ok'||!reply.result?.crop)throw new Error('Crop example unavailable');
         return reply.result;
       })();
       this.examples.set(key,cached);
@@ -382,15 +399,15 @@ class LessonSketches {
   }
 
   private async togetherNotes():Promise<string> {
-    const [fullWave,keptLobe]=await Promise.all([this.cropExample('0','4'),this.cropExample('0','2')]);
+    const [water,bamboo]=await Promise.all([this.example(50,'HSH'),this.example(82,'H')]);
     const reference=(id:number)=>`<p class="note-reference">${lesson(id)}</p>`;
-    const finalDrawing=(result:Result):Result['stages'][number]=>({...result.stages.at(-1)!,points:result.points,paths:result.paths});
-    const cropLesson='<p>Crop keeps a chosen horizontal interval and removes the rest of the drawing. It does not move the curve or change any retained height.</p>'+strip([finalDrawing(fullWave),finalDrawing(keptLobe)],['Whole wave: 0 to 4','Kept lobe: 0 to 2'],['<strong>Crop</strong>'])+`<p>${tex('0\\le x\\le2')}</p>`+reference(72);
-    const artLessons:[number,string,string][]=[[72,'Crop changes extent, not height',cropLesson]];
+    const bambooLesson='<p>A straight line has one constant inclination. Halving its height keeps the zero fixed and halves the rise over every horizontal interval.</p>'+strip(bamboo.stages,['Starting line','Half the rise'],[move('H')])+reference(82);
+    const waterLesson='<p>Scaling after sine changes the height and keeps its zeros. The picture frame is already fixed.</p>'+strip([water.stages.at(-2)!,water.stages.at(-1)!],['A wide wave','Half its height'],[move('H')])+reference(72);
+    const artLessons:[number,string,string][]=[[82,'Set the inclination of a straight support',bambooLesson],[72,'Fit height inside a fixed frame',waterLesson]];
     if(this.known.has(73)) {
       const anchored=await this.example(37,'I');
-      const body='<p>Accumulation is still anchored at zero before the finished curve is cropped. The crop changes which part is drawn; it does not restart the accumulated amount at its left edge.</p>'+strip(anchored.stages,['Input','Area accumulated from zero'],[move('I')])+`<p>${tex('F(x)=\\int_0^x h(u)\\,\\mathrm{d}u')}</p>`+reference(73);
-      artLessons.push([73,'Cropping does not move the area anchor',body]);
+      const body='<p>Accumulation stays anchored at zero even when the drawing frame starts later. The frame does not restart the accumulated amount at its left edge.</p>'+strip(anchored.stages,['Input','Area accumulated from zero'],[move('I')])+`<p>${tex('F(x)=\\int_0^x h(u)\\,\\mathrm{d}u')}</p>`+reference(73);
+      artLessons.push([73,'The frame keeps the same area anchor',body]);
     }
     if(this.known.has(74)) {
       const moon=await this.example(68,'HH');
@@ -402,10 +419,15 @@ class LessonSketches {
       const body='<p>A line can first become a nonnegative roof with two zeros. When the squared-height equation uses the square of that roof, its solved branches are positive and negative copies that meet at those zeros.</p>'+relationSketch(leaf,'Copied roof branches make a pointed outline.')+reference(75);
       artLessons.push([75,'Build a pointed leaf from a roof',body]);
     }
+    if(this.known.has(83)) {
+      const petal=await this.example(83,'Q');
+      const body='<p>Squaring a roof keeps its zero tips and unit peak, but draws fractional shoulders inward. In a squared-height equation, the positive and negative branches become one pointed petal.</p>'+relationSketch(petal,'One solved outline supplies one petal.')+'<p>The garden rotates this same kernel-supplied petal five times around a centre. That repetition is decorative; the puzzle still checks only this one exact construction.</p>'+reference(83);
+      artLessons.push([83,'One pointed petal can make a five-petal flower',body]);
+    }
     if(this.known.has(76)) {
       const ripple=await this.example(54,'S');
-      const body='<p>Changes before sine set phase and period. Changes afterward set amplitude and baseline. Crop then keeps the useful part without changing those fitted heights.</p>'+strip([ripple.stages.at(-2)!,ripple.stages.at(-1)!],['Input phase','Wave height'],[move('S')])+reference(76);
-      artLessons.push([76,'Fit a wave before framing it',body]);
+      const body='<p>Changes before sine set phase and period. Changes afterward set amplitude and baseline. The fixed frame keeps the useful part without changing those fitted heights.</p>'+strip([ripple.stages.at(-2)!,ripple.stages.at(-1)!],['Input phase','Wave height'],[move('S')])+reference(76);
+      artLessons.push([76,'Fit phase, amplitude and baseline',body]);
     }
     if(this.known.has(77)) {
       const [arch,broad,rounded,pointed]=await Promise.all([this.example(8,'NA'),this.example(13,'QNA'),this.example(66,''),this.example(66,'Q')]);

@@ -67,7 +67,14 @@ test('sixth and eighth powers are playable through the existing square block',as
   for(const [id,ops] of [[29,'Q'],[30,'QNA'],[31,'HHQQNA']]) {
     await ready(page,id,'function');for(const op of ops)await add(page,op);
     expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(true);
-    await page.locator('#ideas-open').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');await expect(page.locator('#notes-content')).toContainText('sixth');await expect(page.locator('annotation').filter({hasText:'(u^3)^2=u^6'})).toHaveCount(1);
+    await page.locator('#ideas-open').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
+    if(id===31) {
+      await expect(page.locator('#notes-content')).toContainText(/eighth/i);
+      await expect(page.locator('annotation').filter({hasText:'(u^3)^2=u^6'})).toHaveCount(0);
+    } else {
+      await expect(page.locator('#notes-content')).toContainText(/sixth/i);
+      await expect(page.locator('annotation').filter({hasText:'(u^3)^2=u^6'})).toHaveCount(1);
+    }
     await page.keyboard.press('Escape');
   }
 });
@@ -123,11 +130,11 @@ test('each calculus visualization stays inside its own step and reads that step 
   await page.locator('#undo').click();await idle(page);await expect(page.locator('.calculus-machine')).toHaveCount(2);
 });
 
-test('the final station rewards its input/output solution and advances to Circles',async({page})=>{
+test('the final station rewards its input/output solution and advances to Loops',async({page})=>{
   await ready(page,42,'function');for(const op of 'HHNA')await add(page,op);await add(page,'N',6);await add(page,'A',7);
   expect(await order(page)).toBe('HHNAINA');expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(true);
   await page.locator('#launch').click();await expect(page.locator('#launch')).toHaveText('Next chapter');await expect(page.locator('.equation-verdict[data-status="hit"]')).toHaveCount(5);
-  await page.locator('#launch').click();await idle(page);expect((await state(page)).sourceId).toBe(43);await expect(page.locator('#level-category')).toContainText('CIRCLES');
+  await page.locator('#launch').click();await idle(page);expect((await state(page)).sourceId).toBe(43);await expect(page.locator('#level-category')).toContainText('LOOPS');
   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([42]);
 });
 
@@ -171,7 +178,7 @@ test('station chapters retain the viewport layout and keep playback from resizin
   expect(await page.evaluate(()=>{cancelAnimationFrame(window.stationLayoutFrame);return window.stationLayoutChanges;})).toEqual([]);
 });
 
-test('entering Slopes or Accumulation does not introduce page scrolling',async({page})=>{
+test('station chapters keep Flight fixed and Flow controls reachable when its full cards need scrolling',async({page})=>{
   test.setTimeout(120000);
   for(const size of [{width:1440,height:900},{width:1280,height:720},{width:390,height:844},{width:320,height:568},{width:844,height:390}]) {
     await page.setViewportSize(size);
@@ -181,7 +188,12 @@ test('entering Slopes or Accumulation does not introduce page scrolling',async({
       await ready(page,id);
       for(const view of ['flight','flow']) {
         await page.locator(`#tab-${view}`).click();
-        expect(await overflow(),`${id} ${view} ${size.width}x${size.height}`).toBeLessThanOrEqual(baseline+1);
+        if(view==='flight')expect(await overflow(),`${id} ${view} ${size.width}x${size.height}`).toBeLessThanOrEqual(baseline+1);
+        else {
+          const dock=page.locator('.play-dock');await dock.scrollIntoViewIfNeeded();await expect(dock).toBeInViewport();
+          const [board,tray]=await page.evaluate(()=>['#scene','.play-dock'].map(selector=>document.querySelector(selector).getBoundingClientRect().toJSON()));
+          expect(board.bottom<=tray.top||board.right<=tray.left||board.left>=tray.right).toBe(true);
+        }
         expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
         const extents=await page.locator('.pipeline').evaluate(el=>({client:el.clientHeight,scroll:el.scrollHeight}));
         expect(extents.scroll).toBeLessThanOrEqual(extents.client+1);

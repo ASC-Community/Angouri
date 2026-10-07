@@ -20,32 +20,26 @@ try {
     const baseline=probe.getBoundingClientRect().top-rect.top;
     probe.remove();
     const i=brand.querySelector('.brand-i'),iRect=i.getBoundingClientRect(),iStyle=getComputedStyle(i);
-    const img=getComputedStyle(i.querySelector('img')),dot=getComputedStyle(i.querySelector('.brand-dot'));
+    const drawing=i.querySelector('.brand-cucumber'),img=getComputedStyle(drawing),dot=getComputedStyle(i.querySelector('.brand-dot'));
     return {
       width:rect.width,height:rect.height,text:math.textContent,x:math.getBoundingClientRect().left-rect.left,baseline,
       fontSize:parseFloat(getComputedStyle(math).fontSize),color:getComputedStyle(math).color,
       i:{cx:(iRect.left+iRect.right)/2-rect.left,cy:(iRect.top+iRect.bottom)/2-rect.top,width:parseFloat(iStyle.width),height:parseFloat(iStyle.height),transform:iStyle.transform},
-      img:{x:parseFloat(img.left),y:parseFloat(img.top),width:parseFloat(img.width),height:parseFloat(img.height),clip:img.clipPath},
+      img:{x:parseFloat(img.left),y:parseFloat(img.top),width:parseFloat(img.width),height:parseFloat(img.height),artwork:drawing.innerHTML.replace(/[ \t]+$/gm,'')},
       dot:{x:parseFloat(dot.left),y:parseFloat(dot.top),width:parseFloat(dot.width),height:parseFloat(dot.height)}
     };
   });
   const bytes=await readFile(new URL('../node_modules/katex/dist/fonts/KaTeX_Main-Italic.ttf',import.meta.url));
   const font=opentype.parse(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength));
   const lettering=font.getPath(layout.text,layout.x,layout.baseline,layout.fontSize).toPathData(3);
-  const cucumber=await readFile(new URL('../web/public/cucumber.svg',import.meta.url),'utf8');
-  const artwork=cucumber.replace(/^<svg[^>]*>/,'').replace(/<\/svg>\s*$/,'').trim();
-  const clip=/^inset\(([\d.]+)% 0px 0px\)$/.exec(layout.img.clip);
-  if(!clip)throw Error(`The wordmark crop changed; update its SVG export: ${layout.img.clip}`);
-  const crop=64*Number(clip[1])/100;
   const {i,img,dot}=layout;
   const matrix=i.transform.replace(/^matrix\(|\)$/g,'');
   const svg=color=>`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${layout.width} ${layout.height}" role="img" aria-labelledby="title">
   <title id="title">Angouri</title>
   <metadata>Exported from Angouri's shared web wordmark and cucumber.svg. Lettering: KaTeX_Main-Italic (SIL Open Font License 1.1), converted to paths. See NOTICE.md.</metadata>
-  <defs><clipPath id="logo-tip"><rect x="0" y="${crop}" width="64" height="${64-crop}"/></clipPath></defs>
   <path d="${lettering}" fill="${color}"/>
   <g transform="translate(${i.cx} ${i.cy}) matrix(${matrix}) translate(${-i.width/2} ${-i.height/2})">
-    <g transform="translate(${img.x} ${img.y}) scale(${img.width/64} ${img.height/64})"><g clip-path="url(#logo-tip)">${artwork}</g></g>
+    <g transform="translate(${img.x} ${img.y}) scale(${img.width/64} ${img.height/64})">${img.artwork}</g>
     <ellipse cx="${dot.x+dot.width/2}" cy="${dot.y+dot.height/2}" rx="${dot.width/2}" ry="${dot.height/2}" fill="${color}"/>
   </g>
 </svg>\n`;

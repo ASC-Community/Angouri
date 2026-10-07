@@ -6,7 +6,7 @@ import { renderBrand } from './brand';
 import { Kernel } from './engine';
 import { icon } from './icons';
 import { adjacentSlot, insertedSlots, movedSlots, normalizeSlots, type RailSlots } from './rail';
-import { navigateTablist, rememberFocus, restoreFocus } from './keyboard';
+import { installTabStops, navigateTablist, rememberFocus, restoreFocus } from './keyboard';
 import { circleEdited, circleEquation, circleFlow, circleInput, circleRecipe, chooseCircleInspection, decorateCircleFlight, installCircleHandles, resetCircleInspection, sizeCircleControls, updateCircleProbe } from './circle';
 import { ShapeNotes, chapterArt } from './notes';
 import { puzzleHints } from './hints';
@@ -14,10 +14,11 @@ import { discoveryObservation, isDiscovery } from './discovery';
 import { Garden } from './garden';
 import { installBlockTooltip } from './block-tooltip';
 import { along, drawnPaths, flightPoints, flightStrokes, nearestIndex, strokePosition, sampledPosition, travelledPaths } from './geometry';
-import { functionView, flow, cropFlowPath, interpolate, launcherPose, operationTex, path, sizeFlightAnnotations, targetDescription, targetMark, targetStatus, tex, transform, updateFlowProbe, updateFlowCrop, flightView, type Camera, type Flight } from './views';
+import { functionView, flow, cropFlowPath, cucumberPose, interpolate, launcherPose, operationTex, path, sizeFlightAnnotations, targetDescription, targetMark, targetStatus, tex, transform, updateFlowProbe, updateFlowCrop, flightView, type Camera, type Flight } from './views';
 import { CHAPTERS, chapterIndex, CURVES, curveId, escape, EXTRA_PUZZLES, GEOMETRY_PUZZLES, OPTIONAL_PUZZLES, fraction, targetHeight, isCapstone, isCircleSource, isMastery, isPicture, LEVELS, OPS, PUZZLE_ORDER, puzzleLabel, type Action, type Artifact, type Circle, type Op, type Response, type Result, type State, type View } from './types';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
+installTabStops();
 installBlockTooltip($('palette'));
 const SAVE = 'angouri:vine:v1:progress', PREF = 'angouri:vine:v1:preferences', SEEDS = 'angouri:vine:v1:seeds';
 const views: View[] = ['flight','function','flow'];
@@ -118,10 +119,10 @@ const cropEditor=new CropEditor($('construction'),()=>state&&result&&pending===0
     $('trajectory')?.setAttribute('d',(stage.paths??[{points:stage.points}]).map(p=>path(p.points,state!,camera)).join(' '));
     const clip=$('scene').querySelector('#crop-preview-clip rect');clip?.setAttribute('x',String(left));clip?.setAttribute('width',String(right-left));
     const origin=along(stage.points,from),before=along(stage.points,Math.max(stage.points[0][0],from-.025)),after=along(stage.points,Math.min(stage.points.at(-1)![0],from+.025));
-    const pose=launcherPose(state!,camera,origin,[after[0]-before[0],after[1]-before[1]]),[cx,cy]=transform(state!,camera,origin);
+    const pose=launcherPose(state!,camera,origin,[after[0]-before[0],after[1]-before[1]]),[cx,cy]=transform(state!,camera,origin),fruit=cucumberPose([cx,cy],pose.angle,1);
     $('launcher')?.setAttribute('transform',pose.transform);$('launcher-front')?.setAttribute('transform',pose.transform);
-    $('cucumber')?.setAttribute('transform',`translate(${cx-68*Math.cos(pose.angle)} ${cy-68*Math.sin(pose.angle)})`);
-    $('flight-spin')?.setAttribute('transform',`rotate(${pose.degrees+90})`);
+    $('cucumber')?.setAttribute('transform',fruit.transform);
+    $('flight-spin')?.setAttribute('transform',`rotate(${fruit.degrees})`);
   });
 
 function preferences() { write(PREF,{view,motion:reduced}); }
@@ -214,7 +215,7 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
   }
   if(!result.stages.some(s=>s.id===selectedStage)) selectedStage='';
   insertionIndex=undefined;
-  notice={text:state.sourceId===72?'Frame one lobe with Crop.':result.relation&&!result.relation.playback.length?'No real heights yet. Bring the right side to zero or above.':state.circle?'':state.nodes.length?'':choiceActive()?'Choose a block.':'Tap or drag a block.',kind:''};
+  notice={text:result.relation&&!result.relation.playback.length?'No real heights yet. Bring the right side to zero or above.':state.circle?'':state.nodes.length?'':choiceActive()?'Choose a block.':'Tap or drag a block.',kind:''};
   progress();render();
   if(repeatHint&&hintCue)for(const animation of $('hints-open').getAnimations()) {
     if(animation instanceof CSSAnimation&&animation.animationName==='hint-invite')animation.currentTime=0;
@@ -260,7 +261,7 @@ function palette() {
   $('palette').setAttribute('aria-label',choosing?'Choose a block':'Add a block to your recipe');
   $('palette').dataset.count=String(Object.values(inventory).filter(n=>n>0).length);
   // Reserve the whole pile, including a return above condensed or reusable stock.
-  $('palette').style.setProperty('--stack-room',String(choosing?0:creating?3:Math.max(0,Math.min(5,Math.max(0,...Object.values(inventory))-1))));
+  $('palette').style.setProperty('--stack-room',String(choosing?0:creating?3:Math.max(0,Math.min(3,Math.max(0,...Object.values(inventory))-1))));
   $('palette').innerHTML=(Object.keys(OPS) as Op[]).filter(op=>(inventory[op]||0)>0).map(op=>{
     const n=choosing?1:inventory[op]!;
     const used=creating||choosing?0:state?.nodes.filter(node=>node.op===op).length || 0;
@@ -268,8 +269,9 @@ function palette() {
     const availability=choosing?'ready':used>=n?'used':!creating&&(state?.nodes.length||0)>=(state?.limit||1)?'full':'ready';
     const disabled=!initialized||availability!=='ready'&&!returning;
     const title=choosing?OPS[op].description:returning?'Return the selected block to this stack':availability==='used'?'All copies are in your recipe':availability==='full'?'Recipe full — return a block or Undo':`${OPS[op].description} Tap to add, or drag to a recipe slot.`;
-    const remaining=n-used,layers=(creating?3:Math.min(remaining,5))+(returning?1:0),capacity=creating?3:Math.max(0,Math.min(n-1,5));
-    return `<div class="ingredient-stack ${OPS[op].color} ${creating?'reusable-stack':''}" style="--stack-capacity:${capacity};--stack-depth:${Math.max(0,layers-1)};--return-layer:${returning?1:0}"><span class="stock-deck" aria-hidden="true">${Array.from({length:Math.max(0,layers-1)},(_,i)=>`<i style="--layer:${i+1}"></i>`).join('')}</span><button class="ingredient ${OPS[op].color} ${returning?'return-ready':''}" data-op="${op}" ${returning?`data-return="${returning.id}"`:''} data-availability="${availability}" data-stock="${creating?'reusable':remaining}" draggable="false" ${disabled?'disabled':''} ${choosing?`aria-pressed="${state?.nodes[0]?.op===op}"`:''} aria-label="${choosing?'Choose '+OPS[op].name:returning?'Return selected '+OPS[op].name+', '+(creating?'reusable stack':`${remaining} available below`):'Place '+OPS[op].name+' block, '+(creating?'reusable':`${remaining} available`)}" data-block-name="${OPS[op].name}" data-block-help="${escape(title)}"><span class="ingredient-surface"><span class="piece-grip">${icon(returning?'return':disabled?availability==='used'?'check':'lock':'grip',16)}</span><span class="ingredient-face"><span class="op-formula">${operationTex(op)}</span></span>${cue(op)}${creating?`<span class="reusable-mark" aria-hidden="true">${tex('\\infty')}</span>`:''}</span>${remaining>5?`<span class="stock-total" aria-hidden="true">${tex(String(remaining))}</span>`:''}</button></div>`;
+    const remaining=n-used,visibleLayers=creating?3:Math.min(remaining,3);
+    const layers=visibleLayers+(returning?1:0),capacity=creating?3:Math.max(0,Math.min(n-1,3)),condensed=!creating&&n>3;
+    return `<div class="ingredient-stack ${OPS[op].color} ${creating?'reusable-stack':''} ${condensed?'condensed-stack':''}" style="--stack-capacity:${capacity};--stack-depth:${Math.max(0,layers-1)};--return-layer:${returning?1:0}"><span class="stock-deck" aria-hidden="true">${Array.from({length:Math.max(0,layers-1)},(_,i)=>`<i style="--layer:${i+1}"></i>`).join('')}</span><button class="ingredient ${OPS[op].color} ${returning?'return-ready':''}" data-op="${op}" ${returning?`data-return="${returning.id}"`:''} data-availability="${availability}" data-stock="${creating?'reusable':remaining}" draggable="false" ${disabled?'disabled':''} ${choosing?`aria-pressed="${state?.nodes[0]?.op===op}"`:''} aria-label="${choosing?'Choose '+OPS[op].name:returning?'Return selected '+OPS[op].name+', '+(creating?'reusable stack':`${remaining} available below`):'Place '+OPS[op].name+' block, '+(creating?'reusable':`${remaining} available`)}" data-block-name="${OPS[op].name}" data-block-help="${escape(title)}"><span class="ingredient-surface"><span class="piece-grip">${icon(returning?'return':disabled?availability==='used'?'check':'lock':'grip',16)}</span><span class="ingredient-face"><span class="op-formula">${operationTex(op)}</span></span>${cue(op)}${creating?`<span class="reusable-mark" aria-hidden="true">${tex('\\infty')}</span>`:''}</span></button>${condensed?`<span class="stock-total" aria-hidden="true">${remaining}</span>`:''}</div>`;
   }).join('');
 }
 function recipe() {
@@ -367,7 +369,7 @@ function render() {
   $('level-category').textContent=state.mode==='puzzle'?(chapter<0?'BONUS PUZZLE':`CHAPTER ${chapter+1} · ${chapterInfo.name.toUpperCase()} · ${chapterInfo.levels.indexOf(state.sourceId)+1} OF ${chapterInfo.levels.length}`):state.mode==='remix'?'CREATE':'A SHARED CHALLENGE';
   $('level-title').textContent=state.mode==='puzzle'?level.name:state.mode==='remix'?'Your flight':'Hit their targets';
   $('picture-open').hidden=state.mode!=='puzzle'||chapter!==9;
-  $('picture-open').innerHTML=`${icon('picture',14)}The shape garden`;
+  $('picture-open').innerHTML=`${icon('picture',14)}The moonlit garden`;
   $('chapter-step').hidden=$('picture-open').hidden;
   if(state.mode==='puzzle'&&chapter===9){
     $('level-category').textContent='CHAPTER 10';
@@ -484,8 +486,9 @@ function animatePosition() {
     el('launcher')?.setAttribute('transform',pose);el('launcher-front')?.setAttribute('transform',pose);
     const queued=flight.position<stroke.start;
     const pull=flight.phase==='ready'?1:flight.phase==='releasing'?index?1:1-(flight.release||0):queued?Math.min(1,(stroke.start-flight.position)/.018):0;
-    el('cucumber')?.setAttribute('transform',`translate(${(cx-68*size*pull*Math.cos(angle)).toFixed(2)} ${(cy-68*size*pull*Math.sin(angle)).toFixed(2)})`);
-    el('flight-spin')?.setAttribute('transform',`rotate(${degrees+90+620*local*local}) scale(${size})`);
+    const fruit=cucumberPose([cx,cy],angle,pull,size);
+    el('cucumber')?.setAttribute('transform',fruit.transform);
+    el('flight-spin')?.setAttribute('transform',`rotate(${fruit.degrees+620*local*local}) scale(${size})`);
     const before=transform(state,camera,result.relation?strokePosition(stroke,Math.max(0,local-.005)):sampledPosition(result,Math.max(0,flight.position-.005)));
     const after=transform(state,camera,result.relation?strokePosition(stroke,Math.min(1,local+.005)):sampledPosition(result,Math.min(1,flight.position+.005)));
     el('flight-motion')?.setAttribute('transform',`rotate(${local===0?degrees:Math.atan2(after[1]-before[1],after[0]-before[0])*180/Math.PI}) scale(${size})`);
@@ -511,11 +514,11 @@ function animatePosition() {
 }
 function finishFlight() {
   flight={phase:'landed',position:1};animatePosition();
-  notice={text:state?.mode==='remix'?'':result?.solved?'':state?.circle?'Adjust the centre or radius.':state?.sourceId===72?'Adjust the crop.':choiceActive()?'Pick another block and try again.':'Adjust a block and try again.',kind:''};
+  notice={text:state?.mode==='remix'?'':result?.solved?'':state?.circle?'Adjust the centre or radius.':choiceActive()?'Pick another block and try again.':'Adjust a block and try again.',kind:''};
   updatePrimary();$('undo').classList.toggle('retry-cue',!!state?.nodes.length&&!result?.solved);
   $('success').classList.toggle('just-solved',!!result?.solved&&!reduced);
   $('move-announcement').textContent=state?.mode==='remix'?'Throw complete.':result?.solved?'Every target hit. Puzzle solved.':`${result?.checkpoints.filter(c=>c.hit).length} of ${result?.checkpoints.length} targets hit. ${choiceActive()?'Pick another block':'Adjust your recipe'} and throw again.`;
-  if(state?.mode==='puzzle'&&state.sourceId===77&&result?.solved&&!pictureCelebrated){pictureCelebrated=true;showGarden('launch',true);}
+  if(state?.mode==='puzzle'&&isPicture(state.sourceId)&&result?.solved&&!pictureCelebrated){pictureCelebrated=true;showGarden('launch',state.sourceId);}
 }
 function launch() {
   if(!initialized||pending)return;
@@ -658,7 +661,7 @@ document.addEventListener('click',event=>{
   if(!button&&!suppressClick&&!(event.target as Element).closest('input,select,textarea,label')&&(event.target as Element).closest('#playground')&&(selectedStage||insertionIndex!==undefined)){selectedStage='';insertionIndex=undefined;render();}
   if(!button||button.disabled||suppressClick)return;
   const d=button.dataset;
-  if(d.openGarden!==undefined){event.preventDefault();showGarden('menu-picture-open',false,'puzzles-dialog');return;}
+  if(d.openGarden!==undefined){event.preventDefault();showGarden('menu-picture-open',undefined,'puzzles-dialog');return;}
   if(d.back){
     const returnTo=d.back,dialog=d.backDialog||'menu-dialog';open(dialog);
     // WebKit finishes removing dialog inertness after showModal returns.
@@ -884,13 +887,13 @@ $('hints-content').onclick=event=>{
 };
 $('menu-version').onclick=()=>open('releases-dialog','menu-version');
 $('ending-create').onclick=()=>$('nav-create').click();
-function showGarden(returnId:string,reveal=false,parent?:string) {
+function showGarden(returnId:string,revealSource?:number,parent?:string) {
   const back=$<HTMLButtonElement>('garden-back');
   back.type=parent?'button':'submit';
   back.setAttribute('aria-label',parent?'Back to puzzle list':'Back to game');back.title=parent?'Back to puzzle list':'Back to game';
   if(parent){back.dataset.back=returnId;back.dataset.backDialog=parent;}
   else {delete back.dataset.back;delete back.dataset.backDialog;}
-  open('garden-dialog',parent?'menu-open':returnId);void garden.open(completed,reveal);
+  open('garden-dialog',parent?'menu-open':returnId);void garden.open(completed,revealSource);
 }
 $('ending-garden').onclick=()=>showGarden('ending-garden');
 $('picture-open').onclick=()=>showGarden('picture-open');
@@ -921,7 +924,7 @@ $('leave-save').onclick=async()=>{
   else if(!saved){$('leave-error').textContent=notice.text;$('leave-error').hidden=false;}
 };
 document.querySelectorAll<HTMLElement>('[data-icon]').forEach(el=>el.innerHTML=icon(el.dataset.icon!,el.matches('.menu-art,.help-art')?32:18));
-renderBrand(document.querySelector<HTMLElement>('.brand')!,'./cucumber.svg');
+renderBrand(document.querySelector<HTMLElement>('.brand')!);
 $('axis-help').innerHTML=`The dashed ${operationTex()} in a block stands for its input. ${tex('x')} is horizontal position and ${tex('h')} is height. An equation such as ${tex('h=x')} describes the path; ${tex('h^2=x')} can describe two heights at one position. The blocks shape the path; throwing speed does not affect the result.`;
 $<HTMLInputElement>('motion-toggle').checked=reduced;document.body.classList.toggle('reduced-motion',reduced);
 $<HTMLInputElement>('motion-toggle').onchange=()=>{reduced=$<HTMLInputElement>('motion-toggle').checked;document.body.classList.toggle('reduced-motion',reduced);preferences();if(reduced&&(flight.phase==='flying'||flight.phase==='releasing'))finishFlight();render();};

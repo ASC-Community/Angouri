@@ -7,7 +7,7 @@ async function ready(page,id,view='flight') {
 const workspace=page=>page.evaluate(()=>({state:window.angouri.state,history:window.angouri.history,slots:window.angouri.slots}));
 const add=async(page,op)=>{await page.locator(`[data-op="${op}"]`).click();await idle(page);};
 
-test('Hints guide the current puzzle while Notes retain the chapter reference',async({page})=>{
+test('Hints guide the puzzle while Notes follow relevant prerequisites',async({page})=>{
   await ready(page,31,'flow');const before=await workspace(page);
   await expect(page.locator('#ideas-open')).toHaveAccessibleName('Notes');
   await expect(page.locator('#ideas-open [data-icon="book"] svg')).toHaveCount(1);
@@ -24,8 +24,8 @@ test('Hints guide the current puzzle while Notes retain the chapter reference',a
   await expect(page.locator('#ideas-dialog')).toHaveAccessibleName('Notes');await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
   await expect(page.locator('#notes-content [data-reference-lesson="31"]')).toHaveCount(1);
   await expect(page.locator('#notes-content')).not.toContainText('Fit first. Then square again.');
-  await page.locator('[data-note="0"]').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
-  await expect(page.locator('#notes-content')).toContainText('height difference');await expect(page.locator('.note-question')).toHaveCount(0);
+  await page.locator('[data-note-lesson="24"]').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
+  await expect(page.locator('#notes-content')).toContainText('lift');await expect(page.locator('.note-question')).toContainText('1.4');
   await page.keyboard.press('Escape');await expect(page.locator('#ideas-open')).toBeFocused();expect(await workspace(page)).toEqual(before);
   await page.locator('#hints-open').click();await page.locator('#hints-content [data-view="function"]').click();await expect(page.locator('#tab-function')).toBeFocused();
   expect(await workspace(page)).toEqual(before);
@@ -83,13 +83,18 @@ test('circle edits keep the default frame and Full curve toggles back without ed
 test('the loaded slingshot and cucumber follow every frame of a curve edit',async({page})=>{
   await page.emulateMedia({reducedMotion:'no-preference'});await ready(page,3);
   await page.evaluate(()=>{
+    const artwork=document.querySelector('.brand-cucumber'),outline=artwork.querySelector('[data-body-frame]');
+    const [x,y,width,height]=outline.dataset.bodyFrame.split(' ').map(Number),bend=Number(outline.dataset.bodyBend),artMatrix=outline.parentElement.transform.baseVal.consolidate().matrix;
+    const top=new DOMPoint(x+width/2,y).matrixTransform(artMatrix),bottom=new DOMPoint(x+width/2+bend,y+height).matrixTransform(artMatrix);
     window.rigSamples=[];let frames=0;
     const record=()=>{
       if(window.angouri.state.nodes.length===1){
-        const curve=document.querySelector('#trajectory').getPointAtLength(0),rig=document.querySelector('#launcher'),front=document.querySelector('#launcher-front'),cucumber=document.querySelector('#cucumber');
-        const origin=rig.transform.baseVal.getItem(0).matrix,body=cucumber.transform.baseVal.getItem(0).matrix;
-        const degrees=document.querySelector('#flight-spin').transform.baseVal.getItem(0).angle-90,angle=degrees*Math.PI/180;
-        window.rigSamples.push({y:curve.y,originError:Math.hypot(curve.x-origin.e,curve.y-origin.f),bodyError:Math.hypot(body.e+68*Math.cos(angle)-origin.e,body.f+68*Math.sin(angle)-origin.f),same:rig.getAttribute('transform')===front.getAttribute('transform')});
+        const curve=document.querySelector('#trajectory').getPointAtLength(0),rig=document.querySelector('#launcher'),front=document.querySelector('#launcher-front');
+        const origin=rig.transform.baseVal.getItem(0).matrix,spin=document.querySelector('#flight-spin'),image=spin.querySelector('image'),scale=Number(image.getAttribute('width'))/artwork.viewBox.baseVal.width;
+        const mapped=p=>new DOMPoint(Number(image.getAttribute('x'))+p.x*scale,Number(image.getAttribute('y'))+p.y*scale).matrixTransform(spin.getCTM());
+        const crown=mapped(top),tail=mapped(bottom),seat=new DOMPoint(0,0).matrixTransform(document.querySelector('#slingshot-pouch').getCTM()),aim=rig.getCTM();
+        const dx=crown.x-tail.x,dy=crown.y-tail.y,aimError=Math.abs(dx*aim.b-dy*aim.a)/(Math.hypot(dx,dy)*Math.hypot(aim.a,aim.b));
+        window.rigSamples.push({y:curve.y,originError:Math.hypot(curve.x-origin.e,curve.y-origin.f),bodyError:Math.hypot(tail.x-seat.x,tail.y-seat.y),aimError,same:rig.getAttribute('transform')===front.getAttribute('transform')});
       }
       if(++frames<90)requestAnimationFrame(record);
     };requestAnimationFrame(record);
@@ -98,7 +103,7 @@ test('the loaded slingshot and cucumber follow every frame of a curve edit',asyn
   const samples=await page.evaluate(()=>window.rigSamples);
   expect(Math.max(...samples.map(s=>s.y))-Math.min(...samples.map(s=>s.y))).toBeGreaterThan(15);
   expect(new Set(samples.map(s=>s.y.toFixed(1))).size).toBeGreaterThan(6);
-  for(const sample of samples){expect(sample.originError).toBeLessThan(.03);expect(sample.bodyError).toBeLessThan(.03);expect(sample.same).toBe(true);}
+  for(const sample of samples){expect(sample.originError).toBeLessThan(.03);expect(sample.bodyError).toBeLessThan(.03);expect(sample.aimError).toBeLessThan(.00003);expect(sample.same).toBe(true);}
 });
 
 test('deck formulas stand alone while operation help is available on focus and hover',async({page})=>{

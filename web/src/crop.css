@@ -8,6 +8,7 @@
 .crop-bound input[type=range] { flex: 1; width: 90px; height: 25px; margin: 0; accent-color: #4b7051; }
 .crop-bound input[type=text] { width: 38px; border: 1px solid #b9c6b0; border-radius: 4px; padding: 3px; text-align: center; background: #fffefa; color: #344c3b; font: 11px Arial,sans-serif; }
 .crop-add { flex: none; font-size: 11px; padding: 8px; }
+.crop-fixed { flex:none; display:flex; align-items:center; gap:7px; padding:9px 11px; border:1px solid #d3ddc9; border-radius:8px; color:#657957; background:#f7f9f1; font-size:11px; }
 .palette[data-count="0"] { display: none; }
 .crop-verdict { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 7px; font-size: 11px; padding: 5px 10px; min-height: 28px; }
 [data-crop-match=true] { color: var(--hit); }

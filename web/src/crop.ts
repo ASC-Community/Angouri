@@ -3,13 +3,14 @@ import { escape, fraction, type Crop, type Response, type Result, type State } f
 import { rationalTex, tex } from './views';
 
 export const probePoints=(result:Result)=>result.crop?result.stages.at(-1)!.points:result.points;
-export const cropEdited=(state:State)=>!!state.crop&&(state.mode!=='puzzle'||state.crop.from!=='0'||state.crop.to!=='4');
+export const cropEdited=(state:State)=>!!state.crop&&state.mode==='remix';
 const quarter=(n:number)=>{const k=Math.round(n*4);return k%4===0?String(k/4):k%2===0?`${k/2}/2`:`${k}/4`;};
 
 /** A finishing tool, outside the reorderable block sequence. */
 export function cropControl(state:State,result:Result) {
   const crop=result.crop;
   if(!crop)return state.mode==='remix'?`<button class="crop-add button" data-crop-add title="Keep a horizontal interval">${icon('crop',17)}Crop</button>`:'';
+  if(!crop.editable)return `<div class="crop-fixed" aria-label="Fixed drawing interval">${icon('crop',15)}<span>Frame</span>${tex(`${rationalTex(crop.from)}\\le x\\le ${rationalTex(crop.to)}`)}</div>`;
   const end=state.sourceId===5?2:4;
   return `<div class="crop-finish" role="group" aria-label="Crop the finished curve"><span class="crop-title">${icon('crop',14)} Crop ${state.mode==='remix'?`<button data-crop-clear aria-label="Remove Crop">${icon('close',14)}</button>`:''}</span>${(['from','to'] as const).map(key=>`<label class="crop-bound"><span>${key==='from'?'From':'To'}</span><input type="range" data-crop-range="${key}" min="0" max="${end}" step="0.25" value="${fraction(crop[key])}" aria-label="Crop ${key}" ${crop.editable?'':'disabled'}><input type="text" inputmode="text" data-crop-exact="${key}" value="${escape(crop[key])}" aria-label="Exact crop ${key}" spellcheck="false" ${crop.editable?'':'readonly'}></label>`).join('')}</div>`;
 }
@@ -17,7 +18,7 @@ export function cropControl(state:State,result:Result) {
 /** Crop has an interval goal; the ordinary targets determine the curve. */
 export function cropVerdict(result:Result) {
   const crop=result.crop;
-  if(!crop?.required)return '';
+  if(!crop?.required||!crop.editable)return '';
   return `<div class="crop-verdict" data-crop-match="${crop.hit}" role="status"><span class="crop-key" aria-hidden="true">${icon('crop',16)}</span><span>Keep</span>${tex(`${rationalTex(crop.required.from)}\\le x\\le ${rationalTex(crop.required.to)}`)}<span data-crop-mark>${icon(crop.hit?'check':'close',17)}</span></div>`;
 }
 
@@ -41,7 +42,7 @@ const outside=(left:number,right:number,bounds:WindowBounds)=>`M${bounds.left} $
 export function cropWindow(crop:Result['crop'],project:(x:number)=>number,bounds:WindowBounds,id:string,before='') {
   if(!crop)return '';
   const left=project(crop.fromNumber),right=project(crop.toNumber),outsidePath=outside(left,right,bounds);
-  const goal=crop.required,goalLeft=goal&&project(fraction(goal.from)),goalRight=goal&&project(fraction(goal.to));
+  const goal=crop.editable?crop.required:undefined,goalLeft=goal&&project(fraction(goal.from)),goalRight=goal&&project(fraction(goal.to));
   return `<g class="crop-window" data-crop-window data-left="${bounds.left}" data-right="${bounds.right}" data-top="${bounds.top}" data-bottom="${bounds.bottom}" aria-hidden="true"><defs><clipPath id="${id}-outside"><path data-crop-outside d="${outsidePath}"/></clipPath></defs><path class="crop-discarded" data-crop-outside d="${outsidePath}"/>${before?`<path class="crop-before" clip-path="url(#${id}-outside)" d="${before}"/>`:''}<path class="crop-cuts" data-crop-cuts d="${cuts(left,right,bounds.top,bounds.bottom)}"/>${goal?`<path class="crop-goal-bracket" data-crop-match="${crop.hit}" d="M${goalLeft} ${bounds.bottom+7}v6H${goalRight}v-6"/>`:''}</g>`;
 }
 

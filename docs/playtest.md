@@ -4,7 +4,7 @@ No participant session has been run. This sheet prepares the plan’s small form
 
 ## Current hypothesis
 
-The main progression has 63 puzzles across ten chapters, including direct and recipe-built loops, waves, steps, and a combined finale. Three geometry puzzles and eleven earlier calculus combinations remain optional with stable rules, for 77 playable sources in total. Fixed calculus stations replace the old derivative-first and integral-first combinations. The change follows an exact audit: the old source-22 challenge allowed 90 solutions and none required squaring before differentiation; the old source-23 challenge likewise did not require squaring before integration. Those combinations did not test the intended new decision.
+The main progression has 69 puzzles across ten chapters, including direct and recipe-built loops, waves, steps, and a combined finale. Three geometry puzzles and eleven earlier calculus combinations remain optional with stable rules, for 83 playable sources in total. Fixed calculus stations replace the old derivative-first and integral-first combinations. The change follows an exact audit: the old source-22 challenge allowed 90 solutions and none required squaring before differentiation; the old source-23 challenge likewise did not require squaring before integration. Those combinations did not test the intended new decision.
 
 Observe whether players distinguish the Input and Output zones and predict where a move belongs. Fixing a station is not sufficient on its own: new tasks must need their inputs. Motion and signed-amount sketches in Flow explain the station while Flight remains the reward. See [game-design.md](game-design.md) for implementation and extension boundaries, including equation-based curves with complete circle relations alongside the polynomial engine.
 
@@ -88,18 +88,22 @@ The main progression uses ten chapters. Each introduces an idea in a small space
 | 7.1 Loops | A path comes back (43) | Radius reaches two heights at one horizontal position | Which half of the circle will the cucumber visit next? |
 | 7.2 Loops | Find the middle (44) | Translation keeps every radius equal | What stays the same as you move the centre? |
 | 7.3 Loops | The roof becomes a loop (48) | A familiar roof supplies both real heights | Which right side makes the upper and lower halves? |
-| 7.4 Loops | Grow both sides (68) | Adding one to squared height moves both actual heights away from zero | Which height rises, and which falls? |
-| 7.5 Loops | Half the height (69) | Two halvings of `h²` halve the actual height magnitude | Why is one right-side halve not one actual-height halve? |
-| 7.6 Loops | Where heights exist (70) | Negation changes the regions where the right side is nonnegative | Which intervals will have real heights? |
-| 7.7 Loops | Round or pointed? (66) | A squared roof yields positive and negative copies | What is being squared: the height or the recipe? |
-| 7.8 Loops | Build the whole circle (49) | Infer the circle, then construct its squared-height roof | How do centre and radius determine the roof? |
-| 7.9 Loops | A loop and its echoes (71) | Combine zero placement, scaling, signed regions and a squared-height finish | Which intermediate signed roof accounts for the inner loop and outer echoes? |
+| 7.4 Loops | Move a loop with blocks (78) | Shift the input zero before the square | Which change moves the centre without changing the radius? |
+| 7.5 Loops | Grow both sides (68) | Adding one to squared height moves both actual heights away from zero | Which height rises, and which falls? |
+| 7.6 Loops | Half the height (69) | Two halvings of `h²` halve the actual height magnitude | Why is one right-side halve not one actual-height halve? |
+| 7.7 Loops | Where heights exist (70) | Negation changes the regions where the right side is nonnegative | Which intervals will have real heights? |
+| 7.8 Loops | Round or pointed? (66) | A squared roof yields positive and negative copies | What is being squared: the height or the recipe? |
+| 7.9 Loops | Build the whole circle (49) | Infer the circle, then construct its squared-height roof | How do centre and radius determine the roof? |
+| 7.10 Loops | A loop and its echoes (71) | Combine zero placement, scaling, signed regions and a squared-height finish | Which intermediate signed roof accounts for the inner loop and outer echoes? |
 | 8.1 Waves | A quarter turn (50) | Sine reads each input unit as one quarter-turn | Which cycle height comes next? |
 | 8.2 Waves | Move the wave (51) | Input lift changes phase; output lift changes baseline | Which landmarks move horizontally? |
 | 8.3 Waves | Stretch the wave (52) | Input scale changes period; output scale changes amplitude | Will peaks move apart or become shorter? |
-| 8.4 Waves | Fold both lobes (53) | Squaring folds negative lobes above zero | Which zeros stay fixed? |
-| 8.5 Waves | Set height and baseline (54) | Output scale and lift set amplitude and baseline | Which move changes the middle line? |
-| 8.6 Waves | Place the repeating pattern (55) | Combine phase, period, folding and output fitting | Which landmarks should be placed before fitting height? |
+| 8.4 Waves | Shift a wider wave (79) | Combine input lift and scale in a small station | Why does halving the added input also change the shift? |
+| 8.5 Waves | Build the wide wave (81) | Transfer input scaling to a freely placed sine | Which side of sine widens the peaks? |
+| 8.6 Waves | Fold both lobes (53) | Squaring folds negative lobes above zero | Which zeros stay fixed? |
+| 8.7 Waves | Set height and baseline (54) | Output scale and lift set amplitude and baseline | Which move changes the middle line? |
+| 8.8 Waves | Keep the peaks, fit between (80) | Repair one shoulder while preserving five landmarks | Which operation keeps zero and one fixed but shrinks a fractional height? |
+| 8.9 Waves | Place the repeating pattern (55) | Combine phase, period, folding and output fitting | Which landmarks should be placed before fitting height? |
 | 9.1 Steps | Round down (56) | Floor holds the whole step below | Which side owns an exact integer boundary? |
 | 9.2 Steps | Round up (57) | Ceiling holds the whole step above | How does boundary ownership change? |
 | 9.3 Steps | Reverse the thresholds (58) | Negation before rounding changes direction and endpoint ownership | Is the staircase merely turned over? |
@@ -108,15 +112,23 @@ The main progression uses ten chapters. Each introduces an idea in a small space
 | 9.6 Steps | Project the steps (61) | Sine maps integer levels through `0,1,0,-1` | Which signed height follows each step? |
 | 9.7 Steps | Accumulate signed steps (62) | Positive, zero and negative steps make rise, flat and fall | Where will the accumulated path turn? |
 | 9.8 Steps | Shape the staircase area (63) | Shape the signed steps, then the continuous accumulated path | Which intermediate path should exist before the final blocks? |
-| 10.7 Mastery | Uneven wave spacing (64) | A derivative supplies a nonuniform phase | Where will the wave compress or spread? |
-| 10.8 Mastery | Build a gate (65) | A finite positive step window accumulates into a ramp and plateau | Which regions should rise or stay flat? |
-| 10.9 Mastery | One curve, many ideas (67) | Combine slope, thresholds, projection, signed area and paired heights | Which intermediate goal will you build first? |
+| 10.1 Picture | Raise the bamboo (82) | Scale a straight support while keeping it planted | Which choice changes its inclination? |
+| 10.2 Picture | Shape the bank (72) | Scale a wave inside its fixed frame | Which landmarks stay fixed? |
+| 10.3 Picture | Grow a vine (73) | Accumulate from zero before showing a later interval | Where does the area still begin? |
+| 10.4 Picture | Shape the moon (74) | Use squared height to size both halves of a loop | Which values set width and thickness? |
+| 10.5 Picture | Shape a reed (75) | Square a roof into pointed positive and negative copies | Why do the tips meet? |
+| 10.6 Picture | Shape a flower petal (83) | Refine one pointed petal for decorative repetition | What changes between its tips and peak? |
+| 10.7 Picture | Settle a ripple (76) | Fit phase, period, amplitude and baseline | Which landmark distinguishes the remaining miss? |
+| 10.8 Picture | Draw the cucumber (77) | Separate broadness, cap shape and thickness | Which earlier idea controls each property? |
+| 10.9 Mastery | Uneven wave spacing (64) | A derivative supplies a nonuniform phase | Where will the wave compress or spread? |
+| 10.10 Mastery | Build a gate (65) | A finite positive step window accumulates into a ramp and plateau | Which regions should rise or stay flat? |
+| 10.11 Mastery | One curve, many ideas (67) | Combine slope, thresholds, projection, signed area and paired heights | Which intermediate goal will you build first? |
 
 For adjacent puzzles that reuse a relationship, observe whether the added work feels like a meaningful increase in complexity. Ask what changed from the previous construction and whether that change requires a new planning step. If players experience the second task as repetition, revise its targets or role rather than granting completion through the earlier source.
 
 The last direct-geometry puzzle is optional source 47, with target centre `(5/4,-1/2)` and radius `5/2` (facilitator reference only). Ask for a useful target pair and a predicted direction of centre movement before the edit. After solving, use a creation with a translated or differently sized constellation to probe transfer. The available quarter-step parameter grid is not a difficulty metric; direct manipulation and the chord guide should support a geometric plan. Its Notes should expose the circle prerequisites without revealing future block-built loop lessons. Distinguish a misunderstood perpendicular bisector from a difficult drag, unreadable fraction or missed Equation/Flow view.
 
-The provided-bowl lesson precedes scaling that roof while holding its peak, and both precede the raised-bowl challenge. Chapter lengths are 5, 4, 5, 6, 5, 6, 9, 6, 8 and 9 puzzles. The extension transfer matrix below covers Loops through Together. Each chapter ends with a transfer challenge. The optional collection remains available from the same puzzle menu. In Repeated squaring, compare source 31's provided-bowl summit with source 11's later requirement to construct that bowl; ask players to name the additional planning job rather than treating the two as interchangeable presentations.
+The provided-bowl lesson precedes scaling that roof while holding its peak, and both precede the raised-bowl challenge. Chapter lengths are 5, 4, 5, 6, 5, 6, 10, 9, 8 and 11 puzzles. The extension transfer matrix below covers Loops through Together. Each chapter ends with a transfer challenge. The optional collection remains available from the same puzzle menu. In Repeated squaring, compare source 31's provided-bowl summit with source 11's later requirement to construct that bowl; ask players to name the additional planning job rather than treating the two as interchangeable presentations.
 
 Shape notes offer a visible, optional reference, limited to the current and preceding lessons even when replaying after later completions. Create provides the full reference. Height shows source 24 after `AHH` to explain a quarter lift without completing the puzzle. Reflection shows how `N` carries the raised baseline below zero. Squaring gives the complete `AQ` introduction, then connects its shifted fold to the earlier arch. Slopes names input turns and output placement as separate jobs. Accumulation names input signs and zeros, net change and starting amount. Discovery puzzles show a finding after the accepted move and hide Hints. Notes never contain an active-puzzle plan; capstone Notes name relationships without showing a whole witness. They do not insert blocks or alter the current recipe. See [shape-notes.md](shape-notes.md) for each lesson's information boundary.
 
@@ -166,13 +178,13 @@ Recruitment and sending invitations are separate actions requiring user authoriz
 
 ### Transfer into the combined garden
 
-The current route has 63 main puzzles and fourteen optional sources. Observe these connections before judging the finale:
+The current route has 69 main puzzles and fourteen optional sources. Observe these connections before judging the finale:
 
 | Discovery | Prediction before a move | Transfer to look for |
 | --- | --- | --- |
 | Roof to loop (48) | Why does the same right side allow two heights? | Connect roof zeros and maximum to a complete loop |
 | Loop growth, scale and regions (68–70) | How does this right-side operation change both actual heights or their real domain? | Predict the effect before applying it in sources 66, 49 and 71 |
-| Waves (50–55) | Will this change phase, period, amplitude or baseline? | Place and fold repeating landmarks without cycling all block orders |
+| Waves (50–55, 79–81) | Will this change phase, period, amplitude or baseline? | Place and fold repeating landmarks without cycling all block orders |
 | Steps (56–60) | Which side owns the exact boundary? Will this alter width or height? | Place a threshold using input scaling and shift |
 | Stepped phase and area (61–63) | Where does the accumulated path rise, stay flat or fall? | Plan a signed input from the required accumulated shape |
 | Uneven wave spacing (64) | What happens when phase itself is a bowl? | Reuse a derivative as a new input relationship |
@@ -186,6 +198,15 @@ Design reference: [The Level Design Book on pacing](https://book.leveldesignbook
 
 ## Picture and mastery transfer checks
 
-At 10.1, ask the player to identify the kept region from the cut lines and faded discarded sections, then move an edge and ask whether any retained height should change. Check whether the required-interval bracket is understood separately from fitting the target heights. At 10.2, ask where the area anchor stays before changing the crop. At 10.3–10.6, ask for a prediction about zeros, thickness or phase before a block move. After the picture is built, observe whether players identify intermediate subgoals in 10.7–10.9 and choose to continue. Mastery labels and large search spaces are not evidence of understanding or fun.
+At 10.1, ask which choice changes the straight line's inclination while keeping it planted. At 10.2, ask which move changes the bank's height while preserving its zeros; the drawing frame is fixed and requires no editing. At 10.3, ask where the area anchor stays even though the picture begins later than zero. At 10.4–10.8, ask for a prediction about zeros, shoulders, thickness or phase before a block move. After the picture is built, observe whether players identify intermediate subgoals in 10.9–10.11 and choose to continue. Mastery labels and large search spaces are not evidence of understanding or fun.
 
-For the leaf/cucumber transfer, ask which outline will have rounded caps before the 7.7 move, and why. At 10.6, ask which earlier idea controls the broad body separately from its endpoints. If a player needs the target recipe from Hints before distinguishing these properties, revisit the rounded/pointed comparison; do not infer understanding from a successful three-square experiment.
+For the leaf, flower and cucumber transfer, ask which outline will have rounded caps before the 7.8 move, and why. At 10.6, confirm that the player understands they constructed one petal and that the garden's fivefold repetition is decorative. At 10.8, ask which earlier idea controls the broad body separately from its endpoints. If a player needs the target recipe from Hints before distinguishing these properties, revisit the rounded/pointed comparison; do not infer understanding from a successful three-square experiment.
+
+
+## New prerequisite and repair probes
+
+Use the prompts in [learning-path.md](learning-path.md). Before the 7.4 block move, ask where its zero and loop centre will go. After 8.4, use 8.5 to check whether the player can place a movable Halve before Sine without relying on the fixed machine. At 8.8, ask which five targets are already correct and which operation preserves them. In 10.7 compare the sine construction with a parabola that matches three targets; ask which remaining point can distinguish them and what property needs revising.
+
+Observe whether the direct prerequisite links in Notes recover a missing idea quickly. Record requests for an unrelated earlier reference and the purpose it would serve; this evidence can establish whether an accumulated-knowledge destination is useful. Create retains the complete reference. The full graph, exact enumeration and automated route checks establish availability and arithmetic, not understanding.
+
+After assembling the garden, ask players to name the scene and identify each earned contribution. Check whether the aligned top/bottom labels and their contrasting hover/focus outlines make selecting a shape predictable, and whether the cucumber reveal stays attached to its mathematical outline. A complete picture should feel like a reward before the remaining Mastery puzzles.

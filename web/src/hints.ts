@@ -55,11 +55,16 @@ const clues:Record<number,[string,string]> = {
   61:['Feed the integer step levels into sine’s four-value cycle.','Track the repeating projection $0,1,0,-1$ in Flow.'],
   62:['Read each step as a constant signed rate over its width.','Positive steps raise the accumulated curve, zero steps hold it, and negative steps lower it.'],
   63:['Build the signed step area as an intermediate path before reshaping it.','Once the accumulated path has the right corners, decide how square, reflection and lift should change it.'],
-  72:['Move the crop edges to the endpoints of the useful lobe. The retained heights already have the right values.','Crop changes where the curve exists; it does not move the zeros or change the peak inside the interval.'],
-  73:['Inspect the accumulated bowl before fitting and framing the stroke.','Accumulation remains anchored at $x=0$. Moving the crop edge does not restart the area there.'],
+  82:["Compare the straight line's rise from its first target to its last.",'Try each available relationship on that rise. Which one keeps the line planted at zero while setting its inclination?'],
+  72:['The drawing interval is fixed. Which block changes height while keeping both zeros?','Compare the peak before and after a scale. The frame needs no adjustment.'],
+  73:['Inspect the accumulated bowl before fitting the stroke.','Accumulation remains anchored at $x=0$. The fixed frame does not restart the area at its left edge.'],
   74:["Use the two zeros to read the loop's width, then compare the squared height at its middle.",'The required middle heights are $\\pm\\frac12$, so Equation compares their square with the right side.'],
   75:['Build a nonnegative roof from the line, with zeros at the leaf tips.','Square that roof on the right side so the solved positive and negative branches copy it and meet in pointed ends.'],
-  76:['Place the wave landmarks before fitting their vertical range and middle height.','Changes before sine control phase. Changes afterward control amplitude and baseline; crop only keeps the finished stroke.'],
+  83:['A familiar pointed leaf can become a petal. Keep its tips; change the shoulders.','Compare the roof with its square between zero and one. The garden repeats the one completed petal; repetition is not another target.'],
+  76:['Compare the wave landmarks before changing a curve that almost fits.','If the ends and peak agree but the extra point misses, compare phase spacing and shoulder shape. A global lift would move the heights that already fit. Trace the input to sine in Flow; the drawing frame is fixed.'],
+  78:['The roof reaches its maximum where the input to Square is zero.','Move that zero before the fixed Square, then turn and place the roof. Adding to the finished right side cannot shift its centre sideways.'],
+  79:['Both input orders give a wider wave. Do they put its peak in the same place?','Trace the shifted input through Halve. A shift made first is halved too.'],
+  81:['The sine is movable now, but its input still determines its period.','Use Flow to compare the distance between sine input values zero and two. Scaling after sine changes height instead of that spacing.'],
   77:["Separate the outline's length, thickness and flatness. The right-side roof's zeros name the two ends.",'Recall the flatter roofs from Flat tops, but keep the final right side as a roof rather than its square. Equation shows the square root that gives rounded caps and the scale that sets thickness.'],
   64:['The cubic hides a bowl in its slope. Shape that phase before sending it around sine’s circle.','Different phase heights wind around the circle at unequal intervals. Use the derivative to control that spacing, then fold and fit the output.'],
   65:['First isolate a positive step window with phase, rounding and sine.','What continuous shape does that finite pulse accumulate? Compare its midpoint and ends before choosing how to centre or fold it.'],
@@ -83,7 +88,7 @@ const clues:Record<number,[string,string]> = {
 export function puzzleHints(state:State,result:Result) {
   const id=state.sourceId,chapter=chapterIndex(id),level=LEVELS[id-1];
   const [first,more]=clues[id]??[level.hint,'Compare the current construction with the required targets, one relationship at a time.'];
-  const view=[74,75,77].includes(id)?'function':id>=43||chapter>=4||[24,14,5,15,22,16,17,18,19,20,21,23].includes(id)?'flow':'function';
+  const view=[74,75,77,82,83].includes(id)?'function':id>=43||chapter>=4||[24,14,5,15,22,16,17,18,19,20,21,23].includes(id)?'flow':'function';
   const label=view==='function'?'Equation':'Flow',guide=result.heightGuide;
   const gap=guide&&[25,26,28,11].includes(id)?`<div class="hint-reading">${tex(`${heightGapFormula(guide)}=${rationalTex(guide.target)}`)}<span>Required height gap</span></div>`:'';
   const triangle='<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M5 3L11 8L5 13Z" fill="currentColor"/></svg>';

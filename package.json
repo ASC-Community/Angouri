@@ -13,7 +13,7 @@
     "test:kernel": "dotnet run --project tests/Angouri.Tests.csproj -c Release",
     "test:browser": "playwright test",
     "sync:community": "node scripts/sync-community.mjs",
-    "test:content": "node --test tests/content.test.mjs",
+    "test:content": "node --test tests/content.test.mjs tests/learning-path.test.mjs",
     "measure": "node scripts/measure.mjs",
     "demo": "node scripts/capture-demo.mjs",
     "export:brand": "node scripts/export-brand.mjs"

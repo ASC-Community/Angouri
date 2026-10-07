@@ -67,7 +67,7 @@ test('discoveries report the chosen effect, keep Hints away, and lead into the l
 
   await page.locator('#menu-open').click();await page.locator('#puzzles-open').click();
   const loops=page.locator('.chapter-group').filter({has:page.locator('summary',{hasText:'Loops'})});
-  expect(await loops.locator('[data-level]').evaluateAll(options=>options.map(option=>Number(option.dataset.level)))).toEqual([43,44,48,68,69,70,66,49,71]);
+  expect(await loops.locator('[data-level]').evaluateAll(options=>options.map(option=>Number(option.dataset.level)))).toEqual([43,44,48,78,68,69,70,66,49,71]);
 });
 
 test('connected open branches and loops fly once while an interior crossing launches separately',async({page})=>{

@@ -128,11 +128,10 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 .ingredient-surface { z-index: 1; display: flex; flex: 1; height: var(--piece-height); align-items: center; gap: 9px; padding: 9px 13px 11px 7px; min-width: 0; }
 .stock-deck { position: absolute; inset: 0; pointer-events: none; }
 .stock-deck i { position: absolute; z-index: calc(5 - var(--layer)); top: calc(var(--stock-top) + var(--layer) * var(--stack-step)); left: 0; width: 100%; height: var(--piece-height); border: 1px solid var(--piece-edge); border-radius: 10px; background: var(--piece-fill); box-shadow: 0 3px 0 var(--piece-base), inset 0 -1px 0 #ffffff70; }
-.stock-deck i::after { content: ''; position: absolute; bottom: 2px; left: 11px; width: 6px; height: 3px; border-top: 1px dotted var(--piece-ink); opacity: .5; }
 .reusable-stack .stock-deck { mask-image: linear-gradient(to bottom,#000 64%,#0009 84%,transparent 100%); -webkit-mask-image: linear-gradient(to bottom,#000 64%,#0009 84%,transparent 100%); }
 .reusable-stack.refilling .stock-deck i { animation: refill-stack .26s ease-out; }
 @keyframes refill-stack { from { transform: translateY(var(--stack-step)); } to { transform: translateY(0); } }
-.stock-total { position: absolute; z-index: 2; right: 6px; top: -8px; min-width: 24px; padding: 1px 5px; text-align: center; border: 1px solid var(--piece-edge); border-radius: 6px; background: #fffef8; font-size: 12px; }
+.stock-total { position: absolute; z-index: 7; right: 7px; bottom: -3px; min-width: 20px; padding: 1px 4px; text-align: center; border: 1px solid var(--piece-edge); border-radius: 5px; background: #fffef8; color: var(--piece-ink); font-size: 11px; line-height: 1.25; }
 .reusable-mark { position: absolute; right: 7px; bottom: -18px; color: var(--piece-ink); opacity: .75; font-size: 14px; line-height: 1; }
 /* Each formula uses its face, including the height freed by removing captions.
    Template-specific proportions keep fractions readable without growing stacks. */
@@ -314,7 +313,6 @@ body.reduced-motion *, body.reduced-motion *::before, body.reduced-motion *::aft
   .landing .site-header { padding: 28px 0 20px; }
   .landing .brand { transform: scale(1.8); }
   .landing .menu-button { top: 10px; right: 0; }
-  .choice-game .playground { min-height: min-content; }
   .choice-game .play-dock, .choice-game .play-dock:has(.palette[data-count="3"]) { width: 260px; max-width: 40%; max-height: none; overflow: visible; }
   .choice-game .palette { grid-template-columns: 1fr; --piece-height: 64px; gap: 13px; }
   .choice-game .dock-footer { flex-direction: column; gap: 6px; }
