@@ -50,6 +50,9 @@ export class ShapeNotes {
 
   show(source:number) {
     this.source=source;
+    // Open the reference at today's lesson, with normal downward reading.
+    // Returning from an earlier reference must not reopen at its old bottom.
+    document.getElementById('ideas-dialog')!.scrollTop=0;
     // Scope references to this puzzle, including when replaying an early lesson.
     // Create has the whole book.
     this.known=knownLessons(source);

@@ -4,6 +4,27 @@
 
 These edges are teaching hypotheses. A solve, an exhaustive recipe count, or an acyclic graph does not establish understanding. Observe a prediction before a move and a transfer to changed targets; distinguish mathematical uncertainty from trouble reading or operating the interface.
 
+## Discovery through actual arrangements
+
+Small recipe spaces can plainly be solved by trying their arrangements without understanding. These lessons therefore show the relationship on the accepted selection or arrangement, instead of putting the same experiments behind Hints. Feedback follows the edited block, distinguishes its input/output context, and can explain that an order change leaves the result unchanged. It describes what is already built rather than suggesting a completing recipe. Notes remains available as the reusable reference.
+
+The authored discovery set in `web/src/discovery.ts` includes all single-choice introductions and these short comparisons/reuse lessons:
+
+| Lessons | Teaching job |
+| --- | --- |
+| 1.3–1.4, 2.2–2.3, 3.2, 3.4 | Order changes a lift, reflection or fold |
+| 4.2, 4.4 | Reuse a familiar roof finish on a newly flattened shape |
+| 5.1–5.4, 6.1–6.5 | Compare the actual operations on either side of a station |
+| 7.1–7.8 | Learn centre/radius and how blocks change squared height |
+| 8.1–8.9 | Compare phase, spacing, folding, scale and baseline |
+| 9.1–9.7 | Compare rounding, thresholds, projection and signed steps |
+| 10.1, 10.2, 10.6 | Small picture-building retrieval/reward beats |
+| Optional sources 5, 14, 16, 17, 19, 20, 21 | Apply the same policy to short calculus comparisons |
+
+An inventory/station topology audit includes partial recipes, ignores interchangeable block identities and cosmetic holes, and distinguishes input from output placement. Examples: 1.3 has 5 orders, 1.4 has 19, 4.2/4.4 have 41 each, 8.5 has 35, and 8.7 has 31. These counts support treating the lessons as enumerable experiments. Classification is editorial, not a live threshold, and mathematical equivalence can reduce the meaningful possibilities further. The larger planning lessons (starting with 1.5 and including 3.3, 4.5–4.6, the station challenges and garden synthesis) retain Hints. Completion of a discovery lesson is not evidence that its relationship has been learned; the subsequent planning and transfer tasks must test that.
+
+Notes reads downward from the current lesson, then its closest authored prerequisite references. Create's complete book remains in chapter order. Opening Notes starts at the top rather than presenting an upward-scrolling history.
+
 An accumulated-knowledge button does not yet earn a separate place in puzzle play. A chronological list makes players search past unrelated lessons, while the current lesson and direct prerequisites answer the immediate recall question. Completion is also a poor proxy for what someone understands, particularly after replay or a deep link. Create's complete book serves open exploration, and the puzzle selector already supports revisiting earlier work. Reconsider a broader in-puzzle index if playtests show players repeatedly seeking an earlier relationship that the relevant references cannot reach; do not infer that need merely from the growing number of lessons.
 
 ## Closing the late-chapter gaps

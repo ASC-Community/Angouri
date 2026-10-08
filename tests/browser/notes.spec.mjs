@@ -32,26 +32,13 @@ test('an explicit 4.5 hint sketch compares fourth and eighth powers with exact a
   await page.keyboard.press('Escape');expect(await construction(page)).toEqual(before);await expect(page.locator('#tab-flow')).toHaveAttribute('aria-selected','true');
 });
 
-test('explicit calculus hint sketches connect shifted zeros and signed input through to the station output',async({page})=>{
-  test.setTimeout(120000); // Six independent page/kernel boots; individual UI waits stay bounded.
-  await open(page,34);
-  const slopes=page.getByRole('region',{name:'Where does the slope change sign?'});
-  await expect(visiblePanel(slopes).locator('.note-reading annotation')).toHaveText(['\\left.h\\right|_{x=1}=-2','\\left.h\\right|_{x=2}=0']);
-  await slopes.getByRole('button',{name:'Moved fold'}).click();
-  await expect(visiblePanel(slopes).locator('.note-reading annotation')).toHaveText(['\\left.h\\right|_{x=1}=0','\\left.h\\right|_{x=2}=2']);
-  await open(page,35);await expect(page.locator('#hint-sketch>.note-strip figcaption')).toHaveText(['Roof','Three flat places','Three zero slopes']);
-  await open(page,39);await expect(page.locator('#hint-sketch>.note-strip figcaption')).toHaveText(['Bowl','Negative, positive, negative','Fall, rise, fall']);
-  await open(page,40);
-  const before=await construction(page),half=page.getByRole('region',{name:'Does this order change the amount?'});
-  const original=await visiblePanel(half).locator('.note-curve').getAttribute('d');
-  await half.getByRole('button',{name:'Halve the output'}).click();expect(await visiblePanel(half).locator('.note-curve').getAttribute('d')).toBe(original);
-  await expect(visiblePanel(half).locator('.note-reading annotation')).toHaveText(['\\left.h\\right|_{x=0}=0','\\left.h\\right|_{x=2}=1']);
-  const lift=page.getByRole('region',{name:'More incoming, or more at the start?'}).first();
-  await expect(visiblePanel(lift).locator('.note-reading annotation')).toHaveText(['\\left.h\\right|_{x=0}=0','\\left.h\\right|_{x=2}=4']);
-  await lift.getByRole('button',{name:'Lift the output'}).click();
-  await expect(visiblePanel(lift).locator('.note-reading annotation')).toHaveText(['\\left.h\\right|_{x=0}=1','\\left.h\\right|_{x=2}=3']);
-  expect(await construction(page)).toEqual(before);
-  for(const id of [36,42]){await open(page,id);await expect(page.locator('#hint-sketch>.note-strip [data-note-target]')).toHaveCount(5);}
+test('calculus challenges retain planning sketches after their small arrangement discoveries',async({page})=>{
+  for(const id of [36,42]) {
+    await open(page,id);const before=await construction(page);
+    await expect(page.locator('#hint-sketch>.note-strip [data-note-target]')).toHaveCount(5);
+    await expect(page.locator('#hint-sketch')).not.toContainText('finished recipe');
+    expect(await construction(page)).toEqual(before);
+  }
 });
 
 test('optional geometry hints compare missing relationships without completing the final construction',async({page})=>{
@@ -64,7 +51,7 @@ test('optional geometry hints compare missing relationships without completing t
 });
 
 test('bonus calculus hints use the current starting curve and targets',async({page})=>{
-  for(const id of [15,17]) {
+  for(const id of [15,18]) {
     await open(page,id);const before=await construction(page);
     const input=await page.evaluate(()=>window.angouri.result.stages[0].latex);
     await expect(page.locator('#hint-sketch .note-stage').first().locator('annotation').last()).toHaveText(input);

@@ -51,7 +51,7 @@ let throwWon=false;
 let state: State | undefined, result: Result | undefined;
 let camera: Camera = {min:-.8,max:5.2};
 let defaultCamera: Camera = {...camera},fullCurve=false;
-let insertionIndex: number | undefined, selectedStage = '';
+let insertionIndex: number | undefined, selectedStage = '', discoveryStage = '';
 let probeIndex=40;
 let flowScroll={left:0,top:0},resetFlowScroll=false;
 type Snapshot={state:State;slots:RailSlots};
@@ -148,7 +148,7 @@ function progress() { if(state) write(SAVE,{schema:1,type:'save',state,slots:rai
 let feedbackContent:string|undefined;
 function showNotice() {
   $('feedback').className=`feedback ${notice.kind}`;
-  const finding=state&&result&&notice.kind!=='error'?discoveryObservation(state,result,selectedStage):'';
+  const finding=state&&result&&notice.kind!=='error'?discoveryObservation(state,result,discoveryStage):'';
   $('feedback').classList.toggle('discovery-feedback',!!finding);
   const content=finding||`${notice.kind==='error'?'':icon('hand',16)}<span>${escape(notice.text)}</span>`;
   if(content!==feedbackContent){$('feedback').innerHTML=content;feedbackContent=content;}
@@ -180,7 +180,7 @@ function updateHintCue(history:'push'|'keep'|'clear') {
   if(unsuccessfulRevisions<3)return false;
   hintOffered=true;hintCue=true;return true;
 }
-function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:RailSlots,requestedView?:View,animateCurve=true) {
+function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:RailSlots,requestedView?:View,animateCurve=true,editedId?:string) {
   requireOk(reply);
   const previousState=state,previousResult=result,previousPoints=displayedPoints||result?.points,previousSlope=displayedSlope??result?.startSlope,previousProbeX=result?probePoints(result)[probeIndex]?.[0]:undefined;
   const previousVisual=animateCurve&&!reduced&&!state?.circle&&displayedView()==='flight'?captureFlightGeometry($('scene')):undefined;
@@ -202,6 +202,12 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
   const newSource=!state||state.sourceId!==reply.state.sourceId||state.mode!==reply.state.mode;
   if(newSource||history==='clear') {hintOrders.clear();hintOffered=false;hintCue=false;hintBlockSet='';bestTargetHits=-1;unsuccessfulRevisions=0;pictureCelebrated=false;}
   state=reply.state;result=reply.result;railSlots=nextSlots;initialized=true;
+  const added=state.nodes.find(node=>!previousState?.nodes.some(before=>before.id===node.id));
+  if(newSource||history==='clear')discoveryStage='';
+  // Follow the accepted insertion/move without changing editor selection or
+  // focus. A cancelled/rejected pickup never changes the finding.
+  const observed=editedId??added?.id??discoveryStage;
+  discoveryStage=state.nodes.some(node=>node.id===observed&&node.id!==state!.station?.id)?observed:'';
   if(requestedView&&!introActive())view=requestedView;
   const offeredHint=updateHintCue(history);
   const previousOrder=previousState?.nodes.map(node=>node.op).join('')||'',order=state.nodes.map(node=>node.op).join('');
@@ -246,7 +252,6 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
   if(repeatHint&&hintCue)for(const animation of $('hints-open').getAnimations()) {
     if(animation instanceof CSSAnimation&&animation.animationName==='hint-invite')animation.currentTime=0;
   }
-  const added=state.nodes.find(node=>!previousState?.nodes.some(before=>before.id===node.id));
   if(added&&!newSource) {
     if(state.mode==='remix'&&!reduced)document.querySelector(`[data-op="${added.op}"]`)?.closest('.ingredient-stack')?.classList.add('refilling');
     const index=railSlots.indexOf(added.id),reveal=state.mode==='remix'&&index===railSlots.length-2?index+1:index;
@@ -261,7 +266,7 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
   if(offeredHint)$('move-announcement').textContent+=' Hints can help with this puzzle.';
   return true as const;
 }
-function perform(action: Action, history: 'push'|'keep'|'clear'='push',slots?:RailSlots,animateCurve=true) { return serial(async()=>accept(await kernel.run(state,action),history,slots,undefined,animateCurve)); }
+function perform(action: Action, history: 'push'|'keep'|'clear'='push',slots?:RailSlots,animateCurve=true) { return serial(async()=>accept(await kernel.run(state,action),history,slots,undefined,animateCurve,typeof action.id==='string'?action.id:undefined)); }
 function historyMove(back: boolean) {
   return serial(async()=> {
     const source=back?undo:redo, target=source.at(-1);
@@ -657,7 +662,7 @@ function moveCell(from:number,to:number) {
   if(!slots)return;
   if(state.station) {
     const nodes=slots.flatMap(id=>id?[state!.nodes.find(node=>node.id===id)!]:[]);
-    return serial(async()=>accept(await kernel.run({...state!,nodes},{type:'evaluate'}),'push',slots));
+    return serial(async()=>accept(await kernel.run({...state!,nodes},{type:'evaluate'}),'push',slots,undefined,true,id??undefined));
   }
   if(!id)return serial(async()=>{if(!state||!result)return;return accept({status:'ok',state,result},'push',slots);});
   const index=slots.slice(0,to).filter(Boolean).length;
@@ -765,7 +770,7 @@ document.addEventListener('click',event=>{
   if(d.stage){
     if(selectedStage&&selectedStage!==d.stage){const id=selectedStage;void moveCell(railSlots.indexOf(id),railSlots.indexOf(d.stage))?.then(()=>focusPart(id));}
     else if(insertionIndex!==undefined){void moveCell(insertionIndex,railSlots.indexOf(d.stage));}
-    else{selectedStage=selectedStage===d.stage?'':d.stage;render();focusPart(d.stage);}
+    else{selectedStage=selectedStage===d.stage?'':d.stage;discoveryStage=d.stage;render();focusPart(d.stage);}
   }
 });
 $('undo').onclick=()=>void historyMove(true);

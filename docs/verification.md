@@ -2,7 +2,17 @@
 
 Version **0.1.0**, currently unreleased, is implemented on `prototype/vine-playground`. Source now lives in `web/`, `kernel/`, `bridge/` and `tests/`; the old `prototype/` directory is gone. The production artifact is built in `dist/`, with an optional repository-root copy for local preview. The default branch and public deployment are unchanged. The authorized organization-profile consolidation was pushed separately, as recorded below.
 
-## Dense Flight sizing in Safari: latest follow-up
+## Learning from the current arrangement
+
+Short comparisons and reuse lessons now explain the accepted arrangement directly throughout the chapters, rather than offering Hints that repeat the few available experiments. The explicit authored set includes multi-slot lessons, both sides of fixed stations, and short optional calculus recipes. Larger planning challenges retain Hints. Notes opens at the top on the current lesson, followed by authored relevant prerequisites; Create retains the complete chapter-ordered reference.
+
+Discovery feedback follows the inserted, moved or selected block rather than defaulting to the recipe's last block. It updates through Undo/Redo and view changes, distinguishes station input from output, describes adjacent pairs locally, and explains equivalent orders as well as changed results. The Astra learning/language critic accepted the final source after corrections for intervening integrals, real-height domains, Floor endpoints and the repeated zero in Sine's quarter-turn cycle. That review is not a participant learning study.
+
+The focused browser checks cover fractional lift contributions, insertion before existing blocks, cancelled and accepted drags, keyboard moves across stations, history, exact unchanged readings for equivalent orders, discovery/Hint scope, Notes reopening, compact feedback sizing, existing lesson transitions and dense Flight reflow. TypeScript checking, all seven content/dependency checks and the frontend build pass. Kernel mathematics and authored puzzle rules are unchanged.
+
+All 45 focused scenarios have passing results across Chromium, Firefox and WebKit. The initial run passed 42; its station test accidentally moved a still-selected block when it intended to choose an insertion slot. Clearing that selection corrected the test, and the three station cases then passed on all engines (51.6 seconds). Logs are `.work/discovery-review.log` and `.work/discovery-stations.log`. The compact discovery layout was checked at 1512×982, 1146×610, 390×844, 844×390 and 320×568, including actual diagram containment and separation between feedback and actions. No native Mac Safari or participant testing is claimed.
+
+## Dense Flight sizing in Safari
 
 The reported Mac Safari clipping on **8.7 and 8.8** exposed an insufficient layout invariant: checking the outer scene alone does not establish that its SVG fits above the recipe. Dense Flight no longer resolves the plot through a chain of percentage heights inside auto-sized flex containers. Its diagram is positioned inside the allocated scene, and the SVG receives that scene's remaining height after the callout rows. Tall windows retain their extra plot space; short landscape gives the canvas only the width left beside the recipe. The mathematical camera and curve are unchanged.
 
