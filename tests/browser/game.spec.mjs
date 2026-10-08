@@ -442,11 +442,10 @@ test('fullscreen keeps three views visible and occasional tasks in the visual me
     await page.setViewportSize(viewport);
     for(const level of [3,4,5,7,11,12]){
       await choosePuzzle(page,level);
-      const minimumHeight=viewport.width>600&&viewport.height<=520?370:640;
-      await expect.poll(()=>page.evaluate(()=>({width:document.documentElement.scrollWidth,height:document.documentElement.scrollHeight}))).toEqual({...viewport,height:Math.max(minimumHeight,viewport.height)});
+      await expect.poll(()=>page.evaluate(()=>({width:document.documentElement.scrollWidth,height:document.documentElement.scrollHeight}))).toEqual(viewport);
       const launch=page.locator('#launch');if(await launch.isVisible()){await launch.scrollIntoViewIfNeeded();await expect(launch).toBeInViewport();}
       await page.locator('#palette').scrollIntoViewIfNeeded();await expect(page.locator('#palette')).toBeInViewport();
-      expect(await page.locator('#axis-labels .flight-label').evaluateAll(labels=>labels.every(el=>{const r=el.getBoundingClientRect(),s=document.querySelector('#scene').getBoundingClientRect();return r.bottom<=s.bottom+.5&&r.top>=s.top-.5;}))).toBe(true);
+      expect(await page.locator('#axis-labels .flight-label').evaluateAll(labels=>labels.every(el=>{const r=el.getBoundingClientRect(),s=document.querySelector('.flight-diagram').getBoundingClientRect();return r.bottom<=s.bottom+.5&&r.top>=s.top-.5;}))).toBe(true);
       const collisions=await page.locator('.target-label .katex-html').evaluateAll(labels=>{
         const rings=[...document.querySelectorAll('.ring-outer')],ticks=[...document.querySelectorAll('#axis-labels .katex-html')];
         const overlaps=(a,b)=>Math.min(a.right,b.right)-Math.max(a.left,b.left)>.5&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>.5;
@@ -461,7 +460,7 @@ test('fullscreen keeps three views visible and occasional tasks in the visual me
   await choosePuzzle(page,1);await page.locator('#menu-open').click();await expect(page.locator('.menu-tile')).toHaveCount(6);await expect(page.locator('.menu-art svg')).toHaveCount(6);
   await page.keyboard.press('Escape');await expect(page.locator('#menu-open')).toBeFocused();
   await place(page,'H');await throwIt(page);await expect(page.locator('#success button')).toHaveCount(0);
-  await page.locator('#launch').click();await idle(page);expect((await snapshot(page)).sourceId).toBe(2);await expect(page.locator('#scene')).toBeFocused();
+  await page.locator('#launch').click();await idle(page);expect((await snapshot(page)).sourceId).toBe(2);await expect(page.locator('#palette [data-op="H"]')).toBeFocused();
 });
 
 test('tap a block then a slot or matching stack to move or return it',async({page})=>{
@@ -499,7 +498,7 @@ test('keyboard editing and view tabs preserve focus and share one history',async
   await page.locator('#tab-flight').focus();await page.keyboard.press('ArrowRight');await expect(page.locator('#tab-function')).toBeFocused();await expect(page.locator('#tab-function')).toHaveAttribute('aria-selected','true');
   await page.keyboard.press('End');await expect(page.locator('#tab-flow')).toBeFocused();await expect(page.locator('#scene button')).toHaveCount(0);
   expect(await snapshot(page)).toEqual(state);await page.keyboard.press('Home');await expect(page.locator('#tab-flight')).toBeFocused();
-  await page.locator('#scene').focus();await page.keyboard.press('Space');await expect(page.locator('#success')).toBeVisible();
+  await page.locator('#launch').focus();await page.keyboard.press('Space');await expect(page.locator('#success')).toBeVisible();
   await page.keyboard.press('Control+z');await idle(page);await expect(page.locator('#redo')).toBeEnabled();await page.locator('#redo').click();await idle(page);expect(await snapshot(page)).toEqual(state);await expect(page.locator('#redo')).toBeEnabled();
   await page.keyboard.press('Control+z');await idle(page);await page.keyboard.press('Control+Shift+z');await idle(page);expect(await snapshot(page)).toEqual(state);
   await page.locator('#undo').click();await idle(page);await expect(page.locator('#redo')).toBeEnabled();await page.locator('.part-body').last().focus();await page.keyboard.press('Delete');await idle(page);await expect(page.locator('#redo')).toBeDisabled();
@@ -628,6 +627,13 @@ test('a text selection cannot steal a pickup and the drop effect lands on the ac
   const source=await page.locator('[data-op="H"]').boundingBox(),slot=await page.locator('[data-empty="1"]').boundingBox();
   await page.mouse.move(source.x+source.width/2,source.y+source.height/2);await page.mouse.down();await page.mouse.move(slot.x+slot.width/2,slot.y+slot.height/2,{steps:10});
   await expect(page.locator('.drag-ghost')).toHaveCount(1);expect(await page.evaluate(()=>getSelection().toString())).toBe('');
+  await page.evaluate(()=>{
+    const observer=new MutationObserver(()=>{
+      const animation=document.querySelector('.drag-ghost.settling')?.getAnimations()[0];
+      if(animation){animation.pause();observer.disconnect();}
+    });
+    observer.observe(document.body,{subtree:true,attributes:true,attributeFilter:['class']});
+  });
   await page.mouse.up();await idle(page);
   const landing=await page.evaluate(()=>{
     const ghost=document.querySelector('.drag-ghost.settling'),animation=ghost?.getAnimations()[0];animation?.pause();
@@ -663,35 +669,58 @@ test('the italic wordmark and dotted favicon share the thrown cucumber artwork',
   const fontBytes=await readFile(new URL('../../node_modules/katex/dist/fonts/KaTeX_Main-Italic.ttf',import.meta.url));
   const font=opentype.parse(fontBytes.buffer.slice(fontBytes.byteOffset,fontBytes.byteOffset+fontBytes.byteLength));
   const glyph=font.charToGlyph('n').getBoundingBox();
-  const ink={ascent:glyph.y2/font.unitsPerEm,descent:-glyph.y1/font.unitsPerEm};
-  await ready(page);
-  const paths=await page.evaluate(()=>[document.querySelector('link[rel="icon"]').getAttribute('href'),document.querySelector('#cucumber image').getAttribute('href')]);
-  expect(paths).toEqual(['./favicon.svg','./cucumber.svg']);
-  await expect(page.locator('#brand-math annotation')).toHaveText('\\mathit{angour}');await expect(page.locator('.brand-dot')).toBeVisible();
+  const ink={ascent:glyph.y2/font.unitsPerEm,descent:-glyph.y1/font.unitsPerEm},lettering=font.getPath('angour',0,27,30).toPathData(3);
+  const entry=await page.request.get('/'),entryHtml=await entry.text();expect(entryHtml).toContain('data-brand-text="angour"');
+  const openingFonts=['KaTeX_Main-Italic','KaTeX_Main-Regular','KaTeX_AMS-Regular','KaTeX_Math-Italic'];
+  const preloads=openingFonts.map(font=>{
+    const match=entryHtml.match(new RegExp(`<link rel="preload" href="([^"]*${font}[^"]*)" as="font" type="font/woff2" crossorigin>`));
+    expect(match,`${font} preload`).not.toBeNull();return match[1];
+  });
+  for(const href of preloads) {
+    const response=await page.request.get(new URL(href,entry.url()).href);
+    expect(response.ok(),`${href} resolves`).toBe(true);expect(response.headers()['content-type']).toContain('font/woff2');
+  }
   const [mascot,favicon]=await Promise.all([page.request.get('/cucumber.svg'),page.request.get('/favicon.svg')]);
   const artwork=await mascot.text(),icon=await favicon.text();
   const body=await page.evaluate(source=>new DOMParser().parseFromString(source,'image/svg+xml').querySelector('[data-body-frame]').getAttribute('d'),artwork);
+  const requested=new Set();let openScripts,openWorker,workerStarted=false;
+  const scriptsGate=new Promise(resolve=>openScripts=resolve),workerGate=new Promise(resolve=>openWorker=resolve);
+  page.on('request',request=>{if(preloads.some(href=>request.url().endsWith(href.slice(1))))requested.add(openingFonts.find(font=>request.url().includes(font)));});
+  await page.route('**/*.js',async route=>{
+    if(new URL(route.request().url()).pathname.endsWith('/engine-worker.js')){workerStarted=true;await workerGate;}
+    else await scriptsGate;
+    await route.continue();
+  });
+  await page.route('**/cucumber.svg',async route=>{await scriptsGate;await route.continue();});
+  const navigation=page.goto('/');
+  try {
+    await expect(page.locator('.brand-wordmark')).toBeVisible();await expect(page.locator('.brand-lettering')).toHaveAttribute('d',lettering);
+    const loading=page.locator('.loading-scene .loading-cucumber');await expect(loading).toBeVisible();await expect(loading).toHaveAttribute('width','56');await expect(loading).toHaveAttribute('height','56');await expect(loading).toHaveAttribute('aria-hidden','true');
+    await expect(loading.locator('[data-body-frame]')).toHaveAttribute('d',body);await expect(page.locator('#loading-cucumber-skin')).toHaveCount(1);await expect(page.locator('#brand-cucumber-skin')).toHaveCount(1);await expect(page.locator('.loading-scene img')).toHaveCount(0);
+    await expect.poll(()=>[...requested].sort()).toEqual([...openingFonts].sort());
+    openScripts();await expect.poll(()=>workerStarted).toBe(true);
+  }
+  finally {openScripts();openWorker();}
+  await navigation;await page.waitForFunction(()=>window.angouri?.state&&document.querySelector('#playground')?.getAttribute('aria-busy')==='false');
+  const paths=await page.evaluate(()=>[document.querySelector('link[rel="icon"]').getAttribute('href'),document.querySelector('#cucumber image').getAttribute('href')]);
+  expect(paths).toEqual(['./favicon.svg','./cucumber.svg']);
+  await expect(page.locator('.brand-wordmark')).toBeVisible();await expect(page.locator('.brand-lettering')).toHaveAttribute('data-brand-text','angour');
+  await expect(page.locator('.brand-lettering')).toHaveAttribute('d',lettering);await expect(page.locator('#brand-math')).toHaveCount(0);await expect(page.locator('.brand-dot')).toBeVisible();
   await expect(page.locator('.brand-cucumber [data-body-frame]')).toHaveAttribute('d',body);
   await expect(page.locator('.brand-cucumber [data-cucumber-part="stem"]')).toHaveCount(0);
   await expect(page.locator('.brand-cucumber')).toHaveCSS('clip-path','none');
   expect(icon).toContain(body);expect(icon).not.toContain('clipPath');expect(icon).not.toContain('data-cucumber-part="stem"');
   for(const width of [1440,390]) {
-    await page.setViewportSize({width,height:900});await page.evaluate(()=>document.fonts.ready);
+    await page.setViewportSize({width,height:900});
     const alignment=await page.evaluate(ink=>{
-    const math=document.querySelector('.brand .mathit'),style=getComputedStyle(math),probe=document.createElement('span');
-    probe.style.cssText='display:inline-block;width:1px;height:0';math.append(probe);
-    const baseline=probe.getBoundingClientRect();probe.remove();
-    // Canvas raster ink bounds can round outward by a whole CSS pixel on
-    // Windows. Compare SVG geometry with the actual bundled font outline.
-    const fontSize=parseFloat(style.fontSize),scale=baseline.width;
+    const wordmark=document.querySelector('.brand-wordmark'),box=wordmark.getBoundingClientRect(),scale=box.width/wordmark.viewBox.baseVal.width;
+    const baseline=box.top+27*scale,fontSize=30*scale;
     const body=document.querySelector('.brand-cucumber [data-body-frame]'),matrix=body.getScreenCTM();
     const top=new DOMPoint(11.5,5).matrixTransform(matrix),bottom=new DOMPoint(3.5,62).matrixTransform(matrix);
-    const dot=document.querySelector('.brand-dot').getBoundingClientRect(),dx=top.x-bottom.x,dy=top.y-bottom.y;
-    return {angle:Math.atan2(dx,-dy)*180/Math.PI,dotGap:Math.abs((dot.x+dot.width/2-top.x)*dy-(dot.y+dot.height/2-top.y)*dx)/Math.hypot(dx,dy),
-      family:style.fontFamily,fontStyle:style.fontStyle,
-      crownGap:(top.y-baseline.top)/scale+ink.ascent*fontSize,tailGap:(bottom.y-baseline.top)/scale-ink.descent*fontSize};
+    const dot=document.querySelector('.brand-dot'),centre=new DOMPoint(Number(dot.getAttribute('cx')),Number(dot.getAttribute('cy'))).matrixTransform(dot.getScreenCTM()),dx=top.x-bottom.x,dy=top.y-bottom.y;
+    return {angle:Math.atan2(dx,-dy)*180/Math.PI,dotGap:Math.abs((centre.x-top.x)*dy-(centre.y-top.y)*dx)/Math.hypot(dx,dy),
+      crownGap:top.y-baseline+ink.ascent*fontSize,tailGap:bottom.y-baseline-ink.descent*fontSize};
     },ink);
-    expect(alignment.family).toContain('KaTeX_Main');expect(alignment.fontStyle).toBe('italic');
     expect(alignment.angle).toBeCloseTo(17,1);expect(alignment.dotGap).toBeLessThan(.1);
     expect(Math.abs(alignment.crownGap)).toBeLessThan(.5);expect(Math.abs(alignment.tailGap)).toBeLessThan(.5);
   }
@@ -834,7 +863,7 @@ test('mobile reduced motion and unavailable storage remain playable',async({page
 
 test('About preserves the original projects and contributors and returns to the game',async({page})=>{
   await page.goto('/about/');for(const name of ['AngouriMath','MxEngine','GenericTensor','MonoBind','DotnetBenchmarks','WhiteBlackGoose','MomoDeve','Happypig375','TheSeems'])await expect(page.locator('main')).toContainText(name);
-  await expect(page.locator('#brand-math annotation')).toHaveText('\\mathit{angour}');await expect(page.locator('.brand-dot')).toBeVisible();
+  await expect(page.locator('.brand-wordmark')).toBeVisible();await expect(page.locator('.brand-lettering')).toHaveAttribute('data-brand-text','angour');await expect(page.locator('#brand-math')).toHaveCount(0);await expect(page.locator('.brand-dot')).toBeVisible();
   const mascot=await page.request.get('/cucumber.svg'),artwork=await mascot.text();
   const body=await page.evaluate(source=>new DOMParser().parseFromString(source,'image/svg+xml').querySelector('[data-body-frame]').getAttribute('d'),artwork);
   await expect(page.locator('.brand-cucumber [data-body-frame]')).toHaveAttribute('d',body);
@@ -869,7 +898,7 @@ test('Equation compares the final function immediately and reflows into a column
 
 test('Equation marks exact decimals with equals and rounded decimals with approximation',async({page})=>{
   await ready(page,'/#level=25&view=function');
-  const expected=page.locator('.value-table tbody tr td:nth-child(2)');
+  const expected=page.locator('.value-table tbody tr[data-status] td:nth-child(2)');
   await expect(expected.locator('.exact-value annotation')).toHaveText(['\\frac{13}{8}','\\frac{17}{8}','\\frac{13}{8}']);
   await expect(expected.locator('.decimal-value annotation')).toHaveText(['= 1.625','= 2.125','= 1.625']);
   await expect(page.locator('.value-table tbody tr td:first-child .decimal-value')).toHaveCount(0);
@@ -1057,10 +1086,10 @@ test('Flow confirmation never introduces transient overflow or resizes its panel
   await page.emulateMedia({reducedMotion:'no-preference'});await ready(page,'/#level=4&view=flow');for(const op of ['H','Q','N','A'])await place(page,op);
   for(const viewport of [{width:1440,height:900},{width:1280,height:720},{width:390,height:844}]) {
     await page.setViewportSize(viewport);await page.evaluate(()=>document.fonts.ready);
-    if(viewport.width>600)expect(await page.locator('.flow-line').evaluate(el=>{
-      const style=getComputedStyle(el),scrollbar=el.offsetHeight-el.clientHeight-parseFloat(style.borderTopWidth)-parseFloat(style.borderBottomWidth);
-      return el.scrollHeight-el.clientHeight-Math.max(0,scrollbar);
-    })).toBeLessThanOrEqual(1);
+    // Short frames may already need local inspection scrolling. Confirmation
+    // must preserve those extents and never make the game document scroll.
+    expect(await page.evaluate(()=>[document.documentElement.scrollWidth-innerWidth,document.documentElement.scrollHeight-innerHeight])).toEqual([0,0]);
+    expect(await page.locator('.flow-line').evaluate(el=>el.clientHeight)).toBeGreaterThan(60);
     await page.evaluate(()=>{
       const read=()=>['.flow-goals','.flow-line','#scene','.play-dock'].map(selector=>{
         const el=document.querySelector(selector);return {selector,width:el.clientWidth,height:el.clientHeight,contentWidth:el.scrollWidth,contentHeight:el.scrollHeight};
@@ -1079,7 +1108,9 @@ test('Flow confirmation never introduces transient overflow or resizes its panel
 test('Flow preserves horizontal and vertical inspection scroll through edits and view changes',async({page})=>{
   await page.setViewportSize({width:1280,height:720});await ready(page);await menu(page,'nav-create');await idle(page);
   for(let i=0;i<8;i++)await place(page,'A');await changeView(page,'flow');
-  const scroll=()=>page.locator('.flow-line').evaluate(el=>({left:el.scrollLeft,top:el.scrollTop}));
+  // Firefox can report fractional scrollIntoView offsets but rounds a restored
+  // scrollTop assignment. Compare the same visual CSS pixel after restoration.
+  const scroll=()=>page.locator('.flow-line').evaluate(el=>({left:Math.round(el.scrollLeft),top:Math.round(el.scrollTop)}));
   await page.locator('.flow-machine').last().scrollIntoViewIfNeeded();let before=await scroll();expect(before.left).toBeGreaterThan(100);
   await place(page,'H');expect(await scroll()).toEqual(before);await page.locator('#undo').click();await idle(page);expect(await scroll()).toEqual(before);
   await changeView(page,'function');await changeView(page,'flow');expect(await scroll()).toEqual(before);
@@ -1160,7 +1191,11 @@ test('return slots sit above all remaining stock without moving the existing pil
   await condensed.locator('[data-return]').click();await idle(page);await expect(condensed.locator('.stock-deck i')).toHaveCount(2);
   await expect(condensed.locator('.stock-total annotation')).toHaveText('6');
   const condensedLayout=await page.locator('#palette').evaluate(element=>({width:element.clientWidth,height:element.clientHeight}));
-  for(const remaining of [5,4,3,2,1,0]){await place(page,'A');await expect(condensed.locator('.stock-total annotation')).toHaveText(String(remaining));}
+  for(const remaining of [5,4,3,2,1,0]){
+    await place(page,'A');await expect(condensed.locator('.ingredient')).toHaveAttribute('data-stock',String(remaining));
+    if(remaining>3)await expect(condensed.locator('.stock-total annotation')).toHaveText(String(remaining));
+    else await expect(condensed.locator('.stock-total')).toHaveCount(0);
+  }
   await expect(condensed.locator('.ingredient')).toBeDisabled();await expect(condensed.locator('.stock-deck i')).toHaveCount(0);
   expect(await page.locator('#palette').evaluate(element=>({width:element.clientWidth,height:element.clientHeight}))).toEqual(condensedLayout);
 });

@@ -22,6 +22,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 .landing .puzzle-heading { display: none; }
 .landing #axis-labels, .landing .flight-grid, .landing .flight-height-axis { display: none; }
 .intro .recipe-heading h2, .intro .history-button:disabled { visibility: hidden; }
+.recipe-content { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 8px; margin: -8px; scroll-padding: 8px; }
+.recipe-heading, .dock-footer { flex: none; }
 .intro .recipe-heading { min-height: 30px; }
 .launch-button { min-width: 146px; margin-left: auto; min-height: 44px; font-weight: 600; }
 .launch-button:disabled { background: #e5ebda; color: #789165; border-color: #bdccab; box-shadow: none; }
@@ -58,7 +60,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 @keyframes ring-ripple { 0% { opacity: .8; transform: scale(.8); } 100% { opacity: 0; transform: scale(1.8); } }
 @keyframes check-arrive { from { opacity: 0; } to { opacity: 1; } }
 
-.play-dock { container: recipe / inline-size; flex-shrink: 0; width: min(100%, 940px); margin: 0 auto; padding: 12px 22px 10px; background: #fffef9; border: 1px solid #d6dfc9; border-radius: 22px; box-shadow: 0 5px 0 #e4e9d9, 0 10px 30px #31492b06; }
+.loading .play-dock { display: none; }
+.play-dock { container: recipe / inline-size; display: flex; flex-direction: column; flex-shrink: 0; max-height: min(55%,calc(100% - 214px)); overflow: hidden; width: min(100%, 940px); margin: 0 auto; padding: 12px 22px 10px; background: #fffef9; border: 1px solid #d6dfc9; border-radius: 22px; box-shadow: 0 5px 0 #e4e9d9, 0 10px 30px #31492b06; }
 .recipe-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 5px; }
 .recipe-heading h2 { display: flex; align-items: center; gap: 12px; font-size: 11px; font-weight: 600; margin: 0; color: #647855; }
 .history-actions { display: flex; align-items: center; gap: 8px; }
@@ -122,18 +125,21 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 .recipe-part:hover { border-color: var(--piece-ink); }
 .recipe-part.inspected { outline: 2px solid var(--piece-ink); outline-offset: 2px; }
 .recipe-part.inspected::before { content: ''; position: absolute; bottom: 3px; left: calc(50% - 6px); width: 12px; height: 2px; border-radius: 2px; background: var(--piece-ink); }
-.palette { --piece-height: 74px; --stack-step: 8px; display: flex; justify-content: center; align-items: end; gap: 12px; flex-wrap: wrap; padding: 10px 3px 5px; min-height: calc(var(--piece-height) + var(--stack-room,0) * var(--stack-step) + 15px); }
+.palette { --piece-height: 74px; --stack-step: 8px; --stock-middle-opacity: .65; --stock-bottom-opacity: .3; display: flex; justify-content: center; align-items: end; gap: 12px; flex-wrap: wrap; padding: 10px 3px 5px; min-height: calc(var(--piece-height) + var(--stack-room,0) * var(--stack-step) + 15px); }
 .palette:has(.condensed-stack,.reusable-stack) { --stock-mark-room: 20px; }
 .ingredient-stack { --stock-top: calc((var(--stack-capacity,0) - var(--stack-depth,0)) * var(--stack-step)); --pile-height: calc(var(--piece-height) + var(--stack-capacity,0) * var(--stack-step)); position: relative; flex: 1 1 135px; min-width: 0; max-width: 218px; height: calc(var(--pile-height) + var(--stock-mark-room,0px)); background: transparent; isolation: isolate; }
 .ingredient { position: relative; top: var(--stock-top); z-index: 6; display: flex; width: 100%; min-width: 0; height: var(--piece-height); padding: 0; border-radius: 10px; text-align: left; cursor: grab; touch-action: none; background: transparent; color: var(--piece-ink); transition: transform .12s; }
-.ingredient-surface { z-index: 1; display: flex; flex: 1; height: var(--piece-height); align-items: center; gap: 9px; padding: 9px 13px 11px 7px; min-width: 0; }
+.ingredient-surface { z-index: 1; display: flex; flex: 1; height: var(--piece-height); align-items: center; gap: 9px; padding: 9px 13px 11px 7px; min-width: 0; transition: transform .12s, box-shadow .12s; }
 .stock-deck { position: absolute; inset: 0 0 auto; height: var(--pile-height); pointer-events: none; }
-.stock-deck i { position: absolute; z-index: calc(5 - var(--layer)); top: calc(var(--stock-top) + var(--layer) * var(--stack-step)); left: 0; width: 100%; height: var(--piece-height); border: 1px solid var(--piece-edge); border-radius: 10px; background: var(--piece-fill); box-shadow: 0 3px 0 var(--piece-base), inset 0 -1px 0 #ffffff70; }
-.has-more-stock .stock-deck { mask-image: linear-gradient(to bottom,#000 calc(100% - 2 * var(--stack-step)),#0009 calc(100% - var(--stack-step)),transparent 100%); -webkit-mask-image: linear-gradient(to bottom,#000 calc(100% - 2 * var(--stack-step)),#0009 calc(100% - var(--stack-step)),transparent 100%); }
+.stock-deck i { position: absolute; z-index: calc(5 - var(--layer)); top: calc(var(--stock-top) + var(--layer) * var(--stack-step)); left: 0; width: 100%; height: var(--piece-height); border: 1px solid var(--piece-edge); border-radius: 10px; background: var(--piece-fill); box-shadow: 0 3px 0 var(--piece-base), inset 0 -1px 0 #ffffff70; opacity: var(--stock-opacity,1); }
+/* Fade complete copies, keeping each face, rounded edge and thickness together.
+   Count from the bottom so a return outline leaves the available stock unchanged. */
+.has-more-stock .stock-deck i:nth-last-child(2) { --stock-opacity: var(--stock-middle-opacity); }
+.has-more-stock .stock-deck i:last-child { --stock-opacity: var(--stock-bottom-opacity); }
 .refilling .stock-deck i, .refilling .ingredient:not(.return-ready) .ingredient-surface { animation: refill-stack .26s ease-out; }
-.refilling .stock-deck i:last-child { animation-name: refill-bottom; }
-@keyframes refill-stack { from { transform: translateY(var(--stack-step)); } to { transform: translateY(0); } }
-@keyframes refill-bottom { from { transform: translateY(var(--stack-step)); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.refilling .stock-deck i:nth-last-child(2) { --refill-opacity: var(--stock-bottom-opacity); }
+.refilling .stock-deck i:last-child { --refill-opacity: 0; }
+@keyframes refill-stack { from { transform: translateY(var(--stack-step)); opacity: var(--refill-opacity,var(--stock-middle-opacity)); } to { transform: translateY(0); opacity: var(--stock-opacity,1); } }
 .stock-total, .reusable-mark { position: absolute; z-index: 7; right: 7px; bottom: 0; height: var(--stock-mark-room); display: flex; align-items: center; color: var(--piece-ink); opacity: .75; font-size: 14px; line-height: 1; pointer-events: none; }
 /* Each formula uses its face, including the height freed by removing captions.
    Template-specific proportions keep fractions readable without growing stacks. */
@@ -152,8 +158,9 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 [data-mode="remix"] .ingredient .piece-grip { position: absolute; left: 4px; top: 4px; }
 [data-mode="remix"] .ingredient .piece-grip svg { width: 11px; height: 11px; }
 [data-mode="remix"] .ingredient-cue { position: absolute; right: 5px; bottom: 4px; width: 25px; height: 25px; opacity: .5; }
-.ingredient:hover:not(:disabled) { transform: translateY(-2px); }
-.ingredient:active:not(:disabled) { transform: translateY(2px); cursor: grabbing; }
+.ingredient:hover:not(:disabled) .ingredient-surface { transform: translateY(-2px); }
+.ingredient:active:not(:disabled) { cursor: grabbing; }
+.ingredient:active:not(:disabled) .ingredient-surface { transform: translateY(3px); box-shadow: 0 1px 0 var(--piece-base), inset 0 1px 0 #ffffffc9; }
 .ingredient:disabled { opacity: 1; color: #94a184; cursor: default; }
 .ingredient:disabled .ingredient-surface { background: #f4f4ec; border: 1px dashed #c9d1bc; box-shadow: inset 0 2px 3px #6478450b; color: #94a184; }
 .ingredient:disabled .ingredient-face { opacity: .6; }
@@ -178,16 +185,15 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 .dock-footer:has(.discovery-feedback) { flex-wrap: wrap; }
 .recipe-guidance { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
 .recipe-guidance:has(.discovery-feedback) { flex: 1 1 260px; }
-.recipe-guidance .feedback { min-width: 0; }
+.recipe-guidance .feedback { min-width: 0; flex: 1 1 auto; }
 .recipe-guidance .hints-button { min-height: 32px; padding: 5px 9px; font-size: 11px; }
 .dock-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-shrink: 0; min-height: 44px; }
 .rethrow-button { width: 42px; height: 42px; }
 .feedback { display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 11px; color: #7d8e6c; text-align: center; line-height: 1.4; padding: 3px 4px; }
 .feedback.error { padding: 7px 10px; background: #f8e9e1; color: #94563c; border-radius: 7px; }
-.discovery-feedback { color: #526c42; max-width: 400px; text-align: left; flex-wrap: wrap; justify-content: flex-start; }
-.discovery-feedback > span:last-child { flex: 1 1 180px; }
+.discovery-feedback { display: block; color: #526c42; text-align: left; }
 .discovery-feedback > span:last-child .katex { display: inline-block; white-space: nowrap; }
-.discovery-operations { display: inline-flex; align-items: center; gap: 3px; flex: none; }
+.discovery-operations { display: inline-flex; align-items: center; gap: 3px; margin-right: 7px; vertical-align: middle; white-space: nowrap; }
 .discovery-order { display: flex; color: #728660; }
 .discovery-operation { display: grid; place-items: center; flex: none; min-width: 28px; min-height: 28px; border-radius: 8px; background: var(--piece-fill); color: var(--piece-ink); padding: 2px 5px; }
 .success { display: flex; align-items: center; gap: 16px; padding: 4px 0; }
@@ -219,7 +225,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
   .palette[data-count="4"] { grid-template-columns: repeat(4,minmax(0,1fr)); }
   .palette[data-count="5"] { grid-template-columns: repeat(5,minmax(0,1fr)); }
   .palette[data-count="6"] { grid-template-columns: repeat(3,minmax(0,1fr)); }
-  .game-shell:has(.palette[data-count="6"]) { min-height: 740px; }
   .palette[data-count="3"], .palette[data-count="4"], .palette[data-count="5"] { --piece-height: 71px; }
   .palette[data-count="3"] .ingredient-surface, .palette[data-count="4"] .ingredient-surface, .palette[data-count="5"] .ingredient-surface { padding: 8px 3px 10px; justify-content: center; }
   .palette[data-count="3"] .ingredient-face, .palette[data-count="4"] .ingredient-face, .palette[data-count="5"] .ingredient-face { align-items: center; text-align: center; }
@@ -235,7 +240,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 @media(min-width:601px) and (max-width:1000px) and (min-height:521px) {
   .palette[data-count="6"] { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); }
   .palette[data-count="6"] .ingredient-stack { max-width: none; }
-  .game-shell:has(.palette[data-count="6"]) { min-height: 740px; }
 }
 @media(max-height:700px) {
   .play-dock { padding-top: 7px; padding-bottom: 6px; }
@@ -246,9 +250,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
   .dock-footer { padding-top: 3px; min-height: 23px; }
 }
 @media(max-height:520px) and (min-width:601px) {
-  .play-dock { width: 310px; max-width: 43%; max-height: 100%; overflow-y: auto; margin: auto 0; padding: 8px 10px; }
-  .game-shell:has(.discovery-feedback,.stock-total,.reusable-mark) { height: auto; min-height: max(370px,100dvh); }
-  .play-dock:has(.discovery-feedback,.stock-total,.reusable-mark) { max-height: none; overflow: visible; }
+  .play-dock { width: 310px; max-width: 43%; max-height: 100%; overflow: hidden; margin: auto 0; padding: 8px 10px; }
   .palette { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }.palette[data-count] { --piece-height: 55px; }
   .palette[data-count="6"] { grid-template-columns: repeat(3,minmax(0,1fr)); }
   .palette[data-count="3"] { grid-template-columns: repeat(3,minmax(0,1fr)); }
@@ -270,6 +272,9 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
   .success-medal>svg { width: 25px; height: 25px; padding: 4px; }
 }
 @media(max-width:370px) { .palette { gap: 7px; } }
+@media(max-width:600px) and (max-height:700px) {
+  .play-dock { max-height: 45%; }
+}
 
 /* A larger vocabulary keeps full, readable pieces. Only the recipe is a rail. */
 .palette:is([data-count="7"],[data-count="8"],[data-count="9"]) { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); }
@@ -281,17 +286,12 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
   .palette:is([data-count="7"],[data-count="8"],[data-count="9"]) .ingredient-surface { padding: 7px 4px; gap: 3px; }
 }
 @media(max-height:520px) and (min-width:601px) {
-  .game-shell:has(.palette:is([data-count="7"],[data-count="8"],[data-count="9"])) { min-height: 440px; }
   .palette:is([data-count="7"],[data-count="8"],[data-count="9"]) { grid-template-columns: repeat(3,minmax(0,1fr)); }
-}
-@media(max-width:1099px) and (min-height:521px) {
-  .game-shell:has(.palette:is([data-count="7"],[data-count="8"],[data-count="9"])) { min-height: 840px; }
 }
 @media(max-width:600px) {
   .palette:is([data-count="7"],[data-count="8"],[data-count="9"]) { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
   .palette:is([data-count="7"],[data-count="8"],[data-count="9"]) .ingredient-cue { display: none; }
   .palette:is([data-count="7"],[data-count="8"],[data-count="9"]) .ingredient-surface { padding: 7px 4px; gap: 3px; }
-  .game-shell:has(.palette:is([data-count="7"],[data-count="8"],[data-count="9"])) { min-height: 970px; }
 }
 @media(prefers-reduced-motion:reduce) { *, *::before, *::after { animation: none!important; transition: none!important; } }
 body.reduced-motion *, body.reduced-motion *::before, body.reduced-motion *::after { animation: none!important; transition: none!important; }
@@ -299,21 +299,34 @@ body.reduced-motion *, body.reduced-motion *::before, body.reduced-motion *::aft
 /* Single-slot puzzles: choose, inspect, throw. */
 .puzzle-title-row { display: flex; align-items: center; justify-content: center; gap: 12px; }
 .choice-game .recipe-heading, .choice-game .construction { display: none; }
-.choice-game .play-dock { width: min(100%,540px); max-width: none; background: transparent; border: 0; box-shadow: none; padding: 8px 8px 14px; }
+.choice-game .play-dock { width: min(100%,540px); max-width: none; max-height: 100%; background: transparent; border: 0; box-shadow: none; padding: 8px 8px 14px; }
 .choice-game .play-dock:has(.palette[data-count="3"]) { width: min(100%,720px); }
 .choice-game .play-dock:has(.palette[data-count="4"],.palette[data-count="5"],.palette[data-count="6"]) { width: min(100%,940px); }
 .choice-game .palette { --piece-height: 82px; justify-content: center; gap: 14px; }
 .choice-game .ingredient { cursor: pointer; touch-action: manipulation; }
 .choice-game .piece-grip { display: none; }
-.choice-game .ingredient-surface { padding: 10px 18px; }
-.choice-game .ingredient[aria-pressed=true] .ingredient-surface { border-color: var(--piece-ink); box-shadow: inset 0 0 0 2px var(--piece-ink); }
+/* Relative positioning moves the face without a transformed fraction/container
+   layer inside the scroller; the outer hit area stays fixed in every state. */
+.choice-game .ingredient-surface { top: 0; transform: none; padding: 10px 18px; transition: top .12s, box-shadow .12s; }
+.choice-game .ingredient:hover:not(:disabled) .ingredient-surface { transform: none; }
+.choice-game .ingredient:hover:not(:disabled):not([aria-pressed=true]):not(:active) .ingredient-surface { top: -2px; }
+.choice-game .ingredient:active:not(:disabled) .ingredient-surface { top: 3px; transform: none; }
+.choice-game .ingredient[aria-pressed=true] .ingredient-surface { top: 3px; transform: none; border-color: var(--piece-ink); box-shadow: 0 1px 0 var(--piece-base), inset 0 0 0 2px var(--piece-ink); }
+/* The two introductory palettes have fixed, generous choice widths. Their
+   fractions do not need nested size containment during a face transition. */
+.intro .ingredient-face { container-type: normal; }
+.intro .ingredient .op-formula { font-size: 32px; }
+.intro .ingredient[data-op="H"] .op-formula { font-size: calc((var(--piece-height) - 22px) * .64); }
 .choice-game .dock-footer { justify-content: center; min-height: 60px; }
-.choice-game .dock-actions { margin-left: 0; }
+.choice-game .dock-actions { display: grid; grid-template-columns: var(--rethrow-width,42px) var(--launch-width,146px); margin-left: auto; }
+.choice-game .launch-button { grid-column: 2; grid-row: 1; min-width: 0; width: 100%; white-space: nowrap; }
+.choice-game .rethrow-button { grid-column: 1; grid-row: 1; }
 .choice-game [data-choice=empty] .dock-actions { display: none; }
 .choice-game .success { display: none; }
 .landing .brand { transform: scale(2.8); transform-origin: center; }
 @media(max-width:600px) {
-  .intro.game-shell { min-height: 480px; }
+  .choice-game { --rethrow-width: 36px; --launch-width: 132px; }
+  .intro.game-shell { min-height: 0; }
   .choice-game .palette { --piece-height: 78px; gap: 12px; }
   .choice-game .ingredient-surface { padding: 10px; }
   .choice-game .ingredient-cue { display: block; width: 28px; }
@@ -321,14 +334,23 @@ body.reduced-motion *, body.reduced-motion *::before, body.reduced-motion *::aft
   .landing .menu-button { top: 12px; right: 6px; }
   .choice-game .palette[data-count="3"] .ingredient-surface { padding: 8px 3px; }
   .choice-game .palette[data-count="3"] .ingredient-cue { display: none; }
+  .intro .ingredient .op-formula { font-size: 24px; }
+  .intro .ingredient[data-op="H"] .op-formula { font-size: calc((var(--piece-height) - 22px) * .64); }
 }
 @media(max-height:520px) and (min-width:601px) {
+  .choice-game { --launch-width: 124px; }
   .landing .site-header { padding: 28px 0 20px; }
   .landing .brand { transform: scale(1.8); }
   .landing .menu-button { top: 10px; right: 0; }
-  .choice-game .play-dock, .choice-game .play-dock:has(.palette[data-count="3"]) { width: 260px; max-width: 40%; max-height: none; overflow: visible; }
-  .choice-game .palette { grid-template-columns: 1fr; --piece-height: 64px; gap: 13px; }
+  .choice-game .play-dock, .choice-game .play-dock:has(.palette[data-count="3"]) { width: 260px; max-width: 40%; max-height: 100%; overflow: hidden; }
+  .choice-game .palette { grid-template-columns: repeat(2,minmax(0,1fr)); --piece-height: 64px; gap: 13px; }
+  .choice-game .palette[data-count="3"] { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .choice-game .palette[data-count="3"] .ingredient-surface { padding: 8px 3px; justify-content: center; }
+  .choice-game .palette[data-count="3"] .ingredient-cue { display: none; }
+  .intro .ingredient .op-formula { font-size: 20px; }
+  .intro .ingredient[data-op="H"] .op-formula { font-size: calc((var(--piece-height) - 22px) * .64); }
   .choice-game .dock-footer { flex-direction: column; gap: 6px; }
+  .choice-game .dock-footer .recipe-guidance { flex: none; }
   .choice-game .feedback { width: 100%; }
   .choice-game .dock-actions { justify-content: center; }
 }

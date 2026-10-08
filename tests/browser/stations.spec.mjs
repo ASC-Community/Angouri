@@ -148,7 +148,7 @@ test('Safari-compatible Flight labels stay tied to the plot at compact and wide 
         return Math.abs((r.left+r.width/2)-(m.e+m.a*x))<1;
       });
     })).toBe(true);
-    expect(await page.locator('.target-height .katex-html').evaluateAll(labels=>labels.every(label=>{const r=label.getBoundingClientRect(),s=document.querySelector('#scene').getBoundingClientRect();return r.left>=s.left-1&&r.right<=s.right+1&&r.top>=s.top-1&&r.bottom<=s.bottom+1;}))).toBe(true);
+    expect(await page.locator('.target-height .katex-html').evaluateAll(labels=>labels.every(label=>{const r=label.getBoundingClientRect(),s=document.querySelector('.flight-diagram').getBoundingClientRect();return r.left>=s.left-1&&r.right<=s.right+1&&r.top>=s.top-1&&r.bottom<=s.bottom+1;}))).toBe(true);
   }
 });
 

@@ -1,15 +1,16 @@
 .circle-game .play-dock { max-width: 850px; width: 100%; }
 .circle-game .palette { display: none; }
-.circle-game .scene[data-view=flight] { min-height: 290px; }
+
 .circle-game .flight-diagram { max-width: 860px; margin: auto; overflow: clip; }
-.circle-fit { grid-column: 1 / -1; grid-row: 2; justify-self: center; width: auto; min-height: 34px; height: 34px; padding: 4px 8px; gap: 5px; border: 1px solid #cbd8c1; border-radius: 8px; color: #6c8058; font-size: 11px; white-space: nowrap; }
+.circle-fit { grid-column: 3; grid-row: 1; justify-self: end; width: 34px; min-height: 34px; height: 34px; padding: 4px; gap: 5px; border: 1px solid #cbd8c1; border-radius: 8px; color: #6c8058; font-size: 11px; white-space: nowrap; }
+.circle-fit > span:last-child { display: none; }
 .circle-fit svg { width: 16px; height: 16px; }
 .circle-fit[aria-disabled=true] { opacity: .4; cursor: default; }
 .circle-fit:hover { background: #eef3e5; }.circle-fit.needs-fit { border-color: #7a9cb2; color: #416c88; background: #e4eff5; }
 .circle-fit[aria-pressed=true] { background: #dae8cd; color: #355b31; border-color: #6c8a56; box-shadow: inset 0 1px 3px #42694025; }
 @container view-toolbar (min-width:600px) {
-  .view-tabs { grid-column: 2; }
-  .circle-fit { grid-column: 3; grid-row: 1; justify-self: start; }
+  .circle-fit { justify-self: start; width: auto; padding-inline: 8px; }
+  .circle-fit > span:last-child { display: inline; }
 }
 .circle-game .construction { overflow: visible; }
 .circle-recipe { display: flex; align-items: center; gap: 24px; min-height: 86px; padding: 9px 4px; }
@@ -44,8 +45,8 @@
 .circle-identity { margin-top: 17px; font-size: 16px; color: #52738d; }
 .circle-equation .value-table { min-width: 0; }
 .circle-equation table { width: 100%; }
-.circle-game .scene[data-view=flow] { flex: 0 0 auto; overflow: hidden; }
-.circle-flow-line { display: grid; flex:none; height:auto; grid-template-columns: minmax(220px,1fr) minmax(230px,.8fr); gap: 16px; padding: 8px 20px 18px; min-height: 0; overflow:visible; }
+
+.circle-flow-line { display: grid; flex:1; height:auto; grid-template-columns: minmax(220px,1fr) minmax(230px,.8fr); gap: 16px; padding: 8px 20px 18px; min-height: 0; overflow:auto; }
 .circle-inspection { position: relative; min-width: 0; }
 .circle-flow-zero { position: absolute; font-size: 12px; color: #6c7d61; pointer-events: none; }
 .circle-flow-plot { display: block; width: 100%; height:clamp(210px,26vw,320px); }
@@ -69,6 +70,9 @@
 .circle-target-choice { cursor: pointer; border: 1px solid transparent; min-height: 36px; }
 .circle-target-name { font-size: 10px; color: #637754; }
 .circle-flow-controls .flow-goals { flex-wrap: wrap; overflow: visible; }
+@container flow (max-width:600px) {
+  .circle-flow-controls .flow-goals { flex-wrap: nowrap; overflow: auto; }
+}
 .circle-target-choice[aria-pressed=true] { border-color: #7b9cb3; background: #edf4f7; }
 .circle-chord-lesson { border-top: 1px solid #e1e6d7; margin-top: 14px; padding-top: 14px; }
 .circle-chord-lesson label { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 9px; font-size: 12px; }
@@ -78,26 +82,19 @@
 .circle-note-sketch svg { display: block; width: 100%; height: auto; }
 .circle-note-zero { position: absolute; left: 4%; top: 50%; transform: translateY(-50%); font-size: 11px; color: #6c7d61; }
 @media(max-width:600px) {
-  .circle-game { height: auto; min-height: 100dvh; }
-  .circle-game .canvas-side { min-height: 0; }
   .circle-game .playground { min-height: 0; }
-  .circle-game .scene[data-view=flight] { height: 330px; flex: none; }
   .circle-game .play-dock { padding: 12px 10px; }
   .circle-recipe { flex-direction: column; gap: 10px; padding: 8px 0; }
   .circle-recipe-source { font-size: 14px; }
   .circle-parameters { width: 100%; gap: 7px; }
   .circle-parameter { flex: 1; width: 0; padding: 7px; }
-  .circle-game .scene[data-view=flow] { flex: none; height: auto; max-height: none; }
-  .circle-flow-line { grid-template-columns: 1fr; padding: 6px 12px 16px; overflow: visible; }
+  .circle-flow-line { grid-template-columns: 1fr; padding: 6px 12px 16px; overflow: auto; }
   .circle-flow-plot { height: 230px; }
   .circle-game .final-formula { font-size: 18px; }
-  .circle-game .circle-equation { overflow: visible; }
   .circle-identity { font-size: 13px; }
 }
 @media(max-height:520px) and (min-width:601px) {
-  .circle-game { height: auto; min-height: 100dvh; }
-  .circle-game .scene[data-view=flight] { height: 290px; flex: none; }
-  .circle-game .play-dock { width: 290px; max-width: 40%; max-height: none; overflow: visible; align-self: flex-start; }
+  .circle-game .play-dock { width: 290px; max-width: 40%; max-height: 100%; overflow: hidden; align-self: flex-start; }
   .circle-recipe { flex-direction: column; gap: 12px; }.circle-parameters { gap: 6px; width: 100%; }.circle-parameter { width: 0; flex: 1; padding: 6px; }
   .circle-flow-line { grid-template-columns: 1fr; overflow: auto; }
 }

@@ -1,5 +1,8 @@
+import './focus.css';
+import { installKeyboardAffordances } from './keyboard-affordances';
+
 const DATA_KEYS = ['op','insert','stage','circleValue','circleHandle','circleTarget','cropRange','cropExact','cropAdd','cropClear'] as const;
-const NATIVE_TAB_STOPS = 'button:not([tabindex]), a[href]:not([tabindex]), summary:not([tabindex])';
+const NATIVE_TAB_STOPS = 'button:not([tabindex]), a[href]:not([tabindex]), summary:not([tabindex]), input:not([type=hidden]):not([tabindex]), select:not([tabindex]), textarea:not([tabindex])';
 
 type DataKey = typeof DATA_KEYS[number];
 
@@ -25,15 +28,129 @@ function enabled(element: HTMLElement | null): element is HTMLElement {
  * while leaving roving tablists and deliberately removed controls alone.
  */
 export function installTabStops(documentRoot: Document = document) {
+  const removeModality=installFocusModality(documentRoot);
+  const affordances=installKeyboardAffordances(documentRoot);
+  const removeEntry=installGameEntry(documentRoot);
+  const removeDialogBoundary=installDialogTabBoundary(documentRoot);
   const add=(root: ParentNode)=>root.querySelectorAll<HTMLElement>(NATIVE_TAB_STOPS).forEach(element=>element.tabIndex=0);
   add(documentRoot);
   const observer=new MutationObserver(records=>records.forEach(record=>record.addedNodes.forEach(node=>{
     if(!(node instanceof Element))return;
     if(node.matches(NATIVE_TAB_STOPS))(node as HTMLElement).tabIndex=0;
     add(node);
+    affordances.refresh();
   })));
   observer.observe(documentRoot.documentElement,{childList:true,subtree:true});
-  return ()=>observer.disconnect();
+  return ()=>{observer.disconnect();removeModality();affordances.remove();removeEntry();removeDialogBoundary();};
+}
+
+/** The first keyboard action starts at a visible game control, without an
+ * extra skip-link stop or unsolicited focus while the document loads. */
+export function focusGameControl(documentRoot:Document=document) {
+  const candidates=documentRoot.querySelectorAll<HTMLElement>('.view-tabs [aria-selected=true],#palette [data-op]:not(:disabled),#menu-open');
+  const target=[...candidates].filter(element=>element.getClientRects().length&&getComputedStyle(element).visibility==='visible');
+  // Menu occurs earlier in the document; it is only the loading fallback.
+  const control=target.find(element=>element.id!=='menu-open')??target[0];
+  control?.focus({preventScroll:true});
+  return !!control;
+}
+
+function installGameEntry(documentRoot:Document) {
+  let pending=true;
+  const key=(event:KeyboardEvent)=>{
+    if(!event.isTrusted||['Alt','Control','Meta','Shift'].includes(event.key))return;
+    if(pending&&event.key==='Tab'&&!event.shiftKey&&!documentRoot.querySelector('dialog[open]')&&[documentRoot.body,documentRoot.documentElement].includes(documentRoot.activeElement as HTMLElement)) {
+      if(focusGameControl(documentRoot))event.preventDefault();
+    }
+    pending=false;
+  };
+  const pointer=(event:Event)=>{if(event.isTrusted)pending=false;};
+  documentRoot.addEventListener('keydown',key,true);
+  documentRoot.addEventListener('pointerdown',pointer,true);
+  return ()=>{documentRoot.removeEventListener('keydown',key,true);documentRoot.removeEventListener('pointerdown',pointer,true);};
+}
+
+/** Keep the browser's order inside a modal, but wrap its boundaries before
+ * WebKit visits the unfocused page body and dialog container for two steps. */
+function installDialogTabBoundary(documentRoot:Document) {
+  const wrap=(event:KeyboardEvent)=>{
+    if(event.defaultPrevented||event.key!=='Tab'||event.altKey||event.ctrlKey||event.metaKey)return;
+    const dialog=documentRoot.querySelector<HTMLDialogElement>('dialog[open]');if(!dialog)return;
+    const controls=[...dialog.querySelectorAll<HTMLElement>('button,a[href],input,select,textarea,summary,[tabindex]')].filter(element=>{
+      if(element.tabIndex<0||element.matches(':disabled')||element.closest('[inert]')||!element.getClientRects().length||getComputedStyle(element).visibility!=='visible')return false;
+      // Closed details can retain nonempty layout boxes for their contents.
+      // Only their summary, including any controls in it, participates in Tab.
+      for(let parent=element.parentElement;parent&&parent!==dialog;parent=parent.parentElement) {
+        if(parent instanceof HTMLDetailsElement&&!parent.open&&!parent.querySelector(':scope > summary')?.contains(element))return false;
+      }
+      return true;
+    });
+    const active=documentRoot.activeElement,index=controls.indexOf(active as HTMLElement);
+    // After a pointer reopens a chapter, compact WebKit can retain the closed
+    // details' sequential-navigation position and skip all its puzzle rows.
+    // Step from summaries explicitly, using the same visible DOM order.
+    if(index>=0&&active?.tagName==='SUMMARY') {
+      event.preventDefault();controls[(index+(event.shiftKey?controls.length-1:1))%controls.length]?.focus();return;
+    }
+    if(index>=0&&(event.shiftKey?index>0:index<controls.length-1))return;
+    // A revealed hint is focused for reading with tabindex=-1. Let native Tab
+    // continue into its next control instead of jumping back to the header.
+    if(index<0&&active&&active!==dialog&&dialog.contains(active)) {
+      const direction=event.shiftKey?Node.DOCUMENT_POSITION_PRECEDING:Node.DOCUMENT_POSITION_FOLLOWING;
+      if(controls.some(control=>active.compareDocumentPosition(control)&direction))return;
+    }
+    event.preventDefault();
+    (event.shiftKey?controls.at(-1):controls[0])?.focus();
+  };
+  documentRoot.addEventListener('keydown',wrap,true);
+  return ()=>documentRoot.removeEventListener('keydown',wrap,true);
+}
+
+/** Keep focus restoration, while presenting its ring only for keyboard use. */
+export function installFocusModality(documentRoot: Document = document) {
+  const root=documentRoot.documentElement;
+  const keyboard=(event:KeyboardEvent)=>{
+    if(event.isTrusted&&!['Alt','Control','Meta'].includes(event.key))root.dataset.focusModality='keyboard';
+  };
+  const pointer=(event:Event)=>{if(event.isTrusted)root.dataset.focusModality='pointer';};
+  root.dataset.focusModality='pointer';
+  documentRoot.addEventListener('keydown',keyboard,true);
+  documentRoot.addEventListener('pointerdown',pointer,true);
+  documentRoot.addEventListener('mousedown',pointer,true);
+  documentRoot.addEventListener('touchstart',pointer,{capture:true,passive:true});
+  return ()=>{
+    documentRoot.removeEventListener('keydown',keyboard,true);
+    documentRoot.removeEventListener('pointerdown',pointer,true);
+    documentRoot.removeEventListener('mousedown',pointer,true);
+    documentRoot.removeEventListener('touchstart',pointer,true);
+    delete root.dataset.focusModality;
+  };
+}
+
+/**
+ * Safari can assign focus to a page control while a new document is arriving.
+ * Finish this guard with the first acknowledged construction so that render
+ * focus restoration does not turn that browser choice into an app choice.
+ * A real key or pointer action during loading makes the focus deliberate.
+ */
+export function guardArrivalFocus(documentRoot: Document = document) {
+  let interacted=false,finished=false;
+  const interaction=(event:Event)=>{if(event.isTrusted)interacted=true;};
+  const events=['keydown','pointerdown','touchstart'] as const;
+  events.forEach(type=>documentRoot.addEventListener(type,interaction,{capture:true,passive:true}));
+  return ()=>{
+    if(finished)return false;
+    finished=true;
+    events.forEach(type=>documentRoot.removeEventListener(type,interaction,true));
+    const element=documentRoot.activeElement;
+    if(interacted||!(element instanceof HTMLElement)||element===documentRoot.body)return false;
+    // blur() alone leaves the old sequential-navigation starting point behind,
+    // so subsequent Tab navigation can resume at a stale game control.
+    const root=documentRoot.documentElement,tabindex=root.getAttribute('tabindex');
+    root.tabIndex=-1;root.focus({preventScroll:true});root.blur();
+    if(tabindex===null)root.removeAttribute('tabindex');else root.setAttribute('tabindex',tabindex);
+    return documentRoot.activeElement===documentRoot.body;
+  };
 }
 
 /** Remember focus before render code replaces the palette or recipe markup. */

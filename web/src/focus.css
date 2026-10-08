@@ -1,0 +1,112 @@
+/* WebKit can keep :focus-visible after a pointer-driven dialog or view change.
+   Preserve the focus target, but reserve keyboard-navigation decoration for
+   the keyboard modality installed by keyboard.ts. Editing controls keep their
+   ordinary focus treatment so the caret and current field remain apparent. */
+:root[data-focus-modality=pointer] :focus-visible:not(input):not(select):not(textarea),
+:root[data-focus-modality=pointer] input:is([type=checkbox],[type=radio]):focus-visible {
+  outline: none;
+}
+
+/* Firefox does not always recompute :focus-visible when a key is pressed on
+   an element that was already pointer-focused. The explicit modality still
+   makes that deliberate keyboard focus visible across engines. */
+:root[data-focus-modality=keyboard] :focus:not(:where(dialog,[tabindex="-1"],.garden-piece)) {
+  outline: 3px solid #426940;
+  outline-offset: 3px;
+}
+
+:root[data-focus-modality=keyboard] .comparison-sized tbody:focus,
+:root[data-focus-modality=keyboard] .final-equation:focus,
+:root[data-focus-modality=keyboard] .flow-line:focus,
+:root[data-focus-modality=keyboard] .flow-goals:focus,
+:root[data-focus-modality=keyboard] .dialog-reading:focus,
+:root[data-focus-modality=keyboard] .notes-reading:focus {
+  outline: 2px solid #426940;
+  outline-offset: -2px;
+}
+
+/* Chapter cards clip their rounded contents. Keep the complete ring within
+   the selected heading or puzzle row instead of clipping it to one edge. */
+:root[data-focus-modality=keyboard] .chapter-group>summary:focus,
+:root[data-focus-modality=keyboard] .chapter-group .level-option:focus,
+:root[data-focus-modality=keyboard] .notes-index button:focus,
+:root[data-focus-modality=keyboard] .circle-target-choice:focus {
+  outline-offset: -4px;
+}
+
+.chapter-group>summary { border-radius: 11px; }
+.part-body { border-radius: inherit; }
+.game-shell :is(button,a,input,select,textarea,[tabindex]),
+dialog :is(button,a,input,select,textarea,[tabindex]) { scroll-margin: 8px; }
+.dialog-content,.pipeline { scroll-padding: 8px; }
+
+/* The ring follows the face while its larger, stationary hit area retains
+   hover and pointer capture. It never outlines the lower stock copies. */
+:root[data-focus-modality=keyboard] .ingredient:focus { outline: none; }
+:root[data-focus-modality=keyboard] .ingredient:focus .ingredient-surface { outline: 3px solid #426940; outline-offset: 3px; }
+
+:root[data-focus-modality=keyboard] .circle-handle:focus {
+  outline: 3px solid #527ea0;
+  outline-offset: 4px;
+}
+
+:root[data-focus-modality=keyboard] .hint-spoiler-cover:focus {
+  outline: none;
+}
+
+/* Paint above the scratch coating; a CSS outline underneath its positioned
+   SVG can have the correct geometry and still be completely invisible. */
+:root[data-focus-modality=keyboard] .hint-spoiler-cover:focus::after {
+  content: ''; position: absolute; inset: 3px; z-index: 4;
+  border: 3px solid #547d3d; border-radius: 9px; pointer-events: none;
+}
+
+:root input[type=range]:focus { outline: none; }
+.keyboard-arrows { position: fixed; z-index: 1200; pointer-events: none; color: #426940; border: 1px solid currentColor; border-radius: 7px; background: #fffef8; box-sizing: border-box; }
+.keyboard-arrows svg { display: block; width: 100%; height: 100%; stroke: currentColor; stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; }
+.keyboard-arrows .keyboard-knob-ring { display: none; }
+.keyboard-arrows[data-directions=x] .keyboard-vertical,
+.keyboard-arrows[data-directions=y] .keyboard-horizontal { display: none; }
+.keyboard-arrows.is-knob { border: 0; background: transparent; }
+.keyboard-arrows.is-knob .keyboard-knob-ring { display: initial; stroke-width: 2.5; }
+.keyboard-arrows.is-knob .keyboard-horizontal { filter: drop-shadow(0 0 1px #fffef8); }
+
+/* The extra :not() keeps this explicit keyboard style above the component's
+   deliberate programmatic-focus suppression when :focus-visible is stale. */
+:root[data-focus-modality=keyboard] .hint-spoiler-content:focus:not([hidden]) {
+  outline: 2px solid #789b5b;
+  outline-offset: -3px;
+}
+
+/* The garden draws its focus indication inside SVG instead of with outline. */
+:root[data-focus-modality=pointer] .garden-piece:focus:not(.is-pointed) .garden-focus-path {
+  opacity: 0;
+}
+
+:root[data-focus-modality=pointer] .garden-piece.is-missing:focus:not(.is-pointed) .garden-art-path {
+  opacity: .28;
+}
+
+:root[data-focus-modality=pointer] .garden-piece:focus:not(.is-pointed) .garden-piece-label rect {
+  fill: #213d40;
+  fill-opacity: .75;
+  stroke: #6c8980;
+  stroke-opacity: .4;
+  stroke-width: 1;
+}
+
+:root[data-focus-modality=keyboard] .garden-piece:focus .garden-focus-path {
+  opacity: .65;
+}
+
+:root[data-focus-modality=keyboard] .garden-piece.is-missing:focus .garden-art-path {
+  opacity: .75;
+}
+
+:root[data-focus-modality=keyboard] .garden-piece:focus .garden-piece-label rect {
+  fill: #345651;
+  fill-opacity: 1;
+  stroke: #fff0be;
+  stroke-opacity: 1;
+  stroke-width: 2;
+}

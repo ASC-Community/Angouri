@@ -7,7 +7,8 @@ async function ready(page,id,view='flight') {
 const workspace=page=>page.evaluate(()=>({state:window.angouri.state,history:window.angouri.history,slots:window.angouri.slots}));
 const add=async(page,op)=>{await page.locator(`[data-op="${op}"]`).click();await idle(page);};
 
-test('Hints guide the puzzle while Notes follow relevant prerequisites',async({page})=>{
+test('Hints reveal covered spoilers once while Notes follow relevant prerequisites',async({page})=>{
+  await page.emulateMedia({reducedMotion:'no-preference'});
   await ready(page,31,'flow');const before=await workspace(page);
   await expect(page.locator('#ideas-open')).toHaveAccessibleName('Notes');
   await expect(page.locator('#ideas-open [data-icon="book"] svg')).toHaveCount(1);
@@ -18,8 +19,17 @@ test('Hints guide the puzzle while Notes follow relevant prerequisites',async({p
   const more=page.getByRole('button',{name:'Another hint',exact:true});
   expect(await page.locator('.hint-actions').evaluate(el=>!!(el.compareDocumentPosition(document.querySelector('#hint-more-toggle'))&Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
   await expect(page.locator('#hint-extra')).toBeHidden();await expect(more).toHaveAttribute('aria-expanded','false');
-  await more.focus();await page.keyboard.press('Enter');await expect(page.locator('#hint-extra')).toBeVisible();await expect(more).toHaveAttribute('aria-expanded','true');await expect(more).toBeFocused();
-  await page.keyboard.press('Space');await expect(page.locator('#hint-extra')).toBeHidden();await expect(more).toHaveAttribute('aria-expanded','false');
+  await expect(more.locator('.hint-spoiler-scratch-path')).toHaveAttribute('pathLength','1');
+  await more.focus();await page.keyboard.press('ArrowRight');
+  expect(await more.evaluate(el=>getComputedStyle(el,'::after').borderTopWidth)).toBe('3px');
+  await page.keyboard.press('Enter');await expect(page.locator('#hint-extra')).toBeVisible();await expect(more).toHaveAttribute('aria-expanded','true');
+  await page.waitForFunction(()=>{const path=document.querySelector('#hint-more-toggle .hint-spoiler-scratch-path');if(!path)return false;const offset=parseFloat(getComputedStyle(path).strokeDashoffset);return offset>.05&&offset<.95;});
+  await expect(page.locator('#hint-extra')).toBeFocused();await expect(more).toBeHidden();
+  await page.keyboard.press('Space');await expect(page.locator('#hint-extra')).toBeVisible();await expect(page.locator('#hint-more-toggle')).toHaveAttribute('aria-expanded','true');
+  const sketch=page.getByRole('button',{name:'Show a sketch',exact:true});await expect(page.locator('#hint-sketch')).toBeHidden();await expect(sketch).toBeVisible();
+  await page.keyboard.press('Tab');await expect(sketch).toBeFocused();
+  await page.keyboard.press('Space');await expect(page.locator('#hint-sketch')).toBeVisible();await expect(page.locator('#hint-sketch-toggle')).toHaveAttribute('aria-expanded','true');await expect(page.locator('#hint-sketch')).toBeFocused();
+  await page.keyboard.press('Tab');await expect(page.locator('#hints-dialog .close-dialog')).toBeFocused();
   await page.locator('#hint-notes').click();await expect(page.locator('#hints-dialog')).not.toBeVisible();
   await expect(page.locator('#ideas-dialog')).toHaveAccessibleName('Notes');await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
   await expect(page.locator('#notes-content [data-reference-lesson="31"]')).toHaveCount(1);
@@ -32,6 +42,15 @@ test('Hints guide the puzzle while Notes follow relevant prerequisites',async({p
   for(const id of [1,2]){await ready(page,id);await expect(page.locator('#ideas-open')).toBeHidden();await expect(page.locator('#hints-open')).toBeHidden();}
   await page.locator('#menu-open').click();await page.locator('#nav-create').click();await idle(page);
   await expect(page.locator('#ideas-open')).toBeVisible();await expect(page.locator('#hints-open')).toBeHidden();
+});
+
+test('Hint links explain their purpose and reduced motion reveals spoilers immediately',async({page})=>{
+  await page.emulateMedia({reducedMotion:'reduce'});await ready(page,25,'flight');await page.locator('#hints-open').click();
+  await expect(page.locator('.hint-actions [data-view="function"]')).toContainText('Compare the current gap with the required gap.');
+  await expect(page.locator('#hint-notes')).toContainText('Recall how halves scale gaps and lift placement creates fractions.');
+  const more=page.getByRole('button',{name:'Another hint',exact:true});await more.click();
+  await expect(page.locator('#hint-extra')).toBeVisible();await expect(page.locator('#hint-extra')).toBeFocused();await expect(more).toBeHidden();
+  await expect(page.locator('.hint-spoiler.is-revealing')).toHaveCount(0);
 });
 
 test('Equation keeps node order visible above the kernel simplified result',async({page})=>{

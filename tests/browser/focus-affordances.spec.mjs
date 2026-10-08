@@ -1,0 +1,152 @@
+import {test,expect} from '@playwright/test';
+
+const sizes=[{width:1146,height:850},{width:320,height:568},{width:844,height:390}];
+async function ready(page,id=3,view='flight') {
+  await page.goto('/about/');await page.evaluate(()=>localStorage.clear());
+  await page.goto(`/#level=${id}&view=${view}`);
+  await page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
+}
+const idle=page=>page.evaluate(()=>window.angouri.whenIdle());
+const paint=page=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+
+async function ring(page,control,label,{pixels=false,testInfo}={}) {
+  await control.focus();await page.keyboard.press('Shift');await paint(page);
+  await expect(control,label).toBeFocused();
+  const measured=await control.evaluate(element=>{
+    const face=element.querySelector('.ingredient-surface')??element;
+    const spoiler=face.matches('.hint-spoiler-cover'),style=getComputedStyle(face,spoiler?'::after':null);
+    const rect=face.getBoundingClientRect(),width=parseFloat(spoiler?style.borderTopWidth:style.outlineWidth),offset=spoiler?-parseFloat(style.top)-width:parseFloat(style.outlineOffset);
+    const spread=width+offset,clipped=[];
+    for(let parent=face.parentElement;parent;parent=parent.parentElement){
+      const s=getComputedStyle(parent),r=parent.getBoundingClientRect(),left=r.left+parent.clientLeft,top=r.top+parent.clientTop;
+      if(/auto|scroll|hidden|clip/.test(s.overflowX)&&(rect.left-spread<left-1||rect.right+spread>left+parent.clientWidth+1))clipped.push(`${parent.id||parent.className}:x`);
+      if(/auto|scroll|hidden|clip/.test(s.overflowY)&&(rect.top-spread<top-1||rect.bottom+spread>top+parent.clientHeight+1))clipped.push(`${parent.id||parent.className}:y`);
+    }
+    return {rect:{x:rect.x,y:rect.y,width:rect.width,height:rect.height},width,offset,color:spoiler?style.borderTopColor:style.outlineColor,radius:getComputedStyle(face).borderTopLeftRadius,clipped};
+  });
+  expect(measured.width,`${label} visible outline`).toBeGreaterThan(0);
+  expect(measured.clipped,`${label} clipped focus edges`).toEqual([]);
+  if(!pixels)return;
+  const r=measured.rect,clip={x:Math.max(0,Math.floor(r.x-8)),y:Math.max(0,Math.floor(r.y-8)),width:Math.ceil(r.width+16),height:Math.ceil(r.height+16)};
+  const viewport=page.viewportSize();clip.width=Math.min(clip.width,viewport.width-clip.x);clip.height=Math.min(clip.height,viewport.height-clip.y);
+  const png=await page.screenshot({clip,path:testInfo?.outputPath(`${label}.png`)});
+  const counts=await page.evaluate(async({data,clip,measured})=>{
+    const img=new Image();img.src=`data:image/png;base64,${data}`;await img.decode();
+    const canvas=document.createElement('canvas');canvas.width=img.width;canvas.height=img.height;
+    const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0);const rgba=ctx.getImageData(0,0,img.width,img.height).data;
+    const color=measured.color.match(/\d+/g).slice(0,3).map(Number),r=measured.rect,d=measured.offset+measured.width/2;
+    const centers=[[r.x-d,r.y+r.height/2],[r.x+r.width+d,r.y+r.height/2],[r.x+r.width/2,r.y-d],[r.x+r.width/2,r.y+r.height+d]];
+    return centers.map(([cx,cy])=>{let n=0;for(let y=Math.round(cy-clip.y)-6;y<=Math.round(cy-clip.y)+6;y++)for(let x=Math.round(cx-clip.x)-6;x<=Math.round(cx-clip.x)+6;x++){
+      if(x<0||y<0||x>=img.width||y>=img.height)continue;const i=(y*img.width+x)*4;if(color.every((c,j)=>Math.abs(c-rgba[i+j])<12))n++;
+    }return n;});
+  },{data:png.toString('base64'),clip,measured});
+  counts.forEach((count,i)=>expect(count,`${label} painted edge ${['left','right','top','bottom'][i]}`).toBeGreaterThan(12));
+}
+
+test('rounded block faces, scratch cards, notes and menu controls retain all four focus edges',async({page},testInfo)=>{
+  test.setTimeout(180000);
+  for(const size of sizes) {
+    await page.setViewportSize(size);await ready(page,25);
+    await page.locator('[data-op="A"]').click();await idle(page);
+    for(const selector of ['#tab-flight','.part-body','.empty-slot','#palette [data-op="H"]','#undo','#reset','#launch','#hints-open','#ideas-open','#menu-open']) {
+      const control=page.locator(selector).first();
+      await ring(page,control,`${size.width}-${selector.replace(/[^a-z]/gi,'')}`,{pixels:['.part-body','#palette [data-op="H"]'].includes(selector),testInfo});
+      if(selector==='.part-body')expect(await control.evaluate(el=>parseFloat(getComputedStyle(el).borderTopLeftRadius))).toBeGreaterThan(0);
+    }
+    await page.locator('#hints-open').click();
+    await ring(page,page.locator('#hint-more-toggle'),`spoiler-${size.width}`,{pixels:true,testInfo});
+    await page.locator('#hint-more-toggle').press('Enter');
+    const sketch=page.locator('#hint-sketch-toggle');if(await sketch.count())await ring(page,sketch,`sketch-${size.width}`,{pixels:true,testInfo});
+    await page.keyboard.press('Escape');await page.locator('#ideas-open').click();
+    await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
+    for(const button of await page.locator('#notes-index button').all())await ring(page,button,`notes-${size.width}`);
+    for(const button of await page.locator('#notes-reading button').all())await ring(page,button,`notes-link-${size.width}`);
+    await page.keyboard.press('Escape');
+    for(const destination of [undefined,'library-open','puzzles-open','settings-open','help-open','menu-version','share-open']) {
+      await page.locator('#menu-open').click();if(destination)await page.locator(`#${destination}`).click();
+      const dialog=page.locator('dialog[open]');
+      const controls=await dialog.locator('button:visible:not(:disabled),a:visible,input:visible,textarea:visible,select:visible,summary:visible').all();
+      for(let i=0;i<controls.length;i++)await ring(page,controls[i],`${destination??'menu'}-${size.width}-${i}`);
+      await expect(page.locator('.keyboard-arrows:visible')).toHaveCount(0);
+      if(destination==='library-open') {
+        await page.locator('#seed-name').fill('Focus audit');await page.locator('#favorite-save').click();await idle(page);
+        for(const control of await page.locator('.favorite-actions button').all())await ring(page,control,`saved-${size.width}`);
+        await page.locator('[data-rename-seed]').click();
+        for(const control of await page.locator('.favorite-edit input,.favorite-edit button').all())await ring(page,control,`rename-${size.width}`);
+        await page.locator('[data-cancel-rename]').click();await page.locator('[data-delete-seed]').click();
+        await ring(page,page.locator('[data-restore-seed]'),`undo-delete-${size.width}`);await page.locator('[data-restore-seed]').click();
+      }
+      if(destination==='settings-open') {
+        await page.locator('#reset-progress-open').click();
+        for(const control of await page.locator('#reset-progress-dialog button').all())await ring(page,control,`reset-confirm-${size.width}`);
+        await page.locator('#reset-progress-cancel').click();
+      }
+      await page.keyboard.press('Escape');
+    }
+  }
+});
+
+test('slider focus surrounds the current knob and arrows describe existing directional actions',async({page},testInfo)=>{
+  for(const size of sizes) {
+    await page.setViewportSize(size);await ready(page,3,'flow');
+    await page.keyboard.press('Tab');await expect(page.locator('#tab-flow')).toBeFocused();
+    await expect(page.locator('.keyboard-arrows:visible')).toHaveAttribute('data-directions','x');
+    await page.keyboard.press('Tab');const slider=page.locator('#flow-position');await expect(slider).toBeFocused();
+    await expect(page.locator('.keyboard-arrows.is-knob:visible')).toHaveCount(1);
+    expect(await slider.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');
+    for(const key of ['Home','ArrowRight','End']) {
+      await page.keyboard.press(key);await paint(page);
+      const error=await slider.evaluate(el=>{
+        const rect=el.getBoundingClientRect(),cue=document.querySelector('.keyboard-arrows').getBoundingClientRect(),v=(el.valueAsNumber-Number(el.min))/(Number(el.max)-Number(el.min));
+        return {x:Math.abs(cue.x+cue.width/2-(rect.x+9.5+v*(rect.width-19))),y:Math.abs(cue.y+cue.height/2-(rect.y+rect.height/2))};
+      });expect(error.x).toBeLessThan(1);expect(error.y).toBeLessThan(1);
+    }
+    await page.screenshot({path:testInfo.outputPath(`slider-${size.width}.png`)});
+    await slider.click();await expect(page.locator('.keyboard-arrows:visible')).toHaveCount(0);
+    await page.locator('#tab-flight').click();await page.locator('[data-op="H"]').click();await idle(page);
+    const block=page.locator('.part-body');await block.focus();await page.keyboard.press('Shift');
+    await expect(page.locator('.keyboard-arrows:visible')).toHaveAttribute('data-directions','x');
+    await page.keyboard.press('ArrowRight');await idle(page);await expect(block).toBeFocused();
+  }
+});
+
+test('reading panes are keyboard scrollable only while overflowing and Flight uses its view button',async({page})=>{
+  await ready(page,25,'function');
+  for(const size of sizes) {
+    await page.setViewportSize(size);await paint(page);
+    for(const selector of ['.final-equation','.value-table tbody']) {
+      const pane=page.locator(selector),metrics=await pane.evaluate(el=>({x:el.scrollWidth>el.clientWidth+1,y:el.scrollHeight>el.clientHeight+1,tabIndex:el.tabIndex}));
+      expect(metrics.tabIndex).toBe(metrics.x||metrics.y?0:-1);
+      if(metrics.x||metrics.y){await pane.focus();await page.keyboard.press(metrics.y?'ArrowDown':'ArrowRight');await expect.poll(()=>pane.evaluate(el=>el.scrollTop+el.scrollLeft)).toBeGreaterThan(0);}
+    }
+    expect(await page.locator('#scene').evaluate(el=>el.tabIndex)).toBe(-1);
+  }
+  await page.setViewportSize({width:1146,height:850});await ready(page,3,'flow');
+  expect(await page.locator('.flow-line').evaluate(el=>el.tabIndex)).toBe(-1);
+  await page.setViewportSize({width:320,height:400});await paint(page);
+  const chain=page.locator('.flow-line');await expect(chain).toHaveAttribute('tabindex','0');
+  await chain.focus();await page.keyboard.press('ArrowDown');await expect.poll(()=>chain.evaluate(el=>el.scrollTop)).toBeGreaterThan(0);
+  await ready(page,54);await page.keyboard.press('Tab');await expect(page.locator('#tab-flight')).toBeFocused();
+  await page.keyboard.press('PageDown');await expect.poll(()=>page.locator('#scene').evaluate(el=>el.scrollTop)).toBeGreaterThan(0);
+  expect(await page.evaluate(()=>document.documentElement.scrollHeight>innerHeight)).toBe(false);
+});
+
+test('circle handles, target choices and Create crop controls keep shaped focus inside their scrollers',async({page},testInfo)=>{
+  test.setTimeout(90000);
+  for(const size of sizes) {
+    await page.setViewportSize(size);await ready(page,43);
+    for(const control of await page.locator('[data-circle-handle],[data-circle-value]').all())await ring(page,control,`circle-${size.width}`);
+    await page.locator('#tab-flow').click();
+    for(const control of await page.locator('.circle-target-choice').all())await ring(page,control,`target-${size.width}`,{pixels:true,testInfo});
+    await ready(page,3);await page.locator('#menu-open').click();await page.locator('#nav-create').click();await idle(page);
+    await ring(page,page.locator('#source-choose'),`source-${size.width}`);
+    await page.locator('#source-choose').click();
+    for(const control of await page.locator('#curves-dialog button:visible').all())await ring(page,control,`curve-choice-${size.width}`);
+    await page.keyboard.press('Escape');
+    await page.locator('[data-crop-add]').click();await idle(page);
+    for(const control of await page.locator('[data-crop-clear],[data-crop-exact]').all())await ring(page,control,`crop-${size.width}`);
+    const crop=page.locator('[data-crop-range]').first();await crop.focus();await page.keyboard.press('ArrowRight');await idle(page);await paint(page);
+    await expect(page.locator('.keyboard-arrows.is-knob:visible')).toHaveCount(1);
+    await page.screenshot({path:testInfo.outputPath(`crop-slider-${size.width}.png`)});
+  }
+});

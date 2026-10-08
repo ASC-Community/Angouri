@@ -4,14 +4,21 @@
 
 The first playable Angouri cucumber puzzle.
 
+- The game stays within the viewport across all three views. Equations and comparison rows scroll in their own sections, with headers outside the row scroller; fitting content centers within its section. Recipe actions and dialog Back/Close controls remain outside their body scrollers, and Notes keeps one size across lessons.
+- Safari pointer navigation restores focus without a keyboard outline. Choice blocks retain stable hit areas and DOM identity, visibly depress when selected, and no longer flicker at their hover edge. Introductory explanations stay beside their block icon, and Throw becomes Next in the same slot.
+- Menus stay open when initial loading finishes, and Puzzles becomes available once its list is populated. Tab cycles stay on visible dialog controls, including Safari's Skip animation checkbox; Save and its name field have complete, unclipped focus outlines.
+- Keyboard navigation starts directly at the active view or introductory block choice. Focus rings follow rounded faces and slider knobs; directional cues mark existing arrow actions. Fitting reading panes and the Flight canvas add no extra Tab stops, and spoiler rings remain visible above their coating.
+- The complete wordmark and loading cucumber are embedded into the initial HTML from shared canonical artwork. Explicit KaTeX font preloads preserve early formula rendering without relying on the old live-math logo.
+- Hints use animated scratch-card covers for optional spoilers, with keyboard and reduced-motion disclosure. Contextual Notes and Equation links explain their purpose. Discard uses the danger-red trash icon.
+
 - Height findings show the actual block order and the added height shrinking from one to a half or quarter. Whole-curve scaling is explained explicitly; descriptions no longer narrate which blocks follow or refer to an unseen reverse order.
-- Deep finite stacks share Create's fading bottom and refill motion. As hidden stock runs out, the remaining layers become solid and deplete visibly; exact counts use the same unboxed math styling as infinity.
+- Deep finite stacks share Create's refill motion and fade each lower block as a whole. At three copies or fewer, the layers become solid and the number disappears; the remaining copies deplete visibly without shifting the tray. Counts above three use the same unboxed math styling as infinity.
 - Notes shows each lesson label once, keeps its principle beside the explanation, and connects comparison formulas and view links to their purpose. Reflection uses a bowl-to-roof comparison; discovery findings show the actual block sequence instead of vague step/pair prefixes. Circle Flow names the targets in each pair and explains their centre-finding construction.
 - Hints shares the recipe guidance area with simpler puzzles’ block findings; Notes stays by the heading. The 1.2 heading sentence no longer drifts left because of an empty reference-control gap.
 - Saved-recipe trash icons use danger red. Deletions have individual Undo actions in Recently deleted, retained across menu navigation and reloads; failed restoration keeps the recovery copy.
 - Notes separates current and related lessons without repeating prerequisite sections. Full curve hides when it cannot change the frame, and the view selector stays centred when the button appears.
 - Reference and menu pages open without outlining an automatically selected control, including in Safari. Tab starts normal visible keyboard navigation, and closing a page restores its opener.
-- Block placements keep a scrolled page in place, including Safari's dense 8.7 layout. Recipe reveals scroll horizontally, dense labels avoid repeated layout work, and later blocks reuse exact sine readings to reduce edit delays.
+- Block placements preserve inspection and recipe scroll, including Safari's dense 8.7 layout. Recipe reveals scroll horizontally, dense labels avoid repeated layout work, and later blocks reuse exact sine readings to reduce edit delays.
 - Short arrangement lessons throughout the chapters explain the accepted experiment directly, including order and station-side effects, instead of offering redundant Hints. Feedback follows selection, insertion, movement and history; larger planning puzzles retain Hints.
 
 - Dense Flight plots reserve their complete diagram above or beside the recipe, with explicit SVG heights and refreshed label projection through Safari reflow; this addresses the reported clipping on 8.7 and 8.8.

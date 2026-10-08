@@ -57,35 +57,39 @@ const plotArea=()=>({width:760,height:414,top:62,bottom:310});
 // Keep KaTeX in HTML. WebKit can paint positioned KaTeX descendants at the SVG
 // origin when they live inside foreignObject, even when its box is correct.
 const flightMath=(latex:string,x:number,y:number,width=48,extraClass='',offsetY=0)=>`<span class="flight-label" data-axis-x="${x}" data-axis-y="${y}" data-axis-offset-y="${offsetY}" data-axis-width="${width}"><span class="axis-math ${extraClass}">${tex(latex)}</span></span>`;
+type Callout={label:HTMLElement;width:number;height:number};
+function calloutRows(entries:Callout[],available:number) {
+  const rows:{entries:Callout[];side:'top'|'bottom'}[]=[];
+  for(const [parity,side] of [[0,'top'],[1,'bottom']] as const) {
+    let used=0,row:Callout[]=[];
+    for(const entry of entries.filter((_,i)=>i%2===parity)) {
+      if(!row.length||used+entry.width>available){row=[];rows.push({entries:row,side});used=0;}
+      row.push(entry);used+=entry.width+18;
+    }
+  }
+  return rows;
+}
+const calloutSpace=(rows:ReturnType<typeof calloutRows>,side:'top'|'bottom')=>rows.filter(row=>row.side===side).reduce((sum,row)=>sum+Math.max(...row.entries.map(entry=>entry.height))+14,12);
+const calloutPlotHeight=(width:number)=>innerHeight<=560&&innerWidth>innerHeight?190:Math.max(190,Math.min(320,width*414/760));
 export function sizeFlightAnnotations(root:HTMLElement) {
   const svg=root.querySelector<SVGSVGElement>('#flight-svg');
   const overlay=root.querySelector<HTMLElement>('.flight-annotations');
   if(!svg||!overlay)return;
   const callouts=svg.hasAttribute('data-callouts');
   root.classList.toggle('has-flight-callouts',callouts);
-  type Callout={label:HTMLElement;width:number;height:number};
-  const rows:{entries:Callout[];side:'top'|'bottom'}[]=[];
+  let rows:ReturnType<typeof calloutRows>=[];
   if(callouts) {
     const available=Math.max(120,root.clientWidth-24);
     const labels=[...overlay.querySelectorAll<HTMLElement>('.target-label .flight-label')].sort((a,b)=>Number(a.parentElement!.dataset.plotX)-Number(b.parentElement!.dataset.plotX));
-    for(const [parity,side] of [[0,'top'],[1,'bottom']] as const) {
-      let used=0,row:Callout[]=[];
-      for(const label of labels.filter((_,i)=>i%2===parity)) {
-        const rect=label.querySelector('.katex-html')!.getBoundingClientRect();
-        if(!row.length||used+rect.width>available){row=[];rows.push({entries:row,side});used=0;}
-        row.push({label,width:rect.width,height:rect.height});used+=rect.width+18;
-      }
-    }
-    const space=(side:'top'|'bottom')=>rows.filter(row=>row.side===side).reduce((sum,row)=>sum+Math.max(...row.entries.map(entry=>entry.height))+14,12);
+    rows=calloutRows(labels.map(label=>{const r=label.querySelector('.katex-html')!.getBoundingClientRect();return {label,width:r.width,height:r.height};}),available);
+    const space=(side:'top'|'bottom')=>calloutSpace(rows,side);
     root.style.setProperty('--callout-top',`${space('top')}px`);
     root.style.setProperty('--callout-bottom',`${space('bottom')}px`);
-    const shortLandscape=innerHeight<=560&&innerWidth>innerHeight;
-    const plotHeight=shortLandscape?190:Math.max(190,Math.min(320,root.clientWidth*414/760));
-    root.style.setProperty('--flight-height',`${space('top')+space('bottom')+plotHeight}px`);
+    root.style.setProperty('--flight-height',`${space('top')+space('bottom')+calloutPlotHeight(root.clientWidth)}px`);
     // The positioned diagram cannot contribute an intrinsic SVG height to the
     // flex layout. Give its plot the actual remaining height explicitly:
     // Safari can resolve a 100% SVG against the wrong indefinite flex height.
-    root.style.setProperty('--flight-plot-height',`${Math.max(0,root.clientHeight-space('top')-space('bottom'))}px`);
+    root.style.setProperty('--flight-plot-height',`${Math.max(0,root.querySelector<HTMLElement>('.flight-diagram')!.clientHeight-space('top')-space('bottom'))}px`);
   }
   // Settle HTML and SVG boxes after changing the callout rows, before taking
   // the projection. WebKit can otherwise return the preceding flex frame.
@@ -324,9 +328,9 @@ export const heightGapFormula=(guide:NonNullable<Result['heightGuide']>)=>`${hei
 export function functionView(state:State,result:Result,flight:Flight) {
   const puzzle=state.mode!=='remix';
   const guide=result.heightGuide;
-  const gap=guide?`<tfoot><tr class="gap-comparison" data-gap-match="${guide.hit}"><th scope="row"><span>Height gap</span><small title="Heights at the highest and lowest targets' positions" aria-label="Height at x=${guide.toX} minus height at x=${guide.fromX}, the positions of the highest and lowest targets">${tex(heightGapFormula(guide))}</small></th><td>${comparisonValue(guide.target,guide.targetLatex,guide.targetNumber)}</td><td>${comparisonValue(guide.actual,guide.actualLatex,guide.stages.at(-1)?.gapNumber)}</td><td><span class="gap-verdict" aria-label="${guide.hit?'Height gap matches':'Height gap does not match'}">${targetMark(guide.hit?'hit':'miss')}</span></td></tr></tfoot>`:'';
+  const gap=guide?`<tr class="gap-comparison" data-gap-match="${guide.hit}"><th scope="row"><span>Height gap</span><small title="Heights at the highest and lowest targets' positions" aria-label="Height at x=${guide.toX} minus height at x=${guide.fromX}, the positions of the highest and lowest targets">${tex(heightGapFormula(guide))}</small></th><td>${comparisonValue(guide.target,guide.targetLatex,guide.targetNumber)}</td><td>${comparisonValue(guide.actual,guide.actualLatex,guide.stages.at(-1)?.gapNumber)}</td><td><span class="gap-verdict" aria-label="${guide.hit?'Height gap matches':'Height gap does not match'}">${targetMark(guide.hit?'hit':'miss')}</span></td></tr>`:'';
   const rows=result.checkpoints.map((c,i)=>{const status=c.hit?'hit':'miss',confirmed=targetStatus(c,state,flight);return `<tr data-status="${puzzle?status:'sample'}"><td>${result.relation?tex(`(${rationalTex(c.x)},${targetLatex(c)})`):comparisonValue(c.x)}</td>${puzzle?`<td>${result.relation?comparisonValue(c.lhs!):comparisonValue(c.target,c.targetLatex,c.targetNumber)}</td>`:''}<td>${comparisonValue(c.actual,c.actualLatex,c.actualNumber)}</td>${puzzle?`<td class="verdict-cell"><span class="equation-verdict" data-target="${i}" data-status="${confirmed}" aria-label="${targetDescription(c,i,confirmed)}">${targetMark(status)}</span></td>`:''}</tr>`;}).join('');
-  return `<div class="equation-layout"><section class="final-equation" aria-label="Final equation">${equationForms(result)}${cropVerdict(result)}</section><div class="value-table"><table aria-label="${puzzle?'Compare your equation with the targets':'Sample heights'}"><thead><tr><th>${result.relation?'Target '+tex('(x,h)'):'Position '+tex('x')}</th>${puzzle?'<th>Expected '+(result.relation?tex('h^2'):'')+'</th>':''}<th>${result.relation?'Recipe '+tex('h^2'):puzzle?'Actual':'Height'}</th>${puzzle?`<th><span class="sr-only">Matches target</span>${icon('target',16)}</th>`:''}</tr></thead><tbody>${rows}</tbody>${gap}</table></div></div>`;
+  return `<div class="equation-layout"><section class="final-equation" tabindex="0" aria-label="Final equation"><div class="equation-content">${equationForms(result)}${cropVerdict(result)}</div></section><div class="value-table"><table aria-label="${puzzle?'Compare your equation with the targets':'Sample heights'}"><thead><tr><th>${result.relation?'Target '+tex('(x,h)'):'Position '+tex('x')}</th>${puzzle?'<th>Expected '+(result.relation?tex('h^2'):'')+'</th>':''}<th>${result.relation?'Recipe '+tex('h^2'):puzzle?'Actual':'Height'}</th>${puzzle?`<th><span class="sr-only">Matches target</span>${icon('target',16)}</th>`:''}</tr></thead><tbody>${rows}${gap}</tbody></table></div></div>`;
 }
 
 const flowScales=new WeakMap<Result,{min:number;max:number;start:number;end:number}>();

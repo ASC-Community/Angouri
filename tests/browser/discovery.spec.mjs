@@ -93,12 +93,12 @@ test('Notes reopens at the current lesson after reading a prerequisite',async({p
   await expect(page.locator('[data-note-lesson]').first()).toHaveAttribute('data-note-lesson','81');
   await expect(page.locator('[data-note-lesson="81"]')).toHaveAttribute('aria-pressed','true');
   await page.locator('[data-note-lesson="79"]').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
-  await page.locator('#ideas-dialog').evaluate(dialog=>dialog.scrollTop=dialog.scrollHeight);
-  expect(await page.locator('#ideas-dialog').evaluate(dialog=>dialog.scrollTop)).toBeGreaterThan(0);
+  await page.locator('#notes-reading').evaluate(dialog=>dialog.scrollTop=dialog.scrollHeight);
+  expect(await page.locator('#notes-reading').evaluate(dialog=>dialog.scrollTop)).toBeGreaterThan(0);
   await page.keyboard.press('Escape');await page.locator('#ideas-open').click();
   await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
   await expect(page.locator('[data-note-lesson="81"]')).toHaveAttribute('aria-pressed','true');
-  expect(await page.locator('#ideas-dialog').evaluate(dialog=>dialog.scrollTop)).toBe(0);
+  expect(await page.locator('#notes-reading').evaluate(dialog=>dialog.scrollTop)).toBe(0);
   await expect(page.locator('[data-note-lesson][aria-pressed=true]')).toContainText('8.5');
 });
 
@@ -135,10 +135,15 @@ test('station discovery findings fit with the Flight diagram and actions through
     await page.setViewportSize(size);await expect(page.locator('#feedback')).toBeVisible();
     await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     const layout=await page.evaluate(()=>{
-      const feedback=document.querySelector('#feedback'),scene=document.querySelector('#scene').getBoundingClientRect(),diagram=document.querySelector('.flight-diagram').getBoundingClientRect(),dock=document.querySelector('.play-dock').getBoundingClientRect(),text=feedback.getBoundingClientRect(),action=document.querySelector('.dock-actions').getBoundingClientRect();
-      return {overflow:document.documentElement.scrollWidth-innerWidth,clip:feedback.scrollWidth-feedback.clientWidth,contained:diagram.bottom<=scene.bottom+1&&diagram.right<=scene.right+1,overlap:Math.min(text.right,action.right)>Math.max(text.left,action.left)&&Math.min(text.bottom,action.bottom)>Math.max(text.top,action.top),dockOverlap:Math.min(diagram.right,dock.right)>Math.max(diagram.left,dock.left)+1&&Math.min(diagram.bottom,dock.bottom)>Math.max(diagram.top,dock.top)+1};
+      const feedback=document.querySelector('#feedback'),scroller=document.querySelector('#scene'),scene=scroller.getBoundingClientRect(),diagram=document.querySelector('.flight-diagram').getBoundingClientRect(),dock=document.querySelector('.play-dock').getBoundingClientRect(),text=feedback.getBoundingClientRect(),action=document.querySelector('.dock-actions').getBoundingClientRect();
+      return {overflow:document.documentElement.scrollWidth-innerWidth,clip:feedback.scrollWidth-feedback.clientWidth,contained:diagram.bottom<=scene.top+scroller.scrollHeight-scroller.scrollTop+1&&diagram.right<=scene.right+1,overlap:Math.min(text.right,action.right)>Math.max(text.left,action.left)&&Math.min(text.bottom,action.bottom)>Math.max(text.top,action.top),dockOverlap:Math.min(scene.right,dock.right)>Math.max(scene.left,dock.left)+1&&Math.min(scene.bottom,dock.bottom)>Math.max(scene.top,dock.top)+1};
     });
     expect(layout).toEqual({overflow:0,clip:0,contained:true,overlap:false,dockOverlap:false});
+    const inline=await page.locator('#feedback').evaluate(el=>{
+      const icons=el.querySelector('.discovery-operations').getBoundingClientRect(),text=el.lastElementChild.firstChild;
+      const range=document.createRange();range.setStart(text,0);range.setEnd(text,text.textContent.indexOf(' '));const word=range.getBoundingClientRect();
+      return word.left>=icons.right&&word.top>=icons.top&&word.bottom<=icons.bottom;
+    });expect(inline,'the first words use the space beside the unbroken block sequence').toBe(true);
     if(size.width===844)await page.screenshot({path:testInfo.outputPath('station-discovery-landscape.png'),fullPage:true});
   }
 });

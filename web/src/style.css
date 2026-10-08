@@ -17,15 +17,14 @@ button svg { flex-shrink: 0; }
 [hidden] { display: none!important; }
 h1, h2, h3, p { margin-top: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
-.skip { position: fixed; top: -60px; left: 20px; background: #fff; padding: 12px; z-index: 99; clip-path: inset(50%); }
-.skip:focus { top: 12px; clip-path: none; }
 .button { border: 1px solid #d2dcc6; border-radius: 10px; padding: 10px 16px; background: #fffefa; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 42px; }
 .icon-button { width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; padding: 5px; }
 .eyebrow { font-size: 10px; letter-spacing: 2px; color: #7d8b6b; margin: 0 0 5px; }
 .sage { background: var(--sage); }.peach { background: var(--peach); }.blue { background: var(--blue); }.lilac { background: var(--lilac); }.gold { background: var(--gold); }.neutral { background: #e9ece4; }
 
 /* The puzzle owns the viewport; the three views share the same bottom tray. */
-.game-shell { height: 100vh; height: 100dvh; min-height: 640px; display: flex; flex-direction: column; padding: 0 28px 24px; }
+.game-shell { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; display: flex; flex-direction: column; padding: 0 28px 24px; }
+html:has(.game-shell), body:has(.game-shell) { height: 100%; overflow: hidden; }
 .site-header { display: grid; grid-template-columns: 1fr minmax(0,2.5fr) 1fr; align-items: start; gap: 20px; padding: 24px 10px 9px; flex-shrink: 0; }
 .menu-button { justify-self: end; min-width: 92px; }
 .puzzle-heading { text-align: center; }
@@ -33,21 +32,18 @@ h1, h2, h3, p { margin-top: 0; }
 .puzzle-heading h1:focus { outline: 0; }
 .puzzle-heading>p:last-child { font-size: 12px; color: #728060; margin: 0; line-height: 1.6; }
 .playground { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
-.canvas-side { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; max-width: 1300px; width: 100%; margin: auto; }
-.scene-toolbar { container: view-toolbar / inline-size; display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: center; gap: 6px 22px; min-height: 48px; padding: 4px 5px 8px; flex-shrink: 0; }
-.view-tabs { grid-column: 1 / -1; grid-row: 1; justify-self: center; display: inline-flex; align-items: center; padding: 3px; gap: 3px; border: 1px solid #d8e1ca; background: #e9eede; border-radius: 12px; }
+.canvas-side { --toolbar-room: 54px; container: inspection / inline-size; position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; max-width: 1300px; width: 100%; margin: 0 auto; }
+.scene-toolbar { container: view-toolbar / inline-size; display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: center; gap: 6px 22px; min-height: var(--toolbar-room); align-content: start; padding: 4px 5px 8px; flex-shrink: 0; }
+.view-tabs { grid-column: 2; grid-row: 1; justify-self: center; display: inline-flex; align-items: center; padding: 3px; gap: 3px; border: 1px solid #d8e1ca; background: #e9eede; border-radius: 12px; }
 .view-tabs button { display: flex; align-items: center; gap: 7px; min-height: 34px; padding: 5px 13px; border-radius: 8px; color: #738362; font-size: 12px; border: 1px solid transparent; }
 .view-tabs button:hover { background: #f5f7ee; color: #3b5e37; }
 .view-tabs [aria-selected=true] { background: #fffef9; color: #355b31; border-color: #c9d6ba; box-shadow: 0 2px 2px #536c3010; }
-.scene { flex: 1; min-height: 0; position: relative; overflow: hidden; outline: none; border-radius: 16px; }
-.scene[data-view=function], .scene[data-view=flow] { overflow: auto; background: #ffffff60; border: 1px solid #e2e8d6; max-width: 1000px; width: 100%; margin: 0 auto 5px; }
+.scene { flex: 1; min-height: 0; position: relative; overflow: auto; overscroll-behavior: contain; outline: none; border-radius: 16px; }
+.scene[data-view=function], .scene[data-view=flow] { overflow: hidden; background: #ffffff60; border: 1px solid #e2e8d6; max-width: 1000px; width: 100%; margin: 0 auto; }
 .scene-tag { font-size: 10px; letter-spacing: 1.6px; color: #81916d; }
 #flight-svg { width: 100%; height: 100%; display: block; }
-.flight-diagram { position: relative; width: 100%; height: 100%; }
-.game-shell:has(.has-flight-callouts) { height:auto; min-height:max(640px,100dvh); }
-.canvas-side:has(.has-flight-callouts) { flex:1 0 auto; }
-.scene.has-flight-callouts { flex:1 0 var(--flight-height); min-height:var(--flight-height); }
-.has-flight-callouts .flight-diagram { position:absolute; inset:0; width:auto; height:auto; padding-block:var(--callout-top) var(--callout-bottom); }
+.flight-diagram { position: relative; width: 100%; height: 100%; min-height: 190px; }
+.has-flight-callouts .flight-diagram { min-height:var(--flight-height); padding-block:var(--callout-top) var(--callout-bottom); }
 .has-flight-callouts #flight-svg { height:var(--flight-plot-height); }
 .flight-callout-leaders { position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
 .flight-callout-leaders .target-leaders { opacity:.38; }
@@ -66,19 +62,31 @@ h1, h2, h3, p { margin-top: 0; }
 .loading-scene small { font-size: 12px; color: #899976; }.loading-scene .button { margin-top: 20px; }
 
 /* Equation preserves the construction above its simplified result. */
-.game-shell:has(.scene[data-view=function]) { height:auto; min-height:max(640px,100dvh); }
-.canvas-side:has(.scene[data-view=function]),.scene[data-view=function] { flex:1 0 auto; }
-.scene[data-view=function] { overflow:visible; }
-.equation-layout { display: flex; flex-wrap: wrap; align-items: center; gap: 26px; padding: 24px 28px; min-height: 100%; }
-.final-equation { flex: 1 1 280px; min-width: 0; text-align: center; }
-.equation-formula { font-size: 25px; overflow-x: auto; padding: 18px 5px; }
+.equation-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); grid-template-rows: minmax(0,1fr); align-items: stretch; gap: 26px; padding: 20px; height: 100%; min-height: 0; }
+.final-equation, .value-table { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.final-equation { text-align: center; }
+.final-equation > *, .value-table > * { flex-shrink: 0; }
+.equation-content { margin-block: auto; }
+.value-table > :first-child { margin-top: auto; }
+.value-table > :last-child { margin-bottom: auto; }
+.equation-formula { font-size: 25px; width: max-content; min-width: 100%; padding: 18px 5px; }
+@container inspection (max-width:650px) {
+  .equation-layout { grid-template-columns: minmax(0,1fr); grid-template-rows: minmax(0,2fr) minmax(0,3fr); gap: 12px; padding: 12px; }
+}
+.value-table { overflow: hidden; scrollbar-gutter: auto; }
+.value-table .comparison-sized { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; overflow: hidden; }
+.comparison-sized thead { display: block; flex: none; }
+.comparison-sized tbody { display: block; flex: 0 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.comparison-sized tr { display: grid; grid-template-columns: var(--comparison-columns); }
+.comparison-sized th, .comparison-sized td { min-width: 0; }
+.comparison-sized tbody:focus-visible { outline: 2px solid #426940; outline-offset: -2px; }
 .equation-reduction { display: flex; align-items: center; justify-content: center; gap: 7px; color: #849374; font-size: 10px; }.equation-reduction svg { transform: rotate(90deg); }
 .equation-reduction+.final-formula { color: #5c754c; }
 .relation-solution { display: grid; gap: 18px; }
 .solution-group { display: grid; justify-items: center; gap: 10px; min-width: 0; }
 .solution-heights { display: grid; gap: 7px; font-size: .88em; }
 .solution-condition { max-width: 100%; font-size: 12px; color: #64765a; }
-.value-table { flex: 1 1 320px; min-width: 0; overflow-x: auto; }.value-table table { width: 100%; border-collapse: collapse; font-size: 14px; text-align: left; }
+.value-table table { width: 100%; border-collapse: collapse; font-size: 14px; text-align: left; }
 .value-table th { font-size: 11px; color: #819270; font-weight: 400; padding: 0 10px 9px; white-space: nowrap; }.value-table td { border-top: 1px solid #e0e7d5; padding: 12px 10px; }
 .comparison-value { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 5px; white-space: nowrap; }
 .decimal-value { color: #64765a; font-size: .78em; }
@@ -96,14 +104,8 @@ tr[data-status=miss] .equation-verdict[data-status=waiting] { color: var(--miss-
 .equation-verdict.just-hit { animation: confirm-result .3s ease-out; }
 @keyframes confirm-result { 0% { transform: scale(.65); } 65% { transform: scale(1.15); } 100% { transform: scale(1); } }
 [data-status=miss] .target-result { color: var(--miss-ink); }
-.scene[data-view=flow] { display: flex; flex: 0 1 auto; flex-direction: column; overflow: hidden; max-width: 1300px; container: flow / inline-size; }
-/* Desktop Flow scrolls along the chain. Let the document grow when its
-   controls and full-height cards need more room above the shared recipe. */
-@media(min-width:601px) and (min-height:521px) {
-  .game-shell:has(.scene[data-view=flow]) { height:auto; min-height:max(640px,100dvh); }
-  .canvas-side:has(.scene[data-view=flow]) { flex:1 0 auto; }
-  .scene[data-view=flow] { flex:0 0 auto; }
-}
+.scene[data-view=flow] { display: flex; flex: 1 1 0; flex-direction: column; overflow: hidden; max-width: 1300px; container: flow / inline-size; }
+/* The chain scrolls inside the same frame as Flight and Equation. */
 .flow-controls { flex-shrink: 0; padding: 13px 20px 7px; border-bottom: 1px solid #e1e7d7; background: #fafbf3; }
 .flow-control-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 12px; }
 .flow-control-heading label { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
@@ -121,7 +123,7 @@ tr[data-status=miss] .equation-verdict[data-status=waiting] { color: var(--miss-
 .after-key { width: 9px; height: 9px; border: 1px solid #48693b; background: #48693b; border-radius: 50%; margin-left: 7px; }
 .flow-slider-row { display: flex; align-items: center; gap: 12px; font-size: 11px; }
 .flow-slider-row>span { min-width: 12px; text-align: center; }
-#flow-position { --position: 50%; flex: 1; min-width: 0; height: 32px; margin: 0; cursor: ew-resize; appearance: none; background: transparent; accent-color: #486c3b; }
+#flow-position { --position: 50%; flex: 1; min-width: 0; height: 32px; margin: 0 8px; cursor: ew-resize; appearance: none; background: transparent; accent-color: #486c3b; }
 #flow-position:disabled { cursor: default; opacity: 1; }
 .flow-controls.playing #flow-position::-webkit-slider-thumb { background: #dfeccc; box-shadow: 0 0 0 4px #799c5825; }
 .flow-controls.playing #flow-position::-moz-range-thumb { background: #dfeccc; box-shadow: 0 0 0 4px #799c5825; }
@@ -130,7 +132,7 @@ tr[data-status=miss] .equation-verdict[data-status=waiting] { color: var(--miss-
 #flow-position::-moz-range-progress { height: 6px; border-radius: 5px; background: #799c58; }
 #flow-position::-webkit-slider-thumb { appearance: none; width: 19px; height: 19px; border-radius: 50%; border: 2px solid #486c3b; background: #fffef8; box-shadow: 0 1px 3px #425a3430; margin-top: -6.5px; }
 #flow-position::-moz-range-thumb { width: 15px; height: 15px; border-radius: 50%; border: 2px solid #486c3b; background: #fffef8; box-shadow: 0 1px 3px #425a3430; }
-.flow-line { flex: 1; min-height: 0; display: flex; gap: 8px; align-items: flex-start; justify-content: safe center; padding: 8px 16px; overflow: auto; overscroll-behavior: contain; }
+.flow-line { container: flow-cards / size; flex: 1; min-height: 0; display: flex; gap: 8px; align-items: safe center; justify-content: safe center; padding: 8px 16px; overflow: auto; overscroll-behavior: contain; }
 .flow-line:has(.gap-sample):has(.tangent-sample,.area-sample) { --flow-meta-height: 128px; }
 .flow-machine { flex: 0 0 176px; min-width: 0; border: 1px solid #d8e2c6; border-radius: 12px; overflow: hidden; }
 .flow-machine.inspected { outline: 2px solid #8fa174; outline-offset: 2px; }
@@ -164,7 +166,7 @@ tr[data-status=miss] .equation-verdict[data-status=waiting] { color: var(--miss-
 .flow-height-gap circle { fill: #f9fbf2; stroke: #527f88; stroke-width: 1.4; }
 .machine-sample { font-size: 11px; color: #4c663e; background: #ffffff80; border-radius: 5px; padding: 4px 7px; white-space: nowrap; }
 .tangent-sample { font-size: 10px; color: #a27546; white-space: nowrap; }
-.source-machine { background: #f0f3e7; }.flow-connector { color: #91a47b; flex-shrink: 0; margin-top: 118px; }
+.source-machine { background: #f0f3e7; }.flow-connector { color: #91a47b; flex-shrink: 0; align-self: center; }
 .flow-plot-frame { position: relative; width: 100%; min-width: 0; height: 112px; }
 .flow-plot { display: block; width: 100%; height: 100%; overflow: visible; }
 .flow-axis { fill: none; stroke: #a7b599; stroke-width: .8; }
@@ -212,28 +214,29 @@ tr[data-status=miss] .equation-verdict[data-status=waiting] { color: var(--miss-
   .flow-plot-frame { height: 86px; }
   .flow-connector { align-self: center; height: 14px; margin-top: 0; transform: rotate(90deg); }
 }
-@media(max-height:940px) {
-  @container flow (min-width:601px) {
-    .flow-controls { padding: 5px 18px 1px; }
-    .flow-line { padding: 6px 10px; }
+@container flow-cards (min-width:601px) and (min-height:210px) {
+  .flow-plot-frame { height: clamp(64px,calc(100cqh - var(--flow-meta-height,116px) - 50px),180px); }
+}
+@container flow-cards (min-width:601px) and (max-height:209px) {
     .flow-machine { flex-basis: 252px; }
     .machine-body { min-height: calc(var(--flow-meta-height,116px) + 12px); display: grid; grid-template-columns: 84px minmax(0,1fr); align-items: center; padding: 6px 10px; gap: 8px; }
     .machine-meta { min-height: 0; gap: 4px; }
     .machine-icon { font-size: 18px; min-height: 26px; }
     .machine-sample { font-size: 10px; padding: 3px 6px; }
     .flow-plot-frame { height: 86px; }
-    .flow-connector { margin-top: 41px; }
     .flow-machine.calculus-machine { flex-basis: 576px; }
     .calculus-machine>.machine-body { flex-basis: 252px; width: 252px; }
-  }
 }
 
 
+/* Dialog chrome stays outside the body scroller. */
+dialog[open]:not(#ideas-dialog):not(#garden-dialog) { display: flex; flex-direction: column; overflow: hidden; }
+.dialog-content { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 8px; margin: -8px; }
 /* One destination for each occasional task. */
 dialog { border: 1px solid #d7dfc8; border-radius: 20px; background: #fffefa; color: var(--ink); width: min(460px,calc(100% - 32px)); max-height: calc(100dvh - 32px); padding: 25px 28px; box-shadow: 0 15px 100px #23382326; }
 dialog:focus { outline: none; }
 dialog::backdrop { background: #2a3f303d; backdrop-filter: blur(5px); }
-.dialog-top { position: sticky; top: 0; z-index: 3; background: #fffefa; box-shadow: 0 -28px #fffefa, 0 8px #fffefa; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 18px; }.close-dialog { color: #71855a; flex-shrink: 0; }
+.dialog-top { flex: none; position: relative; z-index: 3; background: #fffefa; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 18px; }.close-dialog { color: #71855a; flex-shrink: 0; }
 dialog h2 { font: 27px/1.15 Georgia,serif; letter-spacing: -.6px; margin: 0; }dialog p, dialog li { font-size: 12px; line-height: 1.8; color: #738164; }
 dialog label { display: block; font-size: 12px; color: #71845e; margin: 14px 0 7px; }
 dialog textarea, dialog select, dialog input[type=text], #seed-name { border: 1px solid #d8e2c7; border-radius: 8px; background: #f7f9ef; color: var(--ink); width: 100%; padding: 10px; font-size: 13px; }dialog textarea { font-size: 11px; resize: vertical; }
@@ -282,15 +285,8 @@ details { border-top: 1px solid var(--line); padding-top: 14px; margin: 16px 0; 
 @media(max-width:1000px) { .game-shell { padding: 0 20px 18px; }.site-header { padding: 20px 0 5px; }.puzzle-heading h1 { font-size: 30px; } }
 @media(max-width:600px) {
   .game-shell { padding: 0 10px max(10px,env(safe-area-inset-bottom)); }.site-header { grid-template-columns: 1fr 1fr; gap: 10px 12px; padding: 12px 6px 0; }.menu-button { min-width: 78px; min-height: 36px; padding: 7px 11px; font-size: 12px; }.puzzle-heading { grid-column: 1/-1; grid-row: 2; }.puzzle-heading h1 { font-size: 27px; margin-bottom: 5px; }.puzzle-heading>p:last-child { font-size: 11px; max-width: 330px; margin: auto; }.eyebrow { font-size: 9px; letter-spacing: 1.7px; margin-bottom: 3px; }
-  .scene[data-view=function] .equation-layout { min-height: 0; }
-  /* The vertical chain needs room for a complete transformation, not just
-     whatever remains after the editor. Keep its viewport stable as cards
-     are added; the document can grow to keep both inspection and play usable. */
-  .game-shell:has(.scene[data-view=flow]) { height: auto; min-height: max(640px,100dvh); }
-  .canvas-side:has(.scene[data-view=flow]) { flex: 1 0 auto; }
-  .scene[data-view=flow] { flex: 0 0 auto; }
-  .flow-line { flex: none; height: clamp(260px,42dvh,420px); }
-  .playground { gap: 7px; }.scene-toolbar { gap: 10px; padding: 8px 0 6px; min-height: 47px; }.view-tabs { padding: 2px; gap: 0; border-radius: 10px; }.view-tabs button { padding: 4px 9px; min-height: 32px; gap: 5px; font-size: 10px; }.view-tabs svg { width: 15px; }.scene[data-view=function], .scene[data-view=flow] { margin-bottom: 2px; border-radius: 11px; }
+  .canvas-side { --toolbar-room: 52px; }
+  .playground { gap: 7px; }.scene-toolbar { gap: 10px; padding: 8px 0 6px; min-height: var(--toolbar-room); }.view-tabs { padding: 2px; gap: 0; border-radius: 10px; }.view-tabs button { padding: 4px 9px; min-height: 32px; gap: 5px; font-size: 10px; }.view-tabs svg { width: 15px; }.scene[data-view=function], .scene[data-view=flow] { margin-bottom: 0; border-radius: 11px; }
   .scene-tag { font-size: 8px; letter-spacing: 1.2px; }.equation-layout { padding: 14px; gap: 16px; }.equation-formula { font-size: 20px; padding: 12px 5px; }.value-table th { font-size: 9px; padding: 0 5px 8px; }.value-table td { font-size: 12px; padding: 10px 5px; }
   .value-table .gap-comparison th { font-size: 10px; padding: 10px 5px; }.gap-comparison th small { font-size: 9px; }
   dialog { padding: 20px; max-height: calc(100dvh - 24px); }dialog h2 { font-size: 25px; }.dialog-top { margin-bottom: 14px; }.menu-grid { gap: 9px; }.menu-tile { font-size: 11px; gap: 7px; }.menu-art { width: 54px; height: 48px; }.seed-save .button { padding: 9px; font-size: 11px; }
@@ -299,12 +295,9 @@ details { border-top: 1px solid var(--line); padding-top: 14px; margin: 16px 0; 
 @media(max-height:700px) { .game-shell { padding-bottom: 10px; }.site-header { padding-top: 10px; }.puzzle-heading h1 { font-size: 26px; margin-bottom: 3px; }.puzzle-heading>p:last-child { font-size: 11px; } }
 @media(max-height:620px) and (max-width:600px) { .puzzle-tip { display: none; }.site-header { gap: 6px 12px; padding-top: 8px; }.puzzle-heading h1 { font-size: 24px; } }
 @media(max-height:520px) and (min-width:601px) {
-  .game-shell { min-height: 370px; }
-  .canvas-side:has(.scene[data-view=function]), .canvas-side:has(.has-flight-callouts) { flex:1 1 0; }
-  .game-shell:has(.scene[data-view=flow]), .game-shell:has(.scene[data-view=function]), .game-shell:has(.has-flight-callouts) { height: auto; min-height: max(370px,100dvh); }
-  .scene[data-view=flow] { flex: none; }
-  .flow-line { flex: none; height: 260px; }
-  .playground { flex-direction: row; align-items: stretch; gap: 16px; }.canvas-side { min-width: 0; width: auto; margin: 0; }.scene-toolbar { gap: 12px; min-height: 41px; padding: 3px 0 7px; }.view-tabs button { font-size: 10px; padding: 3px 8px; min-height: 28px; }.view-tabs svg { width: 14px; }.scene[data-view=function], .scene[data-view=flow] { margin-bottom: 0; }.equation-layout { padding: 14px; gap: 14px; }
+  .canvas-side { --toolbar-room: 46px; }
+  .playground { flex-direction: row; align-items: stretch; gap: 16px; }.canvas-side { min-width: 0; width: auto; margin: 0; }.scene-toolbar { gap: 12px; min-height: var(--toolbar-room); padding: 3px 0 7px; }.view-tabs button { font-size: 10px; padding: 3px 8px; min-height: 28px; }.view-tabs svg { width: 14px; }.scene[data-view=function], .scene[data-view=flow] { margin-bottom: 0; }.equation-layout { padding: 14px; gap: 14px; }
 }
+.intro .canvas-side { flex: 1; height: auto; min-height: 0; }
 @media(prefers-reduced-motion:reduce) { *, *:before, *:after { animation: none!important; transition: none!important; scroll-behavior: auto!important; } }
 body.reduced-motion *, body.reduced-motion *:before, body.reduced-motion *:after { animation: none!important; transition: none!important; scroll-behavior: auto!important; }

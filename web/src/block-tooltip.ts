@@ -24,9 +24,10 @@ export function installBlockTooltip(root:HTMLElement) {
   });
   root.addEventListener('focusin',event=>{const button=block(event.target);if(button&&(keyboardFocus||button.matches(':focus-visible')))show(button);});
   root.addEventListener('focusout',()=>{hide();dismissed=undefined;});
+  document.addEventListener('focusin',event=>{if(!root.contains(event.target as Node))hide();});
   root.addEventListener('pointerdown',()=>{keyboardFocus=false;dismissed=owner;hide();});
   document.addEventListener('pointerdown',()=>{keyboardFocus=false;},true);
-  document.addEventListener('keydown',event=>{keyboardFocus=true;if(event.key==='Escape'){dismissed=owner;hide();}});
+  document.addEventListener('keydown',event=>{keyboardFocus=true;if(event.key==='Escape'){dismissed=owner;hide();}else if(!root.contains(document.activeElement))hide();});
   window.addEventListener('resize',hide);window.addEventListener('scroll',hide,true);
   new MutationObserver(()=>{if(owner&&!owner.isConnected)hide();}).observe(root,{childList:true});
 }

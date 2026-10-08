@@ -50,10 +50,10 @@ export class ShapeNotes {
   }
 
   show(source:number) {
-    this.source=source;
+    this.source=source;this.index.scrollTop=0;
     // Open the reference at today's lesson, with normal downward reading.
     // Returning from an earlier reference must not reopen at its old bottom.
-    document.getElementById('ideas-dialog')!.scrollTop=0;
+    document.getElementById('notes-reading')!.scrollTop=0;
     // Scope references to this puzzle, including when replaying an early lesson.
     // Create has the whole book.
     this.known=knownLessons(source);
@@ -93,7 +93,7 @@ export class ShapeNotes {
     const referenceSource=focused?this.referenceSource:this.source;
     this.index.querySelectorAll<HTMLElement>('[data-note]').forEach(button=>button.setAttribute('aria-pressed',String(Number(button.dataset.note)===topic)));
     this.heading.innerHTML='<h3 id="notes-concept">Opening notes…</h3>';
-    document.getElementById('ideas-dialog')!.scrollTop=0;
+    document.getElementById('notes-reading')!.scrollTop=0;
     this.content.setAttribute('aria-busy','true');
     this.content.innerHTML='<p class="notes-loading">Opening the sketches…</p>';
     try {

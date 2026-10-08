@@ -203,16 +203,17 @@ test('garden fits its remaining panel space and only cramped windows scroll its 
   }
 });
 
-test('Equation and circle Flow reserve content height instead of hiding ordinary comparisons',async({page})=>{
+test('Equation and circle Flow keep reachable content inside the fixed game frame',async({page})=>{
   for(const id of [3,43,85]) {
     await ready(page,id);await page.locator('#tab-function').click();
     for(const [width,height] of [[1280,720],[1146,610],[844,390],[601,521],[320,568]]){
       await page.setViewportSize({width,height});
       expect(await page.locator('#scene').evaluate(e=>e.scrollHeight-e.clientHeight)).toBeLessThanOrEqual(1);
-      await expect(page.locator('#scene')).toHaveCSS('overflow-y','visible');
-      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+      await expect(page.locator('#scene')).toHaveCSS('overflow-y','hidden');
+      expect(await page.locator('.value-table tbody').evaluate(e=>e.clientHeight)).toBeGreaterThan(24);
+      expect(await page.evaluate(()=>[document.documentElement.scrollWidth-innerWidth,document.documentElement.scrollHeight-innerHeight])).toEqual([0,0]);
     }
-    if(id===43){await page.locator('#tab-flow').click();await page.setViewportSize({width:1280,height:720});expect(await page.locator('.circle-flow-line').evaluate(e=>e.scrollHeight-e.clientHeight)).toBeLessThanOrEqual(1);}
+    if(id===43){await page.locator('#tab-flow').click();await page.setViewportSize({width:1280,height:720});await expect(page.locator('.circle-flow-line')).toHaveCSS('overflow-y','auto');expect(await page.locator('.circle-flow-line').evaluate(e=>e.clientHeight)).toBeGreaterThan(60);}
   }
 });
 

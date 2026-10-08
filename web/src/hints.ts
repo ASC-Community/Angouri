@@ -1,3 +1,4 @@
+import './hints.css';
 import { CHAPTERS, chapterIndex, escape, LEVELS, puzzleLabel, type Result, type State } from './types';
 import { icon } from './icons';
 import { heightGapFormula, rationalTex, tex } from './views';
@@ -41,8 +42,60 @@ export function puzzleHints(state:State,result:Result) {
   const view=[74,75,77,82,83].includes(id)?'function':id>=43||chapter>=4||[24,14,5,15,22,16,17,18,19,20,21,23].includes(id)?'flow':'function';
   const label=view==='function'?'Equation':'Flow',guide=result.heightGuide;
   const gap=guide&&[25,26,28,11].includes(id)?`<div class="hint-reading">${tex(`${heightGapFormula(guide)}=${rationalTex(guide.target)}`)}<span>Required height gap</span></div>`:'';
-  const triangle='<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M5 3L11 8L5 13Z" fill="currentColor"/></svg>';
-  return `<p class="hint-level">${escape(puzzleLabel(id))} · ${escape(level.name)}</p><p class="hint-clue">${hintText(first)}</p>${gap}<div class="hint-actions"><button class="note-view-button" data-view="${view}">${icon(view,16)}${label}</button><button class="note-view-button" id="hint-notes">${icon('book',16)}${escape(chapter>=0?CHAPTERS[chapter].name:'Calculus')} notes</button></div><div class="hint-more"><button class="hint-more-button" id="hint-more-toggle" aria-expanded="false" aria-controls="hint-extra">${triangle}Another hint</button><div id="hint-extra" hidden><p>${hintText(more)}</p><button class="hint-more-button" id="hint-sketch-toggle" aria-expanded="false" aria-controls="hint-sketch">${triangle}Show a sketch</button><div id="hint-sketch" hidden></div></div></div>`;
+  const geometry=[45,46,47].includes(id),chapterName=chapter>=0?CHAPTERS[chapter].name:geometry?'Geometry':'Calculus';
+  return `<p class="hint-level">${escape(puzzleLabel(id))} · ${escape(level.name)}</p><p class="hint-clue">${hintText(first)}</p>${gap}<div class="hint-actions"><button class="note-view-button hint-context-link" data-view="${view}">${icon(view,16)}<span><strong>${label}</strong><small>${escape(viewPurpose(id,view,!!guide))}</small></span></button><button class="note-view-button hint-context-link" id="hint-notes">${icon('book',16)}<span><strong>${escape(chapterName)} notes</strong><small>${escape(notesPurpose(id,chapter))}</small></span></button></div><div class="hint-more">${spoilerCard('hint-more-toggle','hint-extra','Another hint','Hint spoiler',`<p>${hintText(more)}</p>${spoilerCard('hint-sketch-toggle','hint-sketch','Show a sketch','Sketch spoiler','',true)}`)}</div>`;
+}
+
+function spoilerCard(buttonId:string,panelId:string,accessibleName:string,title:string,content:string,sketch=false) {
+  const suffix=sketch?'sketch':'extra',description=`${buttonId}-description`;
+  return `<section class="hint-spoiler${sketch?' hint-sketch-spoiler':''}"><button class="hint-spoiler-cover" id="${buttonId}" aria-label="${accessibleName}" aria-describedby="${description}" aria-expanded="false" aria-controls="${panelId}"><svg class="hint-spoiler-coating" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><defs><pattern id="hint-spoiler-pattern-${suffix}" width="8" height="8" patternUnits="userSpaceOnUse"><rect width="8" height="8" class="hint-spoiler-base"/><path d="M-2 7L7-2M2 10L10 2" class="hint-spoiler-grain"/><circle cx="2" cy="2" r=".7" class="hint-spoiler-fleck"/></pattern><mask id="hint-spoiler-mask-${suffix}" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100"><rect width="100" height="100" fill="white"/><path class="hint-spoiler-scratch-path" pathLength="1" d="M3 8L97 8L3 22L97 22L3 36L97 36L3 50L97 50L3 64L97 64L3 78L97 78L3 92L97 92"/></mask></defs><rect x=".6" y=".6" width="98.8" height="98.8" rx="4" fill="url(#hint-spoiler-pattern-${suffix})" mask="url(#hint-spoiler-mask-${suffix})"/><rect x=".6" y=".6" width="98.8" height="98.8" rx="4" class="hint-spoiler-edge" mask="url(#hint-spoiler-mask-${suffix})"/></svg><span class="hint-spoiler-label"><span class="hint-spoiler-kicker">${title}</span><span class="hint-spoiler-reveal">Reveal</span></span><span class="sr-only" id="${description}">Covered content. Activate once to reveal it.</span></button><div class="hint-spoiler-content" id="${panelId}" role="region" aria-label="${accessibleName}" tabindex="-1" hidden>${content}</div></section>`;
+}
+
+function viewPurpose(id:number,view:string,hasGuide:boolean) {
+  if(id===25)return 'Compare the current gap with the required gap.';
+  if(hasGuide)return 'Compare the current signed gap with the required gap.';
+  if([45,46,47].includes(id))return 'Check the exact centre and distance conditions.';
+  if([74,75,77,82,83].includes(id))return 'Inspect the exact squared-height relation.';
+  if(view==='flow'&&id>=32&&id<=42)return 'Trace what changes before and after the fixed station.';
+  if(view==='flow')return 'Trace how each operation changes the curve.';
+  return 'Compare the current exact readings with the targets.';
+}
+
+function notesPurpose(id:number,chapter:number) {
+  if(id===25)return 'Recall how halves scale gaps and lift placement creates fractions.';
+  if([45,46,47].includes(id))return 'Recall how equal distances locate a circle.';
+  if(chapter<0)return 'Recall how slope or accumulation reveals an intermediate shape.';
+  return [
+    'Recall how lifts and halves change heights.',
+    'Recall how reflection changes a signed gap.',
+    'Recall how moving, squaring and reflection build arches.',
+    'Recall how repeated powers flatten a fitted curve.',
+    'Recall how slopes expose changes and flat places.',
+    'Recall how signed area builds the next curve.',
+    'Recall how squared height describes both sides.',
+    'Recall how phase controls a repeating curve.',
+    'Recall how rounding and accumulation shape steps.',
+    'Reconnect the ideas used in this picture.'
+  ][chapter];
+}
+
+export function revealHintSpoiler(button:HTMLButtonElement,panel:HTMLElement) {
+  if(button.getAttribute('aria-expanded')==='true')return false;
+  const card=button.closest<HTMLElement>('.hint-spoiler');
+  button.setAttribute('aria-expanded','true');panel.hidden=false;card?.classList.add('is-revealing');
+  let finished=false;
+  const finish=()=>{
+    if(finished)return;finished=true;
+    card?.classList.remove('is-revealing');card?.classList.add('reveal-complete');button.hidden=true;
+    if(panel.isConnected)panel.focus({preventScroll:true});
+  };
+  const reduced=document.body.classList.contains('reduced-motion')||matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(reduced)finish();
+  else {
+    button.querySelector('.hint-spoiler-scratch-path')?.addEventListener('animationend',finish,{once:true});
+    window.setTimeout(finish,650);
+  }
+  return true;
 }
 
 function hintText(value:string) {

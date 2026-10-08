@@ -1,19 +1,3 @@
-/** Keep synchronous DOM replacement from temporarily shortening a scrolled page.
- * WebKit clamps scrollY while old content is detached, even with preventScroll
- * on the replacement control. Reserve the document extent only during render;
- * the final layout still owns its height and may legitimately become shorter.
- */
-export function preservePageScroll(render:()=>void) {
-  const {scrollX,scrollY}=window,body=document.body;
-  const minimum=body.style.minHeight;
-  body.style.minHeight=`${Math.max(body.scrollHeight,document.documentElement.scrollHeight)}px`;
-  try {render();}
-  finally {
-    body.style.minHeight=minimum;
-    window.scrollTo({left:scrollX,top:scrollY,behavior:'instant'});
-  }
-}
-
 /** Reveal a recipe destination horizontally without moving the page to it. */
 export function revealRailCell(cell:HTMLElement|undefined|null) {
   if(!cell)return;

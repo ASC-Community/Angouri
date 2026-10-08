@@ -21,7 +21,7 @@ async function scrollAndRecord(page,control,action) {
   expect(await page.evaluate(()=>document.body.style.minHeight)).toBe('');
 }
 
-for(const view of ['flight','function','flow'])test(`8.7 ${view} edits preserve the scrolled page and editor focus`,async({page})=>{
+for(const view of ['flight','function','flow'])test(`8.7 ${view} edits keep the page fixed and preserve editor focus`,async({page})=>{
   test.setTimeout(120000);
   await page.emulateMedia({reducedMotion:'no-preference'});
   for(const viewport of [{width:1146,height:610},{width:390,height:844},{width:844,height:390}]) {
@@ -30,6 +30,7 @@ for(const view of ['flight','function','flow'])test(`8.7 ${view} edits preserve 
     await page.goto(`/#level=54&view=${view}`);
     await page.waitForFunction(()=>window.angouri?.state?.sourceId===54&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
     await page.evaluate(()=>{window.levelButton=document.querySelector('[data-level="54"]');scrollTo(0,document.documentElement.scrollHeight);});
+    expect(await page.evaluate(()=>[scrollY,document.documentElement.scrollHeight-innerHeight])).toEqual([0,0]);
     for(const op of ['A','H','Q']) {
       const block=page.locator(`[data-op="${op}"]`);
       await scrollAndRecord(page,block,()=>block.click());
@@ -52,7 +53,7 @@ test('8.7 dragging, cancellation and returning a block keep the page in place',a
   await page.goto('/#level=54&view=flight');
   await page.waitForFunction(()=>window.angouri?.state?.sourceId===54&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
   await page.evaluate(()=>scrollTo(0,document.documentElement.scrollHeight));
-  expect(await page.evaluate(()=>scrollY)).toBeGreaterThan(100);
+  expect(await page.evaluate(()=>[scrollY,document.documentElement.scrollHeight-innerHeight])).toEqual([0,0]);
   const source=page.locator('[data-op="Q"]');
   const drag=async cancel=>{
     const from=await source.boundingBox(),to=await page.locator('[data-empty="2"]').boundingBox();
@@ -70,6 +71,8 @@ test('8.7 dragging, cancellation and returning a block keep the page in place',a
   await scrollAndRecord(page,source,()=>source.click());
   expect(await page.evaluate(()=>window.angouri.state.nodes.map(node=>node.op).join(''))).toBe('S');
   expect(await page.evaluate(()=>window.angouri.history)).toEqual({undo:2,redo:0});
-  // The render guard is synchronous; it must leave ordinary page scrolling free.
-  await page.mouse.wheel(0,-500);await expect.poll(()=>page.evaluate(()=>scrollY)).toBe(0);
+  // Inspection scrolls locally while page and editor chrome stay in place.
+  await page.locator('#scene').hover();await page.mouse.wheel(0,500);
+  await expect.poll(()=>page.evaluate(()=>document.querySelector('#scene').scrollTop)).toBeGreaterThan(0);
+  expect(await page.evaluate(()=>scrollY)).toBe(0);
 });

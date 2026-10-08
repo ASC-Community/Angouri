@@ -6,11 +6,12 @@ import { renderBrand } from './brand';
 import { Kernel } from './engine';
 import { icon } from './icons';
 import { adjacentSlot, insertedSlots, movedSlots, normalizeSlots, type RailSlots } from './rail';
-import { preservePageScroll, revealRailCell } from './scroll';
-import { installTabStops, navigateTablist, rememberFocus, restoreFocus } from './keyboard';
+import { sizeEquationTables } from './comparison-layout';
+import { revealRailCell } from './scroll';
+import { focusGameControl, guardArrivalFocus, installTabStops, navigateTablist, rememberFocus, restoreFocus } from './keyboard';
 import { circleEdited, circleEquation, circleFlow, circleInput, circleRecipe, chooseCircleInspection, decorateCircleFlight, installCircleHandles, resetCircleInspection, sizeCircleControls, updateCircleProbe } from './circle';
 import { ShapeNotes, chapterArt } from './notes';
-import { puzzleHints } from './hints';
+import { puzzleHints, revealHintSpoiler } from './hints';
 import { discoveryObservation, isDiscovery } from './discovery';
 import { Garden } from './garden';
 import { captureFlightGeometry,curveMorph,fadeFlightGeometry } from './edit-transition';
@@ -22,6 +23,18 @@ import { CHAPTERS, chapterIndex, CURVES, curveId, escape, EXTRA_PUZZLES, GEOMETR
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 installTabStops();
+const finishArrivalFocus=guardArrivalFocus();
+for(const dialog of document.querySelectorAll<HTMLDialogElement>('dialog:not(#ideas-dialog):not(#garden-dialog)')) {
+  const heading=dialog.querySelector(':scope > .dialog-top');if(!heading)continue;
+  const body=document.createElement('div');body.className='dialog-content';
+  // Opt out of implicit browser scroll-container stops. Reading pages retain
+  // an explicit, named keyboard scroller; menu lists focus their own controls.
+  const reading=dialog.id==='help-dialog'||dialog.id==='releases-dialog';
+  body.tabIndex=-1;
+  if(reading){body.classList.add('dialog-reading');body.setAttribute('role','region');body.setAttribute('aria-labelledby',dialog.getAttribute('aria-labelledby')!);}
+  while(heading.nextSibling)body.append(heading.nextSibling);
+  dialog.append(body);
+}
 installBlockTooltip($('palette'));
 const SAVE = 'angouri:vine:v1:progress', PREF = 'angouri:vine:v1:preferences', SEEDS = 'angouri:vine:v1:seeds';
 const views: View[] = ['flight','function','flow'];
@@ -55,6 +68,10 @@ let defaultCamera: Camera = {...camera},fullCurve=false;
 let insertionIndex: number | undefined, selectedStage = '', discoveryStage = '';
 let probeIndex=40;
 let flowScroll={left:0,top:0},resetFlowScroll=false;
+let flightScroll={left:0,top:0};
+let equationScroll=[{left:0,top:0},{left:0,top:0}];
+const equationPanels=()=>[...$('scene').querySelectorAll<HTMLElement>('.final-equation,.value-table tbody')];
+function rememberEquationScroll(){const panels=equationPanels();if(panels.length)equationScroll=panels.map(el=>({left:el.scrollLeft,top:el.scrollTop}));}
 type Snapshot={state:State;slots:RailSlots};
 let railSlots:RailSlots=[];
 let undo: Snapshot[] = [], redo: Snapshot[] = [];
@@ -108,7 +125,7 @@ const cropEditor=new CropEditor($('construction'),()=>state&&result&&pending===0
       paintTrajectory(preview.points);
       updateCropWindow($('scene'),preview.crop!,x=>transform(state!,camera,[x,0])[0]);
     }
-    else if(displayedView()==='function')renderScene();
+    else if(displayedView()==='function'){rememberEquationScroll();renderScene();}
     else {
       $('scene').querySelector('.crop-machine .flow-curve')?.setAttribute('d',cropFlowPath(preview));
       updateFlowCrop($('scene'),preview,preview.crop!);
@@ -165,7 +182,11 @@ function showNotice() {
   if(content!==feedbackContent){$('feedback').innerHTML=content;feedbackContent=content;}
   const hints=!!state&&state.mode==='puzzle'&&!introActive()&&!isDiscovery(state)&&!throwWon;
   $('hints-open').hidden=!hints;
-  $('feedback').hidden=!(finding||notice.text)||(throwWon&&notice.kind!=='error')||(hints&&notice.text==='Tap or drag a block.'&&notice.kind!=='error');
+  const reserveGuidance=introActive()&&throwWon&&notice.kind!=='error';
+  $('recipe-guidance').style.visibility=reserveGuidance?'hidden':'';
+  $('recipe-guidance').inert=reserveGuidance;
+  $('recipe-guidance').setAttribute('aria-hidden',String(reserveGuidance));
+  $('feedback').hidden=!(finding||notice.text)||(throwWon&&!reserveGuidance&&notice.kind!=='error')||(hints&&notice.text==='Tap or drag a block.'&&notice.kind!=='error');
   $('recipe-guidance').hidden=$('feedback').hidden&&!hints;
 }
 function error(message: string) { notice={text:message,kind:'error'}; showNotice(); }
@@ -196,6 +217,7 @@ function updateHintCue(history:'push'|'keep'|'clear') {
 }
 function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:RailSlots,requestedView?:View,animateCurve=true,editedId?:string) {
   requireOk(reply);
+  const firstArrival=!state;
   const previousState=state,previousResult=result,previousPoints=displayedPoints||result?.points,previousSlope=displayedSlope??result?.startSlope,previousProbeX=result?probePoints(result)[probeIndex]?.[0]:undefined;
   const previousVisual=animateCurve&&!reduced&&!state?.circle&&displayedView()==='flight'?captureFlightGeometry($('scene')):undefined;
   const previousScroll=$('construction').querySelector('.pipeline')?.scrollLeft||0;
@@ -215,6 +237,7 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
   else if(history==='push'&&state&&(changed||layoutChanged)) {undo.push({state:clone(state),slots:[...railSlots]}); if(undo.length>100)undo.shift(); redo=[];}
   const newSource=!state||state.sourceId!==reply.state.sourceId||state.mode!==reply.state.mode;
   if(newSource||history==='clear') {hintOrders.clear();hintOffered=false;hintCue=false;hintBlockSet='';bestTargetHits=-1;unsuccessfulRevisions=0;pictureCelebrated=false;}
+  if(firstArrival)finishArrivalFocus();
   state=reply.state;result=reply.result;railSlots=nextSlots;initialized=true;
   const added=state.nodes.find(node=>!previousState?.nodes.some(before=>before.id===node.id));
   if(newSource||history==='clear')discoveryStage='';
@@ -301,15 +324,27 @@ function cue(op: Op) {
   return `<svg class="ingredient-cue" viewBox="0 0 36 36" aria-hidden="true"><path d="M3 27Q17 1 33 27" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 3" opacity=".4"/><path d="${transformed[op]}" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/></svg>`;
 }
 function palette() {
-  if(state?.circle){$('palette').innerHTML='';$('palette').dataset.count='0';return;}
+  if(state?.circle){$('palette').innerHTML='';$('palette').dataset.count='0';delete $('palette').dataset.choices;return;}
   const choosing=choiceActive();
   const creating=state?.mode==='remix',inventory=creating?{H:1,A:1,N:1,Q:1,D:1,I:1,S:1,F:1,C:1}:state?.inventory || {H:1,A:1};
+  const available=(Object.keys(OPS) as Op[]).filter(op=>(inventory[op]||0)>0);
   $('palette').setAttribute('role','group');
   $('palette').setAttribute('aria-label',choosing?'Choose a block':'Add a block to your recipe');
   $('palette').dataset.count=String(Object.values(inventory).filter(n=>n>0).length);
   // Reserve the whole pile, including a return above condensed or reusable stock.
   $('palette').style.setProperty('--stack-room',String(choosing?0:creating?3:Math.max(0,Math.min(3,Math.max(0,...Object.values(inventory))-1))));
-  $('palette').innerHTML=(Object.keys(OPS) as Op[]).filter(op=>(inventory[op]||0)>0).map(op=>{
+  // A choice changes selection, not the controls themselves. Keeping the same
+  // buttons preserves Safari's pointer/pressed state and avoids a hover restart.
+  const choices=choosing?available.join(''):undefined;
+  if(choices&&$('palette').dataset.choices===choices) {
+    for(const button of $('palette').querySelectorAll<HTMLButtonElement>('[data-op]')) {
+      button.disabled=!initialized;
+      button.setAttribute('aria-pressed',String(state?.nodes[0]?.op===button.dataset.op));
+    }
+    return;
+  }
+  if(choices)$('palette').dataset.choices=choices;else delete $('palette').dataset.choices;
+  $('palette').innerHTML=available.map(op=>{
     const n=choosing?1:inventory[op]!;
     const used=creating||choosing?0:state?.nodes.filter(node=>node.op===op).length || 0;
     const returning=state?.nodes.find(node=>node.id===(drag?.id||selectedStage)&&node.op===op);
@@ -318,7 +353,7 @@ function palette() {
     const title=choosing?OPS[op].description:returning?'Return the selected block to this stack':availability==='used'?'All copies are in your recipe':availability==='full'?'Recipe full — return a block or Undo':`${OPS[op].description} Tap to add, or drag to a recipe slot.`;
     const remaining=n-used,visibleLayers=creating?3:Math.min(remaining,3);
     const layers=visibleLayers+(returning?1:0),capacity=creating?3:Math.max(0,Math.min(n-1,3)),condensed=!creating&&n>3;
-    return `<div class="ingredient-stack ${OPS[op].color} ${creating?'reusable-stack':''} ${condensed?'condensed-stack':''} ${creating||remaining>3?'has-more-stock':''}" style="--stack-capacity:${capacity};--stack-depth:${Math.max(0,layers-1)};--return-layer:${returning?1:0}"><span class="stock-deck" aria-hidden="true">${Array.from({length:Math.max(0,layers-1)},(_,i)=>`<i style="--layer:${i+1}"></i>`).join('')}</span><button class="ingredient ${OPS[op].color} ${returning?'return-ready':''}" data-op="${op}" ${returning?`data-return="${returning.id}"`:''} data-availability="${availability}" data-stock="${creating?'reusable':remaining}" draggable="false" ${disabled?'disabled':''} ${choosing?`aria-pressed="${state?.nodes[0]?.op===op}"`:''} aria-label="${choosing?'Choose '+OPS[op].name:returning?'Return selected '+OPS[op].name+', '+(creating?'reusable stack':`${remaining} available below`):'Place '+OPS[op].name+' block, '+(creating?'reusable':`${remaining} available`)}" data-block-name="${OPS[op].name}" data-block-help="${escape(title)}"><span class="ingredient-surface"><span class="piece-grip">${icon(returning?'return':disabled?availability==='used'?'check':'lock':'grip',16)}</span><span class="ingredient-face"><span class="op-formula">${operationTex(op)}</span></span>${cue(op)}</span></button>${creating||condensed?`<span class="${creating?'reusable-mark':'stock-total'}" aria-hidden="true">${tex(creating?'\\infty':String(remaining))}</span>`:''}</div>`;
+    return `<div class="ingredient-stack ${OPS[op].color} ${creating?'reusable-stack':''} ${condensed?'condensed-stack':''} ${creating||remaining>3?'has-more-stock':''}" style="--stack-capacity:${capacity};--stack-depth:${Math.max(0,layers-1)};--return-layer:${returning?1:0}"><span class="stock-deck" aria-hidden="true">${Array.from({length:Math.max(0,layers-1)},(_,i)=>`<i style="--layer:${i+1}"></i>`).join('')}</span><button class="ingredient ${OPS[op].color} ${returning?'return-ready':''}" data-op="${op}" ${returning?`data-return="${returning.id}"`:''} data-availability="${availability}" data-stock="${creating?'reusable':remaining}" draggable="false" ${disabled?'disabled':''} ${choosing?`aria-pressed="${state?.nodes[0]?.op===op}"`:''} aria-label="${choosing?'Choose '+OPS[op].name:returning?'Return selected '+OPS[op].name+', '+(creating?'reusable stack':`${remaining} available below`):'Place '+OPS[op].name+' block, '+(creating?'reusable':`${remaining} available`)}" data-block-name="${OPS[op].name}" data-block-help="${escape(title)}"><span class="ingredient-surface"><span class="piece-grip">${icon(returning?'return':disabled?availability==='used'?'check':'lock':'grip',16)}</span><span class="ingredient-face"><span class="op-formula">${operationTex(op)}</span></span>${cue(op)}</span></button>${creating||remaining>3?`<span class="${creating?'reusable-mark':'stock-total'}" aria-hidden="true">${tex(creating?'\\infty':String(remaining))}</span>`:''}</div>`;
   }).join('');
 }
 function recipe() {
@@ -355,6 +390,7 @@ function renderLevels() {
   const currentChapter=chapterIndex(state.sourceId);
   $('level-nav').innerHTML=CHAPTERS.map((chapter,i)=>`<details class="chapter-group" name="chapters" ${i===Math.max(0,currentChapter)?'open':''}><summary><span class="chapter-art ${chapter.color}">${chapterArt(i)}</span><span><small>Chapter ${i+1}</small>${i===9?`<button type="button" id="menu-picture-open" class="note-view-button" data-open-garden aria-haspopup="dialog" aria-controls="garden-dialog">${icon('picture',14)}${chapter.name}</button>`:`<strong>${chapter.name}</strong>`}</span><span class="chapter-progress" aria-label="${chapter.levels.filter(id=>completed.has(id)).length} of ${chapter.levels.length} puzzles complete">${chapter.levels.filter(id=>completed.has(id)).length} / ${chapter.levels.length}</span>${icon('arrow',16)}</summary><div class="chapter-levels">${chapter.levels.map(option).join('')}</div></details>`).join('');
   $('level-nav').insertAdjacentHTML('beforeend',`<details class="chapter-group extra-puzzles" name="chapters" ${currentChapter<0?'open':''}><summary><span class="chapter-art neutral">${icon('puzzles',28)}</span><span><small>Optional collection</small><strong>More shape puzzles</strong></span>${icon('arrow',16)}</summary><div class="chapter-levels">${OPTIONAL_PUZZLES.map(id=>`<button class="level-option" data-level="${id}" ${state!.sourceId===id?'aria-current="step"':''}><span class="level-number">${icon(completed.has(id)?'check':'blocks',18)}</span><span>${LEVELS[id-1].name}</span>${icon('arrow',18)}</button>`).join('')}</div></details>`);
+  $<HTMLButtonElement>('puzzles-open').disabled=false;
 }
 function renderCurves() {
   const option=(curve:typeof CURVES[number])=>{
@@ -372,6 +408,10 @@ function renderScene() {
   $('scene').dataset.view=visibleView;$('scene').setAttribute('role',introActive()?'region':'tabpanel');$('scene').setAttribute('aria-labelledby',introActive()?'level-title':`tab-${visibleView}`);
   $('scene').innerHTML=visibleView==='flight'?flightView(state,result,camera,flight):visibleView==='function'?(state.circle?circleEquation(state,result,flight):functionView(state,result,flight)):(state.circle?circleFlow(state,result,probeIndex,flight):flow(state,result,selectedStage,probeIndex,flight));
   if(visibleView==='flight'){sizeFlightAnnotations($('scene'));if(state.circle)decorateCircleFlight($('scene'),state,result,camera);}
+  $('scene').scrollTop=visibleView==='flight'?flightScroll.top:0;
+  $('scene').scrollLeft=visibleView==='flight'?flightScroll.left:0;
+  if(visibleView==='function')sizeEquationTables($('scene'));
+  if(visibleView==='function')equationPanels().forEach((panel,i)=>{panel.scrollLeft=equationScroll[i].left;panel.scrollTop=equationScroll[i].top;});
   if(visibleView==='flow') {
     sizeFlowAnnotations($('scene'));
     if(state.circle)updateCircleProbe($('scene'),state,result,probeIndex,camera);else updateFlowProbe($('scene'),state,result,probeIndex);
@@ -403,15 +443,19 @@ function updatePrimary() {
   showNotice();
 }
 function render() {
-  preservePageScroll(renderGame);
-}
-function renderGame() {
   if(!state||!result)return;
   // Read before replacing the tray. WebKit can clamp the old Flow scroller
   // during that temporary layout, before its own replacement is rendered.
+  document.querySelector('.game-shell')!.classList.remove('loading');
+  const recipeContent=document.querySelector<HTMLElement>('.recipe-content')!;
+  const recipeScroll=resetFlowScroll?{left:0,top:0}:{left:recipeContent.scrollLeft,top:recipeContent.scrollTop};
   const oldFlow=$('scene').querySelector<HTMLElement>('.flow-line');
-  if(resetFlowScroll){flowScroll={left:0,top:0};resetFlowScroll=false;}
-  else if(oldFlow)flowScroll={left:oldFlow.scrollLeft,top:oldFlow.scrollTop};
+  if(resetFlowScroll){flowScroll={left:0,top:0};flightScroll={left:0,top:0};equationScroll=[{left:0,top:0},{left:0,top:0}];resetFlowScroll=false;}
+  else {
+    if(oldFlow)flowScroll={left:oldFlow.scrollLeft,top:oldFlow.scrollTop};
+    if($('scene').dataset.view==='flight')flightScroll={left:$('scene').scrollLeft,top:$('scene').scrollTop};
+    rememberEquationScroll();
+  }
   document.querySelector('.game-shell')!.classList.toggle('intro',introActive());
   document.querySelector('.game-shell')!.classList.toggle('choice-game',choiceActive());
   document.querySelector('.game-shell')!.classList.toggle('landing',introStage()===1);
@@ -448,7 +492,8 @@ function renderGame() {
   // circles can have different bounds yet put every point in the same place.
   if(fullCurve&&!changesCamera(defaultCamera)){fullCurve=false;camera={...defaultCamera};}
   const canFit=!!(result.circle||result.relation||hasTargetFrame());
-  $('circle-fit').hidden=!canFit||displayedView()==='function'||!result.circle&&displayedView()==='flow'||!changesCamera(fullCurve?defaultCamera:fittedCamera());
+  const differentFrame=canFit&&changesCamera(fullCurve?defaultCamera:fittedCamera());
+  $('circle-fit').hidden=!differentFrame||displayedView()==='function'||!result.circle&&displayedView()==='flow';
   $('circle-fit').setAttribute('aria-label','Full curve');
   $('circle-fit').setAttribute('aria-pressed',String(fullCurve));
   if(result.circle) {
@@ -462,6 +507,7 @@ function renderGame() {
     $('circle-fit').title=fullCurve?'Return to the default view':outside?'Path extends beyond the view. Show the full curve.':'Show the full curve';
   }
   palette();recipe();
+  recipeContent.scrollLeft=recipeScroll.left;recipeContent.scrollTop=recipeScroll.top;
   $<HTMLButtonElement>('undo').disabled=!undo.length;
   $<HTMLButtonElement>('redo').disabled=!redo.length;
   $<HTMLButtonElement>('reset').disabled=state.circle?!circleEdited(state,result):!cropEdited(state)&&!state.nodes.some(node=>node.id!==state!.station?.id);
@@ -650,7 +696,13 @@ function frame(time: number) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-new ResizeObserver(()=>{sizeFlightAnnotations($('scene'));sizeFlowAnnotations($('scene'));sizeCircleControls($('scene'));}).observe($('scene'));
+const sizeInspection=()=>{
+  if(!state||!result)return;
+  sizeFlightAnnotations($('scene'));sizeFlowAnnotations($('scene'));sizeEquationTables($('scene'));sizeCircleControls($('scene'));
+};
+new ResizeObserver(sizeInspection).observe($('scene'));
+// A fixed content frame need not resize when a newly used KaTeX font arrives.
+document.fonts.addEventListener('loadingdone',sizeInspection);
 
 function closeDialogs(){document.querySelectorAll<HTMLDialogElement>('dialog[open]').forEach(dialog=>dialog.close());}
 let leaveAction:(()=>Promise<unknown>)|undefined;
@@ -671,7 +723,7 @@ function changeWorkspace(action:()=>Promise<unknown>,destination:string,carry=fa
   open('leave-dialog');leaveAction=action;
 }
 function goToPuzzle(sourceId:number,protect=true) {
-  const next=()=>perform({type:'level',sourceId,mode:'puzzle'},'clear').then(ok=>{if(ok)$(introActive()?'scene':'level-title').focus({preventScroll:true});});
+  const next=()=>perform({type:'level',sourceId,mode:'puzzle'},'clear').then(ok=>{if(ok)focusGameControl();});
   if(protect)changeWorkspace(next,LEVELS[sourceId-1].name);
   else {closeDialogs();void next();}
 }
@@ -840,7 +892,6 @@ document.addEventListener('keydown',event=>{
     event.preventDefault();const from=Number(target.dataset.empty),to=adjacentSlot(railSlots,state!,from,event.key==='ArrowLeft'?-1:1);
     void moveCell(from,to)?.then(()=>document.querySelector<HTMLElement>(`[data-empty="${to}"]`)?.focus({preventScroll:true}));
   }
-  if(event.key===' '&&target.id==='scene'){event.preventDefault();launch();}
   if(event.key==='?'){event.preventDefault();open('help-dialog');}
 });
 
@@ -964,17 +1015,16 @@ const open=(id:string,returnId='menu-open')=>{
 };
 document.querySelectorAll<HTMLDialogElement>('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();const e=event as MouseEvent;if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}}));
 for(const [button,dialog] of [['help-open','help-dialog'],['menu-open','menu-dialog'],['settings-open','settings-dialog']])$(button).onclick=()=>open(dialog);
-$('puzzles-open').onclick=()=>{renderLevels();open('puzzles-dialog');};
+$('puzzles-open').onclick=()=>{if(!initialized)return;renderLevels();open('puzzles-dialog');};
 $('ideas-open').onclick=()=>{if(!state)return;open('ideas-dialog','ideas-open');shapeNotes.show(state.mode==='puzzle'?state.sourceId:0);};
 $('hints-open').onclick=()=>{if(!state||!result||state.mode!=='puzzle'||introActive()||isDiscovery(state))return;hintOffered=true;hintCue=false;$('hints-open').classList.remove('hint-cue');$('hints-content').innerHTML=puzzleHints(state,result);open('hints-dialog','hints-open');};
 $('hints-content').onclick=event=>{
   const target=event.target as Element,button=target.closest<HTMLButtonElement>('#hint-more-toggle');
-  if(button){const expanded=button.getAttribute('aria-expanded')!=='true';button.setAttribute('aria-expanded',String(expanded));$('hint-extra').hidden=!expanded;}
+  if(button)revealHintSpoiler(button,$('hint-extra'));
   const sketchButton=target.closest<HTMLButtonElement>('#hint-sketch-toggle');
   if(sketchButton&&state) {
-    const panel=$('hint-sketch'),expanded=sketchButton.getAttribute('aria-expanded')!=='true';
-    sketchButton.setAttribute('aria-expanded',String(expanded));panel.hidden=!expanded;
-    if(expanded&&!panel.dataset.loaded) {
+    const panel=$('hint-sketch'),revealed=revealHintSpoiler(sketchButton,panel);
+    if(revealed&&!panel.dataset.loaded) {
       const source=state.sourceId;panel.dataset.loaded='loading';panel.setAttribute('aria-busy','true');panel.innerHTML='<p class="notes-loading">Opening the sketch…</p>';
       void shapeNotes.hintSketch(source).then(html=>{
         if(panel.isConnected&&state?.sourceId===source){panel.innerHTML=html;panel.dataset.loaded='true';}
@@ -1008,7 +1058,7 @@ $('reset-progress-confirm').onclick=async()=>{
     accept(reply,'clear');return true;
   });
   confirm.disabled=false;cancel.disabled=false;
-  if(reset){closeDialogs();requestAnimationFrame(()=>$('scene').focus({preventScroll:true}));$('move-announcement').textContent='Puzzle progress reset. Chapter 1 is ready.';}
+  if(reset){closeDialogs();requestAnimationFrame(()=>focusGameControl());$('move-announcement').textContent='Puzzle progress reset. Chapter 1 is ready.';}
   else {$('reset-progress-error').textContent=notice.text;$('reset-progress-error').hidden=false;}
 };
 $('leave-dialog').addEventListener('close',()=>{leaveAction=undefined;});
@@ -1166,7 +1216,7 @@ function parseSave(value:unknown) {
   if(data.slots!==undefined&&(!Array.isArray(data.slots)||data.slots.length>65||!data.slots.every(id=>id===null||typeof id==='string'&&/^[A-Za-z0-9_-]{1,64}$/.test(id))))throw new Error('The saved recipe slots are invalid.');
   return {state:data.state as State,slots:data.slots as RailSlots|undefined,completed:data.completed as number[],view:data.view};
 }
-function importData(value:unknown,onEngineFailure?:(failure:Error)=>void) {
+function importData(value:unknown,{onEngineFailure,keepDialogs=false}:{onEngineFailure?:(failure:Error)=>void;keepDialogs?:boolean}={}) {
   return serial(async()=>{
     const run=async(snapshot:State|undefined,action:Action)=>{
       let reply:Response;
@@ -1182,7 +1232,7 @@ function importData(value:unknown,onEngineFailure?:(failure:Error)=>void) {
       if(data.schema!==1||Object.keys(data).some(k=>!['schema','type','sourceId','view'].includes(k))||!isView(data.view))throw new Error('Unsupported puzzle link file.');
       const reply=await run(undefined,{type:'level',sourceId:data.sourceId,mode:'puzzle'});requireOk(reply);accept(reply,'clear',undefined,data.view);
     } else {const reply=await run(state,{type:'import',artifact:data});requireOk(reply);accept(reply,'clear',undefined,isView(data.view)?data.view:undefined);}
-    closeDialogs();preferences();return true;
+    if(!keepDialogs)closeDialogs();preferences();return true;
   });
 }
 $('import-open').onclick=()=>{closeDialogs();$<HTMLInputElement>('import-file').click();};
@@ -1195,7 +1245,7 @@ async function start() {
   let opened=false;
   const openInitial=async(value:unknown)=>{
     let failure:Error|undefined;
-    const opened=!!await importData(value,error=>{failure=error;});
+    const opened=!!await importData(value,{onEngineFailure:error=>{failure=error;},keepDialogs:true});
     // A worker failure says nothing about the validity of the saved workspace.
     // Retry it intact; only invalid input may fall through to a fresh puzzle.
     if(failure)throw failure;

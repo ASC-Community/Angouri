@@ -5,7 +5,11 @@
 .crop-title button:hover { background: #dfe6d5; }
 .crop-bound { display: flex; align-items: center; gap: 7px; height: 27px; font-size: 10px; }
 .crop-bound>span { width: 25px; }
-.crop-bound input[type=range] { flex: 1; width: 90px; height: 25px; margin: 0; accent-color: #4b7051; }
+.crop-bound input[type=range] { flex: 1; width: 90px; min-width: 0; height: 25px; margin: 0 12px; appearance: none; background: transparent; }
+.crop-bound input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 5px; background: #dce6cf; }
+.crop-bound input[type=range]::-moz-range-track { height: 6px; border-radius: 5px; background: #dce6cf; }
+.crop-bound input[type=range]::-webkit-slider-thumb { appearance: none; width: 19px; height: 19px; border-radius: 50%; border: 2px solid #486c3b; background: #fffef8; margin-top: -6.5px; }
+.crop-bound input[type=range]::-moz-range-thumb { width: 15px; height: 15px; border-radius: 50%; border: 2px solid #486c3b; background: #fffef8; }
 .crop-bound input[type=text] { width: 38px; border: 1px solid #b9c6b0; border-radius: 4px; padding: 3px; text-align: center; background: #fffefa; color: #344c3b; font: 11px Arial,sans-serif; }
 .crop-add { flex: none; font-size: 11px; padding: 8px; }
 .crop-fixed { flex:none; display:flex; align-items:center; gap:7px; padding:9px 11px; border:1px solid #d3ddc9; border-radius:8px; color:#657957; background:#f7f9f1; font-size:11px; }
