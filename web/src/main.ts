@@ -526,7 +526,7 @@ function render() {
   $<HTMLButtonElement>('redo').disabled=!redo.length;
   $<HTMLButtonElement>('reset').disabled=state.circle?!circleEdited(state,result):!cropEdited(state)&&!state.nodes.some(node=>node.id!==state!.station?.id);
   const restartLabel=state.mode==='remix'?'Clear recipe':state.mode==='challenge'?'Restart challenge':'Restart puzzle';
-  $('reset').setAttribute('aria-label',restartLabel);$('reset').title=restartLabel;
+  $('reset').setAttribute('aria-label',restartLabel);$('reset').title=`${restartLabel} (⇧+⌫)`;
   $<HTMLButtonElement>('reset-progress-open').disabled=false;
   $('undo').classList.toggle('retry-cue',flight.phase==='landed'&&!result.solved);
   for(const id of ['share-open','nav-create','favorite-save'])$<HTMLButtonElement>(id).disabled=false;

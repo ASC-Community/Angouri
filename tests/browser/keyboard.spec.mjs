@@ -14,6 +14,42 @@ async function hasVisibleOutline(locator) {
   });
 }
 
+test('Shift alone toggles shortcut labels while focus, editing and modified keys keep working',async({page})=>{
+  await ready(page,'/#level=25');
+  const labels=page.locator('.keyboard-focus-cue:visible,.button-hotkey:visible'),launchKey=page.locator('#launch .button-hotkey');
+  const initial=await page.evaluate(()=>window.angouri.state);
+  await expect(labels).toHaveCount(0);await page.keyboard.press('Shift');await expect(launchKey).toBeVisible();
+  await page.keyboard.press('Shift');await expect(labels).toHaveCount(0);
+  expect(await page.evaluate(()=>window.angouri.state)).toEqual(initial);
+  await page.keyboard.press('Tab');await expect(page.locator('#tab-flight')).toBeFocused();
+  expect(await hasVisibleOutline(page.locator('#tab-flight'))).toBe(true);await expect(labels).toHaveCount(0);
+  await page.locator('#palette [data-op="A"]').focus();await page.keyboard.press('ArrowUp');await idle(page);
+  await expect(page.locator('.part-body')).toBeFocused();expect(await hasVisibleOutline(page.locator('.part-body'))).toBe(true);await expect(labels).toHaveCount(0);
+  await page.keyboard.press('Shift');await expect(page.locator('.keyboard-focus-cue:visible kbd:visible')).toHaveText(['Space','⌫']);
+  await page.keyboard.down('Shift');await page.keyboard.down('Shift');await expect(launchKey).toBeVisible();await page.keyboard.up('Shift');await expect(labels).toHaveCount(0);
+  await page.keyboard.press('Shift');await page.keyboard.press('Shift+Tab');await expect(launchKey).toBeVisible();
+  await page.keyboard.press('Control+z');await idle(page);await page.keyboard.press('Control+Shift+z');await idle(page);
+  expect(await page.evaluate(()=>window.angouri.state.nodes.map(node=>node.op))).toEqual(['A']);await expect(launchKey).toBeVisible();
+  await page.keyboard.press('Shift+Backspace');await idle(page);expect(await page.evaluate(()=>window.angouri.state.nodes)).toEqual([]);await expect(launchKey).toBeVisible();
+  await page.keyboard.press('Control+z');await idle(page);
+  // Shift used with a pointer gesture is not a standalone press either.
+  await page.keyboard.down('Shift');await page.locator('#menu-open').click();await page.keyboard.up('Shift');
+  await expect(page.locator('html')).toHaveAttribute('data-shortcut-labels','shown');await expect(labels).toHaveCount(0);
+  await page.keyboard.press('Escape');await expect(launchKey).toBeVisible();
+  await page.keyboard.press('Shift');await page.keyboard.press('?');
+  await expect(page.getByText('In play, press Shift to show or hide shortcuts.',{exact:true})).toBeVisible();
+  await expect(page.locator('#help-dialog details')).not.toHaveAttribute('open');
+});
+
+test('hiding shortcut labels retains the slider knob focus ring and arrow-key control',async({page})=>{
+  await ready(page,'/#level=3&view=flow');await page.keyboard.press('Tab');await page.keyboard.press('Tab');
+  const slider=page.locator('#flow-position'),ring=page.locator('.keyboard-knob-ring'),arrows=page.locator('.is-knob .keyboard-horizontal');
+  await expect(slider).toBeFocused();await expect(ring).toBeVisible();await expect(arrows).toBeVisible();
+  await page.keyboard.press('Shift');await expect(arrows).toBeHidden();await expect(ring).toBeVisible();await expect(slider).toBeFocused();
+  const before=await slider.inputValue();await page.keyboard.press('ArrowRight');await expect(slider).not.toHaveValue(before);await expect(ring).toBeVisible();await expect(arrows).toBeHidden();
+  await page.keyboard.press('Shift');await expect(arrows).toBeVisible();
+});
+
 test('Backspace follows menu Back and Cancel without intercepting text editing',async({page})=>{
   await ready(page);await page.locator('#menu-open').focus();await page.keyboard.press('Space');await page.locator('#settings-open').focus();await page.keyboard.press('Space');
   await expect(page.locator('#settings-dialog [data-back-shortcut] .button-hotkey')).toBeVisible();

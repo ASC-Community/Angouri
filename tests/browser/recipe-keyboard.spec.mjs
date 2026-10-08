@@ -26,7 +26,8 @@ test('Shift Delete restarts only the current recipe, remains undoable and leaves
   for(const op of ['A','H']){await page.locator(`#palette [data-op="${op}"]`).focus();await page.keyboard.press('ArrowUp');await idle(page);}
   const before=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}));
   for(const key of ['Shift+Delete','Shift+Backspace']) {
-    await expect(page.locator('#reset .button-hotkey')).toBeVisible();await expect(page.locator('#reset .button-hotkey')).toHaveText('⇧Del');
+    await expect(page.locator('#reset .button-hotkey')).toBeVisible();await expect(page.locator('#reset .button-hotkey')).toHaveText('⇧+⌫');
+    await expect(page.locator('#reset')).toHaveAttribute('title','Restart puzzle (⇧+⌫)');
     await page.keyboard.press(key);await idle(page);
     expect(await page.evaluate(()=>window.angouri.state.nodes)).toEqual([]);await expect(page.locator('#reset .button-hotkey')).toBeHidden();
     expect(await page.evaluate(()=>window.angouri.history.undo)).toBe(before.history.undo+1);
@@ -159,7 +160,8 @@ test('moving focus during an Enter throw cancels the automatic Next handoff',asy
   await page.keyboard.press('Enter');expect(await page.evaluate(()=>window.angouri.flight.phase)).toBe('flying');
 });
 
-test('compact keycaps retain assigned positions and only show available keyboard actions',async({page},testInfo)=>{
+for(const platform of ['MacIntel','Win32'])test(`compact keycaps retain assigned positions and only show available keyboard actions on ${platform}`,async({page},testInfo)=>{
+  await page.addInitScript(platform=>Object.defineProperty(navigator,'platform',{get:()=>platform}),platform);
   for(const size of [{width:1146,height:850},{width:320,height:568},{width:844,height:390}]) {
     await page.setViewportSize(size);await ready(page);
     await expect(page.locator('.keyboard-focus-cue:visible,.button-hotkey:visible')).toHaveCount(0);
@@ -169,12 +171,12 @@ test('compact keycaps retain assigned positions and only show available keyboard
     await expect(page.locator('#undo .button-hotkey')).toBeHidden();await expect(page.locator('#redo .button-hotkey')).toBeHidden();
     await page.keyboard.press('ArrowUp');await idle(page);
     const block=page.locator('.part-body');await expect(block).toBeFocused();
-    await expect(cue(page).locator('kbd:visible')).toHaveText(['Space','Del']);
+    await expect(cue(page).locator('kbd:visible')).toHaveText(['Space','⌫']);
     await expect(cue(page)).toHaveAttribute('data-directions','xdown');
     await expect(block).toHaveAttribute('aria-describedby','block-keyboard-help');
     await expect(page.locator('#block-tooltip')).toBeHidden();
     await expect(page.locator('#launch .button-hotkey')).toHaveText('Enter');await expect(page.locator('#launch .button-hotkey')).toBeVisible();
-    await expect(page.locator('#undo .button-hotkey')).toBeVisible();await expect(page.locator('#undo .button-hotkey')).toHaveText(/⌘Z|Ctrl Z/);
+    await expect(page.locator('#undo .button-hotkey')).toBeVisible();await expect(page.locator('#undo .button-hotkey')).toHaveText(/⌘\+Z|Ctrl\+Z/);
     const boxes=await cue(page).evaluate(el=>({control:document.activeElement.getBoundingClientRect().toJSON(),caps:[...el.children].filter(e=>!e.hidden).map(e=>e.getBoundingClientRect().toJSON())}));
     expect(boxes.caps).toHaveLength(3);
     const [space,arrows,del]=boxes.caps,r=boxes.control;
@@ -208,11 +210,15 @@ test('compact keycaps retain assigned positions and only show available keyboard
       return errors;
     })).toEqual([]);
     await page.screenshot({path:testInfo.outputPath(`keyboard-labels-${size.width}.png`)});
-    await add.focus();await page.keyboard.press('Shift');await expect(add.locator('.button-hotkey')).toBeVisible();
+    await add.focus();await expect(add.locator('.button-hotkey')).toBeVisible();
     await page.keyboard.press('Control+z');await idle(page);
     await expect(page.locator('#undo .button-hotkey')).toBeHidden();await expect(page.locator('#redo .button-hotkey')).toBeVisible();
-    await expect(page.locator('#redo .button-hotkey')).toHaveText(/⇧⌘Z|Ctrl⇧Z/);
+    await expect(page.locator('#redo .button-hotkey')).toHaveText(/⌘\+⇧\+Z|Ctrl\+⇧\+Z/);
     await page.keyboard.press('Control+Shift+z');await idle(page);await expect(page.locator('#undo .button-hotkey')).toBeVisible();await expect(page.locator('#redo .button-hotkey')).toBeHidden();
+    await add.focus();await page.keyboard.press('Space');await idle(page);await page.keyboard.press('Control+z');await idle(page);
+    await expect(page.locator('#undo .button-hotkey')).toBeVisible();await expect(page.locator('#redo .button-hotkey')).toBeVisible();
+    const undoCap=await page.locator('#undo .button-hotkey').boundingBox(),redoCap=await page.locator('#redo .button-hotkey').boundingBox();
+    expect(undoCap.x+undoCap.width).toBeLessThanOrEqual(redoCap.x);
     await page.locator('#menu-open').focus();await page.keyboard.press('Space');
     await expect(page.locator('#menu-dialog .dialog-top button')).toBeFocused();
     await expect(page.locator('#menu-dialog [data-back-shortcut] .button-hotkey')).toBeVisible();await expect(page.locator('#menu-dialog [data-back-shortcut] .button-hotkey')).toHaveText('⌫');

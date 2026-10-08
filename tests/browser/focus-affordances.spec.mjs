@@ -10,7 +10,9 @@ const idle=page=>page.evaluate(()=>window.angouri.whenIdle());
 const paint=page=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
 
 async function ring(page,control,label,{pixels=false,outerEdge=false,testInfo}={}) {
-  await control.focus();await page.keyboard.press('Shift');await paint(page);
+  await control.focus();
+  if(!await page.evaluate(()=>document.documentElement.dataset.focusModality==='keyboard'&&document.documentElement.dataset.shortcutLabels!=='hidden'))await page.keyboard.press('Shift');
+  await paint(page);
   await expect(control,label).toBeFocused();
   const measured=await control.evaluate(element=>{
     const face=element.querySelector('.ingredient-surface')??element;

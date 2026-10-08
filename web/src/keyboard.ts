@@ -116,21 +116,40 @@ function installTabBoundary(documentRoot:Document) {
 /** Keep focus restoration, while presenting its ring only for keyboard use. */
 export function installFocusModality(documentRoot: Document = document) {
   const root=documentRoot.documentElement;
+  let shiftPress:{visible:boolean;used:boolean}|undefined;
   const keyboard=(event:KeyboardEvent)=>{
-    if(event.isTrusted&&!['Alt','Control','Meta'].includes(event.key))root.dataset.focusModality='keyboard';
+    if(!event.isTrusted)return;
+    if(event.key==='Shift'&&!event.repeat) {
+      if(shiftPress)shiftPress.used=true;
+      else if(!event.ctrlKey&&!event.metaKey&&!event.altKey)shiftPress={visible:root.dataset.focusModality==='keyboard'&&root.dataset.shortcutLabels!=='hidden',used:false};
+    }else if(shiftPress&&event.key!=='Shift')shiftPress.used=true;
+    if(!['Alt','Control','Meta'].includes(event.key))root.dataset.focusModality='keyboard';
   };
-  const pointer=(event:Event)=>{if(event.isTrusted)root.dataset.focusModality='pointer';};
+  const released=(event:KeyboardEvent)=>{
+    if(event.key!=='Shift'||!shiftPress)return;
+    const press=shiftPress;shiftPress=undefined;
+    // Wait for release so Shift+Tab, modified shortcuts, typing and pointer
+    // gestures never also toggle the labels. Focus outlines remain independent.
+    if(event.isTrusted&&!press.used&&!event.ctrlKey&&!event.metaKey&&!event.altKey)root.dataset.shortcutLabels=press.visible?'hidden':'shown';
+  };
+  const pointer=(event:Event)=>{if(event.isTrusted){root.dataset.focusModality='pointer';if(shiftPress)shiftPress.used=true;}};
+  const blur=()=>{shiftPress=undefined;};
   root.dataset.focusModality='pointer';
   documentRoot.addEventListener('keydown',keyboard,true);
+  documentRoot.addEventListener('keyup',released,true);
   documentRoot.addEventListener('pointerdown',pointer,true);
   documentRoot.addEventListener('mousedown',pointer,true);
   documentRoot.addEventListener('touchstart',pointer,{capture:true,passive:true});
+  documentRoot.defaultView?.addEventListener('blur',blur);
   return ()=>{
     documentRoot.removeEventListener('keydown',keyboard,true);
+    documentRoot.removeEventListener('keyup',released,true);
     documentRoot.removeEventListener('pointerdown',pointer,true);
     documentRoot.removeEventListener('mousedown',pointer,true);
     documentRoot.removeEventListener('touchstart',pointer,true);
+    documentRoot.defaultView?.removeEventListener('blur',blur);
     delete root.dataset.focusModality;
+    delete root.dataset.shortcutLabels;
   };
 }
 

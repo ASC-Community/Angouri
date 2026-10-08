@@ -89,8 +89,11 @@ dialog :is(button,a,input,select,textarea,[tabindex]) { scroll-margin: 8px; }
 :root[data-focus-modality=keyboard]:not(:has(dialog[open],input:focus,textarea:focus,select:focus)) .game-shell button:not(:disabled) .button-hotkey { display: block; }
 :root[data-focus-modality=keyboard] dialog[open]:not(:has(input:not([type=checkbox]):not([type=radio]):not([type=range]):focus,textarea:focus,select:focus)) [data-back-shortcut]:not(:disabled)>.button-hotkey { display: block; }
 :root .launch-button[data-action=continue]:not(:focus)>.button-hotkey,
+:root[data-shortcut-labels=hidden] .button-hotkey,
 :root[data-character-shortcuts=false] .button-hotkey[data-character],
 :root:has(a:focus) :is(#launch,#rethrow)>.button-hotkey { display: none !important; }
+:root[data-shortcut-labels=hidden] .keyboard-focus-cue:not(.is-knob),
+:root[data-shortcut-labels=hidden] .keyboard-focus-cue.is-knob path { display: none !important; }
 
 /* The extra :not() keeps this explicit keyboard style above the component's
    deliberate programmatic-focus suppression when :focus-visible is stale. */

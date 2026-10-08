@@ -32,11 +32,12 @@ export function installKeyboardAffordances(documentRoot:Document) {
   const observed=new Set<Element>();
   const cue=documentRoot.createElement('span');
   cue.className='keyboard-focus-cue';cue.setAttribute('aria-hidden','true');cue.hidden=true;
-  cue.innerHTML='<kbd class="keyboard-activate">Space</kbd><span class="keyboard-direction-key"><svg viewBox="0 0 60 34" fill="none" aria-hidden="true"><circle class="keyboard-knob-ring" cx="30" cy="17" r="13"/><path class="keyboard-horizontal" d="M10 11L4 17L10 23M50 11L56 17L50 23"/><path class="keyboard-up" d="M24 9L30 3L36 9"/><path class="keyboard-down" d="M24 25L30 31L36 25"/></svg></span><kbd class="keyboard-delete">Del</kbd>';
+  cue.innerHTML='<kbd class="keyboard-activate">Space</kbd><span class="keyboard-direction-key"><svg viewBox="0 0 60 34" fill="none" aria-hidden="true"><circle class="keyboard-knob-ring" cx="30" cy="17" r="13"/><path class="keyboard-horizontal" d="M10 11L4 17L10 23M50 11L56 17L50 23"/><path class="keyboard-up" d="M24 9L30 3L36 9"/><path class="keyboard-down" d="M24 25L30 31L36 25"/></svg></span><kbd class="keyboard-delete">⌫</kbd>';
   const activate=cue.querySelector<HTMLElement>('.keyboard-activate')!,arrows=cue.querySelector<HTMLElement>('.keyboard-direction-key')!,remove=cue.querySelector<HTMLElement>('.keyboard-delete')!;
   const mac=/Mac|iPhone|iPad/.test(navigator.platform);
-  for(const [id,label] of [['undo',mac?'⌘Z':'Ctrl Z'],['redo',mac?'⇧⌘Z':'Ctrl⇧Z']]) {
+  for(const [id,label] of [['undo',mac?'⌘+Z':'Ctrl+Z'],['redo',mac?'⌘+⇧+Z':'Ctrl+⇧+Z']]) {
     const cap=documentRoot.querySelector<HTMLElement>(`#${id} .button-hotkey`);if(cap)cap.textContent=label;
+    documentRoot.querySelector<HTMLElement>(`#${id}`)?.setAttribute('title',`${id==='undo'?'Undo':'Redo'} (${label})`);
   }
   const showCue=()=>{
     const active=documentRoot.activeElement;
@@ -49,6 +50,7 @@ export function installKeyboardAffordances(documentRoot:Document) {
     else if(active.matches('[role=tab],.empty-slot'))directions='x';
     else if(active.matches(READERS))directions=scrollDirections(active);
     if(active.id==='tab-flight'&&scrollDirections(documentRoot.querySelector<HTMLElement>('#scene')!).includes('y'))directions='xy';
+    if(documentRoot.documentElement.dataset.shortcutLabels==='hidden'&&!knob){cue.hidden=true;return;}
     const dedicated=active.matches('#launch,#rethrow,#undo,#redo,#reset,[data-back-shortcut]');
     const activation=!dedicated&&!active.matches('[role=tab],:disabled')&&(active.matches('button,summary,[role=button],input[type=checkbox],a[href]'));
     if(!directions&&!activation){cue.hidden=true;return;}
@@ -134,7 +136,9 @@ export function installKeyboardAffordances(documentRoot:Document) {
     }
     schedule();
   };
+  const released=(event:KeyboardEvent)=>{if(event.key==='Shift')schedule();};
   documentRoot.addEventListener('keydown',key,true);
+  documentRoot.addEventListener('keyup',released,true);
   documentRoot.addEventListener('focusin',focus,true);
   for(const event of ['focusout','input','pointerdown','scroll'])documentRoot.addEventListener(event,schedule,true);
   window.addEventListener('resize',schedule);documentRoot.fonts.ready.then(schedule);
@@ -142,6 +146,7 @@ export function installKeyboardAffordances(documentRoot:Document) {
   return {refresh:schedule,remove:()=>{
     cancelAnimationFrame(frame);resize.disconnect();cue.remove();
     documentRoot.removeEventListener('keydown',key,true);
+    documentRoot.removeEventListener('keyup',released,true);
     documentRoot.removeEventListener('focusin',focus,true);
     for(const event of ['focusout','input','pointerdown','scroll'])documentRoot.removeEventListener(event,schedule,true);
     window.removeEventListener('resize',schedule);
