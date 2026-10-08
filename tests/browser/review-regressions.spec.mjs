@@ -103,6 +103,45 @@ test('dense Flight coordinates fit whole and keep a stable target frame through 
   }
 });
 
+test('dense wave Flight reserves the whole diagram above or beside its recipe through reflow',async({page},testInfo)=>{
+  test.setTimeout(180000);
+  async function frame(source,width) {
+    // Inspect the first settled frame: an arbitrary delay can hide WebKit's
+    // stale label projection after switching from a portrait to a row layout.
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    if(width===844||width===1146)await page.screenshot({path:testInfo.outputPath(`${source}-${width}.png`),fullPage:true});
+    const layout=await page.locator('#scene').evaluate(scene=>{
+      const s=scene.getBoundingClientRect(),diagram=scene.querySelector('.flight-diagram'),d=diagram.getBoundingClientRect();
+      const svg=scene.querySelector('#flight-svg'),plot=svg.getBoundingClientRect(),vb=svg.viewBox.baseVal;
+      const dock=document.querySelector('.play-dock').getBoundingClientRect(),style=getComputedStyle(diagram);
+      const scale=Math.min(plot.width/vb.width,plot.height/vb.height),x=plot.left+(plot.width-vb.width*scale)/2-vb.x*scale;
+      const axisErrors=[...scene.querySelectorAll('#axis-labels [data-axis-x]')].map(label=>{
+        const coordinate=Math.max(16/scale,Math.min(760-16/scale,Number(label.dataset.axisX))),box=label.getBoundingClientRect();
+        return Math.abs(box.left+box.width/2-(x+coordinate*scale));
+      });
+      const labels=[...scene.querySelectorAll('.target-label .katex-html')].map(label=>label.getBoundingClientRect());
+      return {
+        contained:d.left>=s.left-1&&d.right<=s.right+1&&d.top>=s.top-1&&d.bottom<=s.bottom+1,
+        plotFits:plot.top>=d.top+parseFloat(style.paddingTop)-1&&plot.bottom<=d.bottom-parseFloat(style.paddingBottom)+1,
+        recipeOverlap:Math.min(d.right,dock.right)-Math.max(d.left,dock.left)>1&&Math.min(d.bottom,dock.bottom)-Math.max(d.top,dock.top)>1,
+        labelsFit:labels.every(r=>r.left>=s.left-1&&r.right<=s.right+1&&r.top>=s.top-1&&r.bottom<=s.bottom+1),
+        axisError:Math.max(...axisErrors),width:document.documentElement.scrollWidth,viewport:innerWidth
+      };
+    });
+    expect(layout.contained).toBe(true);expect(layout.plotFits).toBe(true);expect(layout.recipeOverlap).toBe(false);
+    expect(layout.labelsFit).toBe(true);expect(layout.axisError).toBeLessThan(1);expect(layout.width).toBeLessThanOrEqual(layout.viewport);
+  }
+  for(const source of [54,80]) {
+    await page.setViewportSize({width:1440,height:900});await ready(page,source);
+    await frame(source,1440);
+    for(const [width,height] of [[1146,610],[390,844],[844,390],[601,520],[1512,982]]) {
+      await page.setViewportSize({width,height});await frame(source,width);
+    }
+    await place(page,'H');await frame(source,1512);
+    for(const view of ['function','flow']) {await page.locator(`#tab-${view}`).click();await page.locator('#tab-flight').click();await frame(source,1512);}
+  }
+});
+
 test('implicit calculus describes the incoming squared height before solving both branches',async({page})=>{
   await ready(page,85,'flow');await expect(page.locator('#chapter-step')).toContainText('FINAL MASTERY');
   let before=0,after=6,onOutput=false;

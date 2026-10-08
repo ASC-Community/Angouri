@@ -82,9 +82,16 @@ export function sizeFlightAnnotations(root:HTMLElement) {
     const shortLandscape=innerHeight<=560&&innerWidth>innerHeight;
     const plotHeight=shortLandscape?190:Math.max(190,Math.min(320,root.clientWidth*414/760));
     root.style.setProperty('--flight-height',`${space('top')+space('bottom')+plotHeight}px`);
+    // The positioned diagram cannot contribute an intrinsic SVG height to the
+    // flex layout. Give its plot the actual remaining height explicitly:
+    // Safari can resolve a 100% SVG against the wrong indefinite flex height.
+    root.style.setProperty('--flight-plot-height',`${Math.max(0,root.clientHeight-space('top')-space('bottom'))}px`);
   }
+  // Settle HTML and SVG boxes after changing the callout rows, before taking
+  // the projection. WebKit can otherwise return the preceding flex frame.
+  const box=overlay.getBoundingClientRect();svg.getBoundingClientRect();
   const matrix=svg.getScreenCTM();if(!matrix)return;
-  const scale=matrix.a,box=overlay.getBoundingClientRect();
+  const scale=matrix.a;
   // Text stays at 12 CSS pixels as the diagram fits, so browser zoom can enlarge
   // the notation normally. Only label boxes change; the coordinate map does not.
   for(const label of overlay.querySelectorAll<HTMLElement>('[data-axis-x]')) {

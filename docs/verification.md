@@ -2,7 +2,15 @@
 
 Version **0.1.0**, currently unreleased, is implemented on `prototype/vine-playground`. Source now lives in `web/`, `kernel/`, `bridge/` and `tests/`; the old `prototype/` directory is gone. The production artifact is built in `dist/`, with an optional repository-root copy for local preview. The default branch and public deployment are unchanged. The authorized organization-profile consolidation was pushed separately, as recorded below.
 
-## Layout, curve transitions and player language: latest follow-up
+## Dense Flight sizing in Safari: latest follow-up
+
+The reported Mac Safari clipping on **8.7 and 8.8** exposed an insufficient layout invariant: checking the outer scene alone does not establish that its SVG fits above the recipe. Dense Flight no longer resolves the plot through a chain of percentage heights inside auto-sized flex containers. Its diagram is positioned inside the allocated scene, and the SVG receives that scene's remaining height after the callout rows. Tall windows retain their extra plot space; short landscape gives the canvas only the width left beside the recipe. The mathematical camera and curve are unchanged.
+
+A WebKit portrait-to-landscape capture also showed displaced labels after the curve had reached its final position. HTML/SVG box measurements now precede the projection-matrix read. The new browser regression opens sources 54/80, resizes the same construction through desktop, portrait and short landscape, then checks block edits and returns from Equation/Flow. It verifies the actual diagram/plot bounds, separation from the recipe, label alignment and document width, without an artificial settling delay. The independent Astra source review accepted the change. Native Mac Safari is not available in this Windows environment; runtime verification uses Playwright's engines.
+
+All nine focused cases pass across Chromium, Firefox and WebKit: the new two-puzzle reflow regression, existing dense-coordinate editing checks and the circle camera/Full curve regression in each engine. TypeScript checking and the rebuilt frontend pass. Final WebKit captures at 1146×610 and 844×390 show the entire diagram separated from the recipe, with aligned labels; the latter corrects the displaced labels in the earlier capture. Evidence is under `.work/safari87/` and the corresponding `test-results/` captures. Kernel rules and mathematical bounds are unchanged.
+
+## Layout, curve transitions and player language: preceding revision
 
 The npm package and lockfile now use **angouri**. Storage keys and saved-artifact identifiers retain their existing compatibility contracts.
 
