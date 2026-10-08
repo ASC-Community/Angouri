@@ -35,7 +35,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 .speed-lines { stroke: #90ac5c; stroke-width: 2; stroke-linecap: round; fill: none; opacity: .7; }
 .slingshot-band { fill: none; stroke: #66784a; stroke-width: 2.5; stroke-linecap: round; }
 .slingshot-pouch { fill: none; stroke: #8e6748; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
-#trajectory { stroke: #96af6d; stroke-width: 2.5; stroke-dasharray: 2 9; stroke-linecap: round; fill: none; }
+#trajectory,.curve-change-trajectory { stroke: #96af6d; stroke-width: 2.5; stroke-dasharray: 2 9; stroke-linecap: round; fill: none; }
 #flight-trail { stroke: #668c3b; stroke-width: 3.5; stroke-linejoin: round; stroke-linecap: round; fill: none; }
 .ring { --target-color: var(--hit); --target-fill: #e5eed155; --target-inner: #a0bb7b; }
 .ring[data-match=miss] { --target-color: var(--miss); --target-fill: #f7e4e250; --target-inner: #d5aba5; }

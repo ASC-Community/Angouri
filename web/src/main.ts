@@ -12,6 +12,7 @@ import { ShapeNotes, chapterArt } from './notes';
 import { puzzleHints } from './hints';
 import { discoveryObservation, isDiscovery } from './discovery';
 import { Garden } from './garden';
+import { captureFlightGeometry,curveMorph,fadeFlightGeometry } from './edit-transition';
 import { gardenOrigin } from './garden-collection';
 import { installBlockTooltip } from './block-tooltip';
 import { along, drawnPaths, flightPoints, flightStrokes, nearestIndex, strokePosition, sampledPosition, travelledPaths } from './geometry';
@@ -70,6 +71,12 @@ let initialized = false, pending = 0;
 let chain = Promise.resolve();
 let notice = {text:'Tap or drag a block.',kind:''};
 let morphFrame=0, displayedPoints: Result['points'] | undefined,displayedSlope:number|undefined;
+let clearCurveFade:(()=>void)|undefined,clearCurveEnds:(()=>void)|undefined;
+function cancelCurveChange(settle=false) {
+  cancelAnimationFrame(morphFrame);clearCurveFade?.();clearCurveFade=undefined;clearCurveEnds?.();clearCurveEnds=undefined;
+  displayedPoints=undefined;displayedSlope=undefined;delete $('scene').dataset.curveTransition;
+  if(settle&&state&&result&&displayedView()==='flight'){paintTrajectory(result.points);animatePosition();}
+}
 interface Seed { name: string; artifact: Artifact; snapshot?:Snapshot; view?:View; savedAt?:string }
 const storedSeeds = read(SEEDS);
 let seeds: Seed[] = Array.isArray(storedSeeds) ? storedSeeds.slice(0,12).filter((s):s is Seed=>!!s&&typeof s.name==='string'&&s.name.length<=60&&s.artifact?.type==='creation') : [];
@@ -83,6 +90,7 @@ let pictureCelebrated=false;
 const cropEditor=new CropEditor($('construction'),()=>state&&result&&pending===0&&!['flying','releasing'].includes(flight.phase)?{state,result}:undefined,
   (snapshot,crop)=>kernel.run(snapshot,{type:'crop',...crop}),
   preview=>{
+    cancelCurveChange(true);
     $('scene').removeAttribute('data-crop-pending');
     cropPlayback??={flight:{...flight},won:throwWon};flight={phase:'ready',position:0};throwWon=false;result=preview;
     if(displayedView()==='flight'){
@@ -105,9 +113,18 @@ const cropEditor=new CropEditor($('construction'),()=>state&&result&&pending===0
     updateCropVerdict($('scene'),preview);
     updatePrimary();animatePosition();
   },
-  crop=>{cropPlayback=undefined;return perform({type:'crop',...crop}).then(ok=>{if(!ok){void perform({type:'evaluate'},'keep');}});},
+  (crop,previewed)=>{
+    cropPlayback=undefined;
+    return perform({type:'crop',...crop},'push',undefined,!previewed).then(async ok=>{
+      if(ok)return;
+      const rejectedNotice=notice;
+      await perform({type:'evaluate'},'keep');
+      notice=rejectedNotice;showNotice();
+    });
+  },
   accepted=>{result=accepted;if(cropPlayback){flight=cropPlayback.flight;throwWon=cropPlayback.won;cropPlayback=undefined;}render();},
   (crop,base)=>{
+    cancelCurveChange(true);
     cropPlayback??={flight:{...flight},won:throwWon};flight={phase:'ready',position:0};throwWon=false;updatePrimary();animatePosition();
     $('scene').dataset.cropPending='true';
     if(displayedView()==='flow')updateFlowCrop($('scene'),base,{...base.crop!,...crop},true);
@@ -163,17 +180,20 @@ function updateHintCue(history:'push'|'keep'|'clear') {
   if(unsuccessfulRevisions<3)return false;
   hintOffered=true;hintCue=true;return true;
 }
-function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:RailSlots,requestedView?:View) {
+function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:RailSlots,requestedView?:View,animateCurve=true) {
   requireOk(reply);
   const previousState=state,previousResult=result,previousPoints=displayedPoints||result?.points,previousSlope=displayedSlope??result?.startSlope,previousProbeX=result?probePoints(result)[probeIndex]?.[0]:undefined;
+  const previousVisual=animateCurve&&!reduced&&!state?.circle&&displayedView()==='flight'?captureFlightGeometry($('scene')):undefined;
   const previousScroll=$('construction').querySelector('.pipeline')?.scrollLeft||0;
   const previousRects=new Map([...document.querySelectorAll<HTMLElement>('.recipe-part')].map(el=>[el.dataset.part!,el.getBoundingClientRect()]));
   const changed=state && JSON.stringify(state)!==JSON.stringify(reply.state);
   const nextSlots=normalizeSlots(reply.state,history==='clear'?slots:slots||railSlots);
   const layoutChanged=JSON.stringify(nextSlots)!==JSON.stringify(railSlots);
+  const previewChanged=result?.crop?.from!==reply.result.crop?.from||result?.crop?.to!==reply.result.crop?.to;
   // Blur can report a field that Enter already committed. Replacing controls
-  // for that no-op can swallow typing in the next field.
-  if(state&&!changed&&!layoutChanged&&history!=='clear'&&!requestedView)return true as const;
+  // for that no-op can swallow typing in the next field. A crop can return to
+  // its starting bounds while an earlier preview is still displayed, though.
+  if(state&&!changed&&!layoutChanged&&!previewChanged&&history!=='clear'&&!requestedView)return true as const;
   if(history==='clear') {
     undo=[];redo=[];resetFlowScroll=true;
     $('construction').querySelectorAll<HTMLElement>('.pipeline,.rail-slots').forEach(rail=>rail.scrollLeft=0);
@@ -236,12 +256,12 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
   }
   if((changed||layoutChanged)&&!newSource&&previousState&&previousResult&&previousPoints) {
     $('move-announcement').textContent=state.circle?`Centre ${state.circle.x}, ${state.circle.y}. Radius ${state.circle.radius}. ${result.checkpoints.filter(c=>c.hit).length} targets match.`:changed?`${state.nodes.map(n=>OPS[n.op].name).join(', ')||'Recipe cleared'}. Ready to throw.`:'Empty slot moved.';
-    animateChange(previousState,previousPoints,previousRects,previousSlope!);
+    animateChange(previousState,previousResult,previousPoints,previousRects,previousSlope!,previousVisual);
   }
   if(offeredHint)$('move-announcement').textContent+=' Hints can help with this puzzle.';
   return true as const;
 }
-function perform(action: Action, history: 'push'|'keep'|'clear'='push',slots?:RailSlots) { return serial(async()=>accept(await kernel.run(state,action),history,slots)); }
+function perform(action: Action, history: 'push'|'keep'|'clear'='push',slots?:RailSlots,animateCurve=true) { return serial(async()=>accept(await kernel.run(state,action),history,slots,undefined,animateCurve)); }
 function historyMove(back: boolean) {
   return serial(async()=> {
     const source=back?undo:redo, target=source.at(-1);
@@ -320,6 +340,7 @@ function renderCurves() {
 }
 function renderScene() {
   if(!state||!result)return;
+  cancelCurveChange();
   $('scene').classList.remove('has-flight-callouts');
   $('scene').removeAttribute('data-crop-pending');
   const visibleView=displayedView();
@@ -370,7 +391,7 @@ function render() {
   cropEditor.cancel();
   // A concurrent edit or view change invalidates the held DOM node.
   if(pointer)finishPointer(undefined,true);
-  cancelAnimationFrame(morphFrame);displayedPoints=undefined;displayedSlope=undefined;
+  cancelCurveChange();
   const focus=rememberFocus();
   const level=LEVELS[state.sourceId-1];
   const chapter=chapterIndex(state.sourceId),chapterInfo=CHAPTERS[chapter];
@@ -442,7 +463,7 @@ $('circle-fit').onclick=()=>{
   if(fullCurve)fitCircleCamera();else camera={...defaultCamera};
   render();$('circle-fit').focus({preventScroll:true});
 };
-function animateChange(previousState:State, from:Result['points'], rects:Map<string,DOMRect>,fromSlope:number) {
+function animateChange(previousState:State,previousResult:Result, from:Result['points'], rects:Map<string,DOMRect>,fromSlope:number,previousVisual?:SVGGElement) {
   if(reduced||!state||!result)return;
   if(state.circle||previousState.circle)return;
   document.querySelectorAll<HTMLElement>('.recipe-part').forEach(el=>{
@@ -450,20 +471,28 @@ function animateChange(previousState:State, from:Result['points'], rects:Map<str
     if(!previousState.nodes.some(n=>n.id===el.dataset.part))el.classList.add('just-placed');
     else if(before&&Math.abs(before.left-after.left)>2)el.animate([{transform:`translate(${before.left-after.left}px,${before.top-after.top}px)`},{transform:'translate(0,0)'}],{duration:220,easing:'ease-out'});
   });
-  if(displayedView()!=='flight'||result.relation||result.paths||result.crop||!from.length||!result.points.length)return;
-  const to=result.points,toSlope=result.startSlope,start=performance.now(),startX=from[0][0],range=from.at(-1)![0]-startX;
-  const previous=to.map(([x])=>interpolate(from,(x-startX)/range)[1]);
+  if(displayedView()!=='flight'||!previousVisual)return;
+  if(!previousVisual.dataset.fromFade&&previousVisual.querySelector('.curve-change-trajectory')?.getAttribute('d')===$('trajectory')?.getAttribute('d'))return;
+  const morph=previousVisual.dataset.fromFade?undefined:curveMorph(previousResult,result,from===previousResult.points?undefined:from);
+  if(!morph){clearCurveFade=fadeFlightGeometry($('scene'),previousVisual);return;}
+  const to=morph.to,toSlope=result.startSlope,start=performance.now();
+  const endPoints=(root:Element)=>[...root.querySelectorAll<SVGCircleElement>('.path-end')].sort((a,b)=>Number(a.getAttribute('cx'))-Number(b.getAttribute('cx')));
+  const oldEnds=endPoints(previousVisual),newEnds=endPoints($('flight-svg'));
+  const ends=newEnds.map((el,i)=>({el,from:oldEnds[i]?[Number(oldEnds[i].getAttribute('cx')),Number(oldEnds[i].getAttribute('cy'))]:undefined,to:[Number(el.getAttribute('cx')),Number(el.getAttribute('cy'))]}));
+  clearCurveEnds=()=>{for(const {el,to} of ends){el.setAttribute('cx',String(to[0]));el.setAttribute('cy',String(to[1]));}};
+  $('scene').dataset.curveTransition='morph';
   const paint=(time:number)=>{
     const progress=Math.min((time-start)/320,1),t=1-Math.pow(1-progress,3);
-    displayedPoints=to.map(([x,y],i)=>[x,previous[i]+(y-previous[i])*t]);
+    displayedPoints=to.map(([x,y],i)=>[morph.from[i][0]+(x-morph.from[i][0])*t,morph.from[i][1]+(y-morph.from[i][1])*t]);
     displayedSlope=fromSlope+(toSlope-fromSlope)*t;
-    paintTrajectory(displayedPoints);animatePosition();
-    if(progress<1)morphFrame=requestAnimationFrame(paint);else {displayedPoints=undefined;displayedSlope=undefined;}
+    paintTrajectory(displayedPoints,true);animatePosition();
+    for(const {el,from,to} of ends)if(from){el.setAttribute('cx',String(from[0]+(to[0]-from[0])*t));el.setAttribute('cy',String(from[1]+(to[1]-from[1])*t));}
+    if(progress<1)morphFrame=requestAnimationFrame(paint);else {cancelCurveChange(true);}
   };
   paint(start);
 }
-function paintTrajectory(points:Result['points']) {
-  $('trajectory')?.setAttribute('d',result?.relation||result?.paths?drawnPaths(result).map(p=>path(p.points,state!,camera)).join(' '):path(points,state!,camera));
+function paintTrajectory(points:Result['points'],intermediate=false) {
+  $('trajectory')?.setAttribute('d',!intermediate&&(result?.relation||result?.paths)?drawnPaths(result).map(p=>path(p.points,state!,camera)).join(' '):path(points,state!,camera));
 }
 function updateTargets() {
   if(!state||!result)return;
@@ -492,9 +521,10 @@ function animatePosition() {
   for(const [index,stroke] of strokes.entries()) {
     const el=(name:string)=>$(index?`${name}-${index}`:name);
     const local=Math.max(0,Math.min(1,(flight.position-stroke.start)/Math.max(.00001,stroke.end-stroke.start)));
-    const at=result.relation?strokePosition(stroke,local):xy;
+    const at=displayedPoints?xy:result.relation?strokePosition(stroke,local):xy;
     const [cx,cy]=transform(state,camera,at),origin=displayedPoints?displayedPoints[0]:stroke.points[0];
-    const tangent=result.relation&&stroke.points.length>1?[stroke.points[1][0]-origin[0],stroke.points[1][1]-origin[1]] as [number,number]:result.circle?.tangent??[1,displayedSlope??result.startSlope] as [number,number];
+    const incoming=displayedPoints??stroke.points;
+    const tangent=result.relation&&incoming.length>1?[incoming[1][0]-origin[0],incoming[1][1]-origin[1]] as [number,number]:result.circle?.tangent??[1,displayedSlope??result.startSlope] as [number,number];
     const {angle,degrees,transform:pose}=launcherPose(state,camera,origin,tangent,size);
     el('launcher')?.setAttribute('transform',pose);el('launcher-front')?.setAttribute('transform',pose);
     const queued=flight.position<stroke.start;
@@ -560,7 +590,7 @@ function throwCucumber(replay=false) {
   flightActionFocus=document.activeElement===$('launch')?$<HTMLButtonElement>('launch'):document.activeElement===$('rethrow')?$<HTMLButtonElement>('rethrow'):undefined;
   cancelCirclePickup();
   cropEditor.cancel();
-  cancelAnimationFrame(morphFrame);displayedPoints=undefined;displayedSlope=undefined;
+  cancelCurveChange();
   if(displayedView()==='flight')paintTrajectory(result!.points);
   flight={phase:'releasing',position:0,release:0};if(!replay)throwWon=false;notice={text:'',kind:''};$('success').classList.remove('just-solved');updatePrimary();animatePosition();
   $('move-announcement').textContent='Cucumber launched.';

@@ -3,13 +3,15 @@
 #garden-dialog>.dialog-top { position:relative; margin:0; padding:12px 18px 7px; background:#f8f4df; box-shadow:none; }
 #garden-content { width:100%; height:100%; min-width:0; min-height:0; }
 .garden-content { --garden-ink:#416b4b; --garden-gold:#b58a42; min-height:0; }
-.garden-shell { height:100%; min-width:0; min-height:0; display:grid; grid-template-rows:auto minmax(0,1fr) 66px; color:#294535; background:radial-gradient(circle at 18% 15%,#fffdf2 0 2px,transparent 3px),linear-gradient(145deg,#fbf7e8,#eef2df); overflow:hidden; }
+.garden-shell { height:100%; min-width:0; min-height:0; display:grid; grid-template-rows:max-content minmax(200px,1fr) max-content; color:#294535; background:radial-gradient(circle at 18% 15%,#fffdf2 0 2px,transparent 3px),linear-gradient(145deg,#fbf7e8,#eef2df); overflow-x:hidden; overflow-y:auto; }
 .garden-heading { min-width:0; min-height:88px; padding:15px 72px 7px; text-align:center; }
 .garden-heading .eyebrow { margin-bottom:3px; }
 .garden-heading h2 { margin:0 0 4px; font:32px/1.05 Georgia,serif; letter-spacing:-.6px; }
 .garden-heading>p:last-child { margin:0; color:#70805f; font-size:12px; }
-.garden-workspace { width:min(960px,100%); max-width:100%; min-width:0; min-height:0; margin:auto; padding:0 24px 10px; display:grid; place-items:center; }
-.garden-board { position:relative; width:min(900px,100%,calc((100dvh - 200px)*1.38686)); aspect-ratio:760/548; overflow:hidden; border:1px solid #385d51; border-radius:24px; background:#224b49; box-shadow:0 15px 45px #25473430; }
+/* Fit the space actually left by the heading/footer, including wrapped text.
+   The workspace owns size containment so the picture cannot enlarge its row. */
+.garden-workspace { width:min(960px,100%); height:100%; max-width:100%; min-width:0; min-height:0; justify-self:center; padding:0 24px 10px; display:grid; place-items:center; container-type:size; }
+.garden-board { position:relative; width:min(900px,100cqw,calc(100cqh * 760 / 548)); aspect-ratio:760/548; overflow:hidden; border:1px solid #385d51; border-radius:24px; background:#224b49; box-shadow:0 15px 45px #25473430; }
 .garden-paper { display:block; width:100%; height:100%; pointer-events:all; }
 .garden-paper.is-pointing { cursor:pointer; }
 .garden-water-wash { fill:url(#garden-water); opacity:.52; }
@@ -74,11 +76,9 @@
 
 @media(max-width:760px) {
   #garden-dialog { width:calc(100% - 12px); height:calc(100dvh - 12px); }
-  .garden-shell { height:100%; min-height:0; grid-template-rows:auto minmax(0,1fr) 74px; overflow:auto; }
   .garden-heading { min-height:0; padding:13px 18px 8px; }
   .garden-heading h2 { font-size:27px; }
   .garden-workspace { padding:0 12px 10px; }
-  .garden-board { width:100%; align-self:start; }
   .garden-footer { min-height:74px; padding:8px 12px; }
   .garden-status { font-size:11px; }
   .garden-done { min-width:88px; }
@@ -89,14 +89,14 @@
   .garden-heading h2 { font-size:25px; }
 }
 
-@media(max-height:560px) and (orientation:landscape) {
-  .garden-shell { height:100%; min-height:0; grid-template-columns:minmax(150px,.7fr) minmax(0,1.3fr); grid-template-rows:minmax(0,1fr) auto; overflow:hidden; }
+@media(max-height:560px) and (orientation:landscape), (max-height:700px) and (min-aspect-ratio:3/2) {
+  .garden-shell { grid-template-columns:minmax(150px,.7fr) minmax(0,1.3fr); grid-template-rows:minmax(130px,1fr) max-content; }
   .garden-heading { grid-column:1; grid-row:1; align-self:center; min-height:0; padding:10px 18px; }
   .garden-heading .eyebrow { display:none; }
   .garden-heading h2 { margin-bottom:8px; font-size:26px; }
   .garden-heading>p:last-child { font-size:12px; }
   .garden-workspace { grid-column:2; grid-row:1 / 3; height:100%; padding:8px 18px 12px 0; }
-  .garden-board { width:min(100%,calc((100dvh - 98px)*1.38686)); height:auto; border-radius:18px; }
+  .garden-board { border-radius:18px; }
   .garden-footer { grid-column:1; grid-row:2; min-height:0; padding:8px 18px 16px; flex-wrap:wrap; justify-content:center; gap:10px; text-align:center; border:0; background:none; }
 }
 

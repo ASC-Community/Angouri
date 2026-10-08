@@ -662,7 +662,7 @@
       "after": 0
     },
     "name": "Accumulate signed steps",
-    "hint": "Positive and negative step widths add to the anchored accumulated height.",
+    "hint": "Each step contributes its height times its width. Positive heights add area; negative heights subtract it.",
     "chapter": 9
   },
   {

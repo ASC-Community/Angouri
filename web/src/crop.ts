@@ -62,7 +62,7 @@ export class CropEditor {
   private generation=0;
   private busy=false;
   private queued?:Crop;
-  constructor(private root:HTMLElement,private context:()=>{state:State;result:Result}|undefined,private evaluate:(state:State,crop:Crop)=>Promise<Response>,private preview:(result:Result)=>void,private commit:(crop:Crop)=>Promise<unknown>,private restore:(result:Result)=>void,private instant:(crop:Crop,base:Result)=>void) {
+  constructor(private root:HTMLElement,private context:()=>{state:State;result:Result}|undefined,private evaluate:(state:State,crop:Crop)=>Promise<Response>,private preview:(result:Result)=>void,private commit:(crop:Crop,previewed:boolean)=>Promise<unknown>,private restore:(result:Result)=>void,private instant:(crop:Crop,base:Result)=>void) {
     root.addEventListener('input',event=>{
       const input=event.target as HTMLInputElement,key=input.dataset.cropRange as keyof Crop|undefined;
       if(!key)return;
@@ -80,8 +80,9 @@ export class CropEditor {
       if(!key)return;
       const context=this.context();if(!context?.result.crop?.editable)return;
       const crop={...(this.held?.crop??context.state.crop!),[key]:input.dataset.cropExact?input.value.trim():quarter(input.valueAsNumber)};
+      const previewed=!!this.held;
       this.generation++;this.queued=undefined;this.held=undefined;
-      void this.commit(crop);
+      void this.commit(crop,previewed);
     });
     root.addEventListener('keydown',event=>{
       if(!(event.target as HTMLElement).matches('[data-crop-range],[data-crop-exact]'))return;

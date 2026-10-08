@@ -33,8 +33,8 @@ async function heightReference(known:Set<number>,examples:ReferenceExamples) {
     examples.example(50,'A'),examples.example(50,'AH'),examples.example(50,'HA'),examples.example(50,'AHH')
   ]);
   const scaling='<p>Halving divides every height by two and keeps every zero fixed.</p>'+strip([base.stages[0],half.stages.at(-1)!],['Input height','Halved height'],[move('H')])+tag(1);
-  const lifting='<p>Adding one raises every height equally. Differences between two heights stay unchanged.</p>'+strip([base.stages[0],lift.stages.at(-1)!],['Input height','Raised height'],[move('A')])+`<p>${tex('(v+1)-(u+1)=v-u')}</p>`+tag(2);
-  const ordering='<p>Operations are read from left to right. A later halve also halves every earlier lift.</p>'+compare('Same blocks. Different results.',[
+  const lifting='<p>Adding one raises every height equally. Differences between two heights stay unchanged. Here '+tex('u')+' and '+tex('v')+' are the incoming heights at two fixed positions.</p>'+strip([base.stages[0],lift.stages.at(-1)!],['Input height','Raised height'],[move('A')])+`<p>${tex('(v+1)-(u+1)=v-u')}</p>`+tag(2);
+  const ordering='<p>Operations are read from left to right. A later halve also halves every earlier lift. Here '+tex('u')+' is the incoming height at one position.</p>'+compare('Same blocks. Different results.',[
     {label:'Lift, then halve',stage:liftHalf.stages.at(-1)!,before:base.stages[0]},
     {label:'Halve, then lift',stage:halfLift.stages.at(-1)!,before:base.stages[0]}
   ])+`<p>${tex('\\frac{u+1}{2}')} ${tex('\\ne')} ${tex('\\frac u2+1')}</p>`+(known.has(25)?'':`<p>${viewButton('function')} compares the resulting heights at the same positions.</p>`)+tag(3);
@@ -42,14 +42,14 @@ async function heightReference(known:Set<number>,examples:ReferenceExamples) {
     {label:'One later halve',stage:liftHalf.stages.at(-1)!,before:half.stages.at(-1)!},
     {label:'Two later halves',stage:quarterLift.stages.at(-1)!,before:doubleHalf.stages.at(-1)!}
   ])+`<p>${tex('\\frac{u+1}{2}-\\frac u2=\\frac12')} ${tex('\\qquad')} ${tex('\\frac{u+1}{4}-\\frac u4=\\frac14')}</p>`+(known.has(25)?'':`<p>${viewButton('flow')} tracks how a lift changes through later operations.</p>`)+tag(24);
-  const measurements='<p>A lift changes the baseline but preserves every height difference. A halve scales both the baseline and every height difference.</p>'+compare('Baseline change or scale change?',[
+  const measurements='<p>A lift changes vertical placement but preserves every height difference. A halve scales every height and height difference.</p>'+compare('Vertical shift or scale change?',[
     {label:'Raised',stage:lift.stages.at(-1)!,before:base.stages[0]},
     {label:'Halved',stage:half.stages.at(-1)!,before:base.stages[0]}
   ])+`<p>${tex('(v+1)-(u+1)=v-u')} ${tex('\\qquad')} ${tex('\\frac v2-\\frac u2=\\frac{v-u}{2}')}</p><p>For example, ${tex(`${heightAtFormula('1')}-${heightAtFormula('0')}`)} compares two positions, while ${tex(rationalTex('1/2'))} is an exact scale factor.</p><p>${viewButton('function')} compares exact heights and their signed difference. ${viewButton('flow')} follows the same values through each operation.</p>`+tag(25);
-  if(known.has(25))return current('Baseline and height difference are separate.',measurements)+recall([24],'Fractional lift contributions',pieces)+recall([3],'Why order matters',ordering)+recall([1,2],'Scale and lift',scaling+lifting);
+  if(known.has(25))return current('Vertical placement and height difference are separate.',measurements)+recall([24],'Fractional lift contributions',pieces)+recall([3],'Why order matters',ordering)+recall([1,2],'Scale and lift',scaling+lifting);
   if(known.has(24))return current('A lift can contribute a fraction.',pieces)+recall([3],'Why order matters',ordering)+recall([1,2],'Scale and lift',scaling+lifting);
   if(known.has(3))return current('Order changes the result.',ordering)+recall([2],'Uniform lifting',lifting)+recall([1],'Uniform scaling',scaling);
-  if(known.has(2))return current('A lift changes the baseline.',lifting)+recall([1],'Halving every height',scaling);
+  if(known.has(2))return current('A lift raises every height.',lifting)+recall([1],'Halving every height',scaling);
   return current('Halving scales every height.',scaling);
 }
 
@@ -71,9 +71,9 @@ async function reflectionReference(known:Set<number>,examples:ReferenceExamples)
     {label:'Lift, then negate',stage:raisedTurned.stages.at(-1)!,before:base.stages[0]},
     {label:'Negate, then lift',stage:turnedRaised.stages.at(-1)!,before:base.stages[0]}
   ])+`<p>${tex('-(u+1)=-u-1')} ${tex('\\ne')} ${tex('-u+1')}</p>`+tag(26);
-  if(known.has(26))return current('Reflection includes every existing offset.',offset)+recall([9],'Size and orientation',size)+recall([8],'Orientation and baseline',orientation)+recall([6],'Sign reversal',signs);
-  if(known.has(9))return current('Scale and reflection have separate effects.',size)+recall([8],'Orientation and baseline',orientation)+recall([6],'Sign reversal',signs);
-  if(known.has(8))return current('Orientation and baseline are separate.',orientation)+recall([6],'Sign reversal',signs);
+  if(known.has(26))return current('Reflection includes every existing offset.',offset)+recall([9],'Size and orientation',size)+recall([8],'Turning and vertical placement',orientation)+recall([6],'Sign reversal',signs);
+  if(known.has(9))return current('Scale and reflection have separate effects.',size)+recall([8],'Turning and vertical placement',orientation)+recall([6],'Sign reversal',signs);
+  if(known.has(8))return current('Turning and vertical placement are separate.',orientation)+recall([6],'Sign reversal',signs);
   return current('Reflection reverses signs.',signs);
 }
 
@@ -91,7 +91,7 @@ async function squareReference(known:Set<number>,examples:ReferenceExamples) {
     {label:'Negated square',stage:reflected.stages.at(-1)!,before:squared.stages.at(-1)!},
     {label:'Raised square',stage:raised.stages.at(-1)!,before:squared.stages.at(-1)!}
   ])+tag(4);
-  const zero='<p>Squaring folds around the input’s zero. Changing the input moves that landmark; an output change leaves it where it is.</p>'+compare('Where is the fold?',[
+  const zero='<p>The input’s zero sets the bowl’s bottom. Lifting the line before Square can move that zero sideways. Lifting after Square moves the bowl vertically while its bottom stays at the same horizontal position.</p>'+compare('Where is the fold?',[
     {label:'Unshifted input',stage:centred.stages.at(-1)!,before:centred.stages[0]},
     {label:'Shifted input',stage:moved.stages.at(-1)!,before:centred.stages[0]}
   ])+tag(27);
@@ -102,7 +102,7 @@ async function squareReference(known:Set<number>,examples:ReferenceExamples) {
   if(known.has(28))return current('Input landmarks survive later output changes.',landmarks)+recall([27],'The input zero sets the fold',zero)+recall([4],'Composing relationships',composition)+recall([10,7],'Square and scale',order+folding);
   if(known.has(27))return current('The input zero sets the fold.',zero)+recall([4],'Composing relationships',composition)+recall([10,7],'Square and scale',order+folding);
   if(known.has(4))return current('One relationship can feed another.',composition)+recall([10],'Scale before or after squaring',order)+recall([7],'Opposite heights meet',folding);
-  if(known.has(10))return current('Scaling and squaring do not commute.',order)+recall([7],'Opposite heights meet',folding);
+  if(known.has(10))return current('Order changes the result of scaling and squaring.',order)+recall([7],'Opposite heights meet',folding);
   return current('Squaring folds heights around zero.',folding);
 }
 
@@ -112,7 +112,7 @@ async function powerReference(known:Set<number>,examples:ReferenceExamples) {
     examples.example(8,'QQ'),examples.example(29,'Q'),examples.example(4,'HA'),
     examples.example(4,'HAQ'),examples.example(8,'QN'),examples.example(29,'QN')
   ]);
-  const flatter='<p>For magnitudes between zero and one, squaring moves heights closer to zero while keeping zero and one fixed.</p>'+strip([second.stages.at(-1)!,fourth.stages.at(-1)!],['Squared input','Squared again'],[move('Q')])+`<p>${tex('0<|u|<1\\;\\Longrightarrow\\;u^2<|u|')}</p>`+tag(12);
+  const flatter='<p>Magnitude means distance from zero; '+tex('|u|')+' is the magnitude of '+tex('u')+'. For magnitudes between zero and one, squaring moves heights closer to zero while keeping zero and one fixed.</p>'+strip([second.stages.at(-1)!,fourth.stages.at(-1)!],['Squared input','Squared again'],[move('Q')])+`<p>${tex('0<|u|<1\\;\\Longrightarrow\\;u^2<|u|')}</p>`+tag(12);
   const orientation='<p>An even power supplies a nonnegative shape. Negation reverses that shape without changing its zeros.</p>'+strip([fourth.stages.at(-1)!,negatedFourth.stages.at(-1)!],['Even power','Negated even power'],[move('N')])+tag(13);
   const families='<p>The input power matters as well as the square block.</p>'+compare('Same zero and unit height. Different middles.',[
     {label:'Second power',stage:second.stages.at(-1)!,before:small.stages.at(-1)!},
@@ -149,7 +149,7 @@ async function slopeReference(known:Set<number>,examples:ReferenceExamples) {
     examples.example(50,''),examples.example(50,'D'),examples.example(50,'AD'),examples.example(50,'DA'),
     examples.example(50,'NAQD'),examples.example(50,'NAAQD'),examples.example(4,'AHQNAQD')
   ]);
-  const reading='<p>The derivative uses local slope as the new height: downhill is negative, flat is zero and uphill is positive.</p>'+strip([line.stages[0],slope.stages.at(-1)!],['Input curve','Slope output'],[move('D')])+`<p>${viewButton('flow')} shows the incoming tangent at the inspected position.</p>`+tag(32);
+  const reading='<p>A tangent is a straight line matching the curve’s direction at one position. Its slope is signed rise divided by horizontal run. The derivative uses that slope as the new height: downhill is negative, flat is zero and uphill is positive.</p>'+strip([line.stages[0],slope.stages.at(-1)!],['Input curve','Slope output'],[move('D')])+`<p>${viewButton('flow')} shows the incoming tangent at the inspected position.</p>`+tag(32);
   const sides='<p>A lift before differentiation does not change slope. A lift after differentiation raises the slope output.</p>'+compare('Which side receives the lift?',[
     {label:'Lift input',stage:liftBefore.stages.at(-1)!,before:slope.stages.at(-1)!},
     {label:'Lift output',stage:liftAfter.stages.at(-1)!,before:slope.stages.at(-1)!}
@@ -160,7 +160,7 @@ async function slopeReference(known:Set<number>,examples:ReferenceExamples) {
     {label:'Shifted fold',stage:movedSlope.stages.at(-1)!,before:movedSlope.stages.at(-2)!}
   ])+tag(34);
   const several='<p>Every smooth flat place becomes a derivative zero. A zero may mark a turn or a momentary flattening.</p>'+strip([waveSlope.stages.at(-2)!,waveSlope.stages.at(-1)!],['Several flat places','Derivative zeros'],[move('D')])+tag(35);
-  const roles='<p>Input operations determine the tangent field read by differentiation. Output operations change the displayed slope heights afterward.</p>'+sides+tag(36);
+  const roles='<p>Input blocks change the slopes read by the station. Output blocks change the resulting heights.</p>'+sides+tag(36);
   if(known.has(36))return current('The two sides of differentiation have different jobs.',roles)+recall([35],'Flat places become zeros',several)+recall([34],'Moving a flat place',moving)+recall([33],'Changing slope',turning)+recall([32],'Reading slope',reading);
   if(known.has(35))return current('A derivative can have several zeros.',several)+recall([34],'Moving a flat place',moving)+recall([33],'Changing slope',turning)+recall([32],'Reading slope',reading+sides);
   if(known.has(34))return current('Moving a flat place moves a derivative zero.',moving)+recall([33],'Changing slope',turning)+recall([32],'Reading slope',reading+sides);
@@ -174,7 +174,7 @@ async function areaReference(known:Set<number>,examples:ReferenceExamples) {
     examples.example(50,'HI'),examples.example(50,'IH'),examples.example(4,'HI'),examples.example(4,'HAI'),
     examples.example(4,'QHNAI'),examples.example(50,'ADI')
   ]);
-  const basics='<p>Accumulation adds signed area from zero to the inspected position. Its own output starts at zero.</p>'+strip([line.stages[0],area.stages.at(-1)!],['Input height','Accumulated area'],[move('I')])+`<p>${tex('\\int_0^x u(t)\\,\\mathrm dt')} ${viewButton('flow')} shows positive and negative contributions.</p>`+tag(37);
+  const basics='<p>Accumulation adds signed area from zero to the inspected position. Its own output starts at zero. In these formulas, '+tex('u(t)')+' is the incoming height at horizontal position '+tex('t')+'.</p>'+strip([line.stages[0],area.stages.at(-1)!],['Input height','Accumulated area'],[move('I')])+`<p>${tex('\\int_0^x u(t)\\,\\mathrm dt')} ${viewButton('flow')} shows positive and negative contributions.</p>`+tag(37);
   const turning='<p>Positive input makes the total rise; negative input makes it fall. An input zero is where growth can change direction.</p>'+compare('Move the input zero.',[
     {label:'Original input',stage:crossing.stages.at(-1)!,before:crossing.stages.at(-2)!},
     {label:'Raised input',stage:movedCrossing.stages.at(-1)!,before:movedCrossing.stages.at(-2)!}
@@ -189,7 +189,7 @@ async function areaReference(known:Set<number>,examples:ReferenceExamples) {
     {label:'Lift output',stage:outputLift.stages.at(-1)!,before:area.stages.at(-1)!}
   ])+tag(40);
   const recovery='<p>Differentiation removes a constant offset. Accumulating the derivative rebuilds the change from zero.</p>'+strip(recovered.stages.slice(1),['Raised line','Slope','Recovered change'],[move('D'),move('I')])+`<p>${tex('\\int_0^x \\frac{\\mathrm du}{\\mathrm dt}\\,\\mathrm dt=u(x)-u(0)')}</p>`+tag(41);
-  const roles='<p>Input signs control where the accumulated result rises or falls. Output scaling and lifting control its size and baseline.</p>'+scale+tag(42);
+  const roles='<p>Input signs control where the accumulated result rises or falls. Output scaling and lifting control its size and starting height.</p>'+scale+tag(42);
   if(known.has(42))return current('Input shape and output placement are separate.',roles)+recall([41],'Recovering change',recovery)+recall([40],'Scale and starting amount',scale+baseline)+recall([39,38],'Signs and turning',signs+turning)+recall([37],'Anchored accumulation',basics);
   if(known.has(41))return current('Accumulated slope recovers change from zero.',recovery)+recall([40],'Scale and starting amount',scale+baseline)+recall([39,38],'Signs and turning',signs+turning)+recall([37],'Anchored accumulation',basics);
   if(known.has(40))return current('Change and starting amount are separate.',scale+baseline)+recall([39],'Several sign regions',signs)+recall([38],'Input zeros and turns',turning)+recall([37],'Anchored accumulation',basics);
@@ -202,10 +202,10 @@ async function circleReference(known:Set<number>,examples:ReferenceExamples) {
   const [small,large,moved]=await Promise.all([
     examples.circleExample('1','1','3/4'),examples.circleExample('1','1','5/4'),examples.circleExample('2','1','5/4')
   ]);
-  const circle='<p>A circle contains two heights at most horizontal positions. Every point stays one radius from its centre.</p>'+diagramChoices('One centre. Two radii.',[
+  const circle='<p>Between its left and right edges, a circle has an upper and a lower height at each position. They meet at the edges; beyond them there is no height on the circle. Every point stays one radius from its centre.</p>'+diagramChoices('One centre. Two radii.',[
     {label:'Smaller radius',html:circleSketch([small],{centre:true,spoke:true,bounds:[-1,3,-1,3]})},
     {label:'Larger radius',html:circleSketch([small,large],{centre:true,spoke:true,bounds:[-1,3,-1,3]})}
-  ])+`<p>${tex('(x-a)^2+(h-b)^2=r^2')}</p>`+tag(43);
+  ])+`<p>${tex('(x-a)^2+(h-b)^2=r^2')}</p><p>${tex('(a,b)')} is the centre; ${tex('r')} is the distance from the centre to the circle.</p>`+tag(43);
   const centre='<p>Changing the centre translates the whole circle. Changing the radius changes its reach.</p>'+diagramChoices('Translate or resize?',[
     {label:'Original centre',html:circleSketch([large],{centre:true,spoke:true,bounds:[-1,4,-1,3]})},
     {label:'Moved centre',html:circleSketch([large,moved],{centre:true,spoke:true,bounds:[-1,4,-1,3]})}
@@ -217,7 +217,7 @@ async function circleReference(known:Set<number>,examples:ReferenceExamples) {
     {label:'One target pair',html:circleSketch([],{targets,pairs:[[0,1]],bounds:[-1,3,-1,3]})},
     {label:'Two target pairs',html:circleSketch([large],{targets,pairs:[[0,1],[1,2]],centre:true,bounds:[-1,3,-1,3]})}
   ]);
-  const pair='<p>Every point on a pair’s perpendicular bisector is equally far from that pair. Two independent bisectors meet at a circle centre.</p>'+bisectors+tag(46);
+  const pair='<p>A perpendicular bisector crosses the segment between two targets at its midpoint and at a right angle. Every point on it is equally far from that pair. Two independent bisectors meet at a circle centre.</p>'+bisectors+tag(46);
   const constellation='<p>Equal distance is the common test for every target in a circle. Different pairs provide independent constraints on the same centre.</p>'+bisectors+`<p>${viewButton('function')} compares squared distances; ${viewButton('flow')} shows the selected pair and its bisector.</p>`+tag(47);
   if(known.has(47))return current('Several pairs constrain one centre.',constellation)+recall([46],'Perpendicular bisectors',pair)+recall([45],'Diameter and midpoint',diameter)+recall([44,43],'Centre and radius',centre+circle);
   if(known.has(46))return current('Two bisectors locate a centre.',pair)+recall([45],'Diameter and midpoint',diameter)+recall([44,43],'Centre and radius',centre+circle);
@@ -232,7 +232,7 @@ async function relationReference(known:Set<number>,examples:ReferenceExamples) {
     examples.example(66,''),examples.example(66,'Q')
   ]);
   const diagram=(result:Result,label:string)=>relationSketch(result,label,{before:base,bounds:[0,4,-2,2]});
-  const equation='<p>The right side is squared height. At each position, a positive value gives two heights, zero gives one, and a negative value gives no real height.</p>'+diagram(base,'One equation, both heights')+`<p>${tex('h^2=a')} ${tex('\\Longrightarrow')} ${tex('h=\\pm\\sqrt a\\quad(a\\ge0)')}</p>`+tag(48);
+  const equation='<p>The right side is squared height. At each position, a positive value gives two heights, zero gives one, and a negative value gives no real height. The upper and lower parts are called branches. At one position, call the right-side value '+tex('a')+'.</p>'+diagram(base,'One equation, both heights')+`<p>${tex('h^2=a')} ${tex('\\Longrightarrow')} ${tex('h=\\pm\\sqrt a\\quad(a\\ge0)')}</p>`+tag(48);
   const growth='<p>Adding one on the right increases squared height. The upper branch rises and the lower branch falls; the middle stays fixed. The change in height is not one.</p>'+diagramChoices('The same centre line, a different reach.',[{label:'Before',html:diagram(base,'Before')},{label:'Add one',html:diagram(lift,'Add to squared height')}])+tag(68);
   const scale='<p>Halving squared height scales each height by the square root of one half. Two halves of squared height make one half of height. The horizontal zeros stay fixed.</p>'+diagramChoices('One halve or two?',[
     {label:'Before',html:diagram(base,'Before')},{label:'One halve',html:diagram(half,'Heights scale by one over the square root of two')},{label:'Two halves',html:diagram(quarter,'Heights are halved')}
@@ -269,23 +269,23 @@ async function changingPhaseReference(examples:ReferenceExamples) {
 async function waveReference(known:Set<number>,examples:ReferenceExamples) {
   // Hidden future lessons must not delay the reference the player opened.
   const wave=await examples.example(4,'HS');
-  const cycle='<p>Sine reads its input as quarter-turns around a circle.</p>'+strip([wave.stages.at(-2)!,wave.stages.at(-1)!],['Scaled input','Circular height'],[move('S')])+`<p>${tex('S(u)=\\sin\\!\\left(\\frac{\\pi u}{2}\\right)')} ${tex('\\qquad')} ${tex('0,1,0,-1,0')}</p>`+tag(50);
+  const cycle='<p>Sine reads its input as quarter-turns around a circle.</p>'+strip([wave.stages.at(-2)!,wave.stages.at(-1)!],['Scaled input','Circular height'],[move('S')])+`<p>${tex('S(u)=\\sin\\!\\left(\\frac{\\pi u}{2}\\right)')}</p><p>Inputs ${tex('0,1,2,3,4')} give heights ${tex('0,1,0,-1,0')}.</p>`+tag(50);
   if(!known.has(51))return current('Sine turns input height into circular height.',cycle);
   const [phase,baseline]=await Promise.all([examples.example(4,'HAS'),examples.example(4,'HSA')]);
-  const phaseLesson='<p>An input lift changes phase. An output lift changes the baseline while leaving the horizontal peak positions unchanged.</p>'+compare('Phase or baseline?',[
+  const phaseLesson='<p>Phase is the input’s position around the circle. Lifting the input shifts the wave sideways. The baseline is the wave’s middle height; lifting the output raises it without moving its peaks sideways. Zero crossings can move or disappear.</p>'+compare('Phase or baseline?',[
     {label:'Lift input',stage:phase.stages.at(-1)!,before:wave.stages.at(-1)!},
     {label:'Lift output',stage:baseline.stages.at(-1)!,before:wave.stages.at(-1)!}
   ])+tag(51);
   if(!known.has(52))return current('Input and output lifts have different effects.',phaseLesson)+recall([50],'Quarter-turn projection',cycle);
   const [period,amplitude]=await Promise.all([examples.example(4,'HHS'),examples.example(4,'HSH')]);
-  const scaleLesson='<p>Input scale changes period. Output scale changes amplitude.</p>'+compare('Period or amplitude?',[
+  const scaleLesson='<p>The period is the horizontal distance of one repeat. Amplitude is the distance from the middle height to a peak. Halving before Sine doubles the period; halving afterward halves the amplitude.</p>'+compare('Period or amplitude?',[
     {label:'Halve input',stage:period.stages.at(-1)!,before:wave.stages.at(-1)!},
     {label:'Halve output',stage:amplitude.stages.at(-1)!,before:wave.stages.at(-1)!}
   ])+tag(52);
   let inputOrder='';
   if(known.has(79)) {
     const [shiftScale,scaleShift]=await Promise.all([examples.example(4,'HAHS'),examples.example(4,'HHAS')]);
-    inputOrder='<p>A halve before sine slows the phase. It also halves any shift that comes before it. Reversing those two input blocks preserves period but places the peaks differently.</p>'+compare('Same period, different phase.',[
+    inputOrder='<p>A halve before sine makes the input advance half as far over the same horizontal distance. It also halves any shift that comes before it. Reversing those two input blocks preserves period but places the peaks differently.</p>'+compare('Same period, different phase.',[
       {label:'Shift then scale input',stage:shiftScale.stages.at(-1)!},
       {label:'Scale then shift input',stage:scaleShift.stages.at(-1)!,before:shiftScale.stages.at(-1)!}
     ])+`<p>${tex('S((u+1)/2)\\ne S(u/2+1)')}</p>`+tag(79);
@@ -297,12 +297,12 @@ async function waveReference(known:Set<number>,examples:ReferenceExamples) {
     return current('Input and output scale have different effects.',scaleLesson)+recall([51],'Phase and baseline',phaseLesson)+recall([50],'Quarter-turn projection',cycle);
   }
   const folded=await examples.example(4,'HSQ');
-  const fold='<p>Squaring a sine output folds negative lobes upward while keeping every zero fixed.</p>'+strip([wave.stages.at(-1)!,folded.stages.at(-1)!],['Signed wave','Squared wave'],[move('Q')])+tag(53);
+  const fold='<p>Squaring a sine output folds negative lobes upward and keeps the zeros fixed. The positive and negative lobes now repeat the same shape, so the repeat distance halves.</p>'+strip([wave.stages.at(-1)!,folded.stages.at(-1)!],['Signed wave','Squared wave'],[move('Q')])+tag(53);
   const range='<p>Output scaling changes peak-to-trough range. Output lifting changes the middle height.</p>'+compare('Range or middle height?',[
     {label:'Smaller amplitude',stage:amplitude.stages.at(-1)!,before:wave.stages.at(-1)!},
     {label:'Raised baseline',stage:baseline.stages.at(-1)!,before:wave.stages.at(-1)!}
   ])+tag(54);
-  const roles='<p>Upstream changes control horizontal phase and period. Downstream changes control folding, amplitude and baseline. The distinctions in the earlier comparisons remain valid when several operations are present.</p>'+tag(55);
+  const roles='<p>Input shift and scale place and size the original sine cycle. Output scaling and lifting set its height and middle level. Squaring folds the lobes and can shorten the repeat distance.</p>'+tag(55);
   let shoulders='';
   if(known.has(80)) {
     const [rounded,narrowed]=await Promise.all([examples.example(50,'HSQ'),examples.example(50,'HSQQ')]);
@@ -325,12 +325,12 @@ async function stepReference(known:Set<number>,examples:ReferenceExamples) {
     examples.example(4,'HNF'),examples.example(4,'HHF'),examples.example(4,'HFH'),examples.example(4,'AHF'),
     examples.example(4,'HFA'),examples.example(4,'HFS'),examples.example(4,'HFSI')
   ]);
-  const down='<p>Floor rounds down and holds one integer value between consecutive thresholds. At an exact integer, the rising step owns the closed endpoint.</p>'+strip([input.stages.at(-1)!,floor.stages.at(-1)!],['Scaled input','Floor steps'],[move('F')])+tag(56);
+  const down='<p>Integers have no fractional part: '+tex('\\ldots,-2,-1,0,1,2,\\ldots')+'. A threshold is a position where the input reaches an integer. Floor rounds down and holds one integer value between consecutive thresholds. At an exact integer input, Floor returns that integer. A filled endpoint includes the value; an open endpoint leaves it out.</p>'+strip([input.stages.at(-1)!,floor.stages.at(-1)!],['Scaled input','Floor steps'],[move('F')])+tag(56);
   const up='<p>Ceiling rounds up. It has the same threshold positions as floor, with different heights and endpoint ownership.</p>'+compare('Round down or up?',[
     {label:'Floor',stage:floor.stages.at(-1)!,before:input.stages.at(-1)!},
     {label:'Ceiling',stage:ceil.stages.at(-1)!,before:input.stages.at(-1)!}
   ])+tag(57);
-  const direction='<p>Negating after floor turns the finished heights. Negating before floor reverses the rounding direction too.</p>'+compare('Turn heights or reverse rounding?',[
+  const direction='<p>Negating the input changes which integer Floor selects. Negating the finished result changes its sign. Negating both before and after Floor gives Ceiling.</p>'+compare('Negate before or after Floor?',[
     {label:'Floor, then negate',stage:afterTurn.stages.at(-1)!,before:input.stages.at(-1)!},
     {label:'Negate, then floor',stage:beforeTurn.stages.at(-1)!,before:input.stages.at(-1)!}
   ])+`<p>${tex('\\lceil u\\rceil=-\\lfloor-u\\rfloor')}</p>`+tag(58);
@@ -350,12 +350,24 @@ async function stepReference(known:Set<number>,examples:ReferenceExamples) {
   if(known.has(61))return current('Integer steps can drive a circular projection.',projection)+recall([60],'Step phase',shifting)+recall([59,58],'Step size and direction',sizing+direction)+recall([57,56],'Ceiling and floor',up+down);
   if(known.has(60))return current('Input shift sets step phase.',shifting)+recall([59],'Step width and height',sizing)+recall([58],'Rounding direction',direction)+recall([57,56],'Ceiling and floor',up+down);
   if(known.has(59))return current('Input and output scale change different step features.',sizing)+recall([58],'Rounding direction',direction)+recall([57,56],'Ceiling and floor',up+down);
-  if(known.has(58))return current('Negation can reverse rounding direction.',direction)+recall([57,56],'Ceiling and floor',up+down);
+  if(known.has(58))return current('Negation changes which side owns a step boundary.',direction)+recall([57,56],'Ceiling and floor',up+down);
   if(known.has(57))return current('Floor and ceiling share thresholds.',up)+recall([56],'Floor endpoint ownership',down);
   return current('Floor makes held integer steps.',down);
 }
 
 async function togetherReference(known:Set<number>,examples:ReferenceExamples) {
+  // This lesson's focused reference retains only these three prerequisites.
+  // Do not evaluate every garden craft before showing its independent sketch.
+  if(known.has(65)&&!known.has(67)&&!known.has(85)) {
+    const [regions,shifted,steps,circle]=await Promise.all([examples.example(50,'FSI'),examples.example(4,'AHF'),examples.example(4,'HF'),examples.circleExample('1','0','3/4')]);
+    const body='<p>Positive input raises the accumulated total. Zero input makes a flat section; negative input lowers the total. Each stretch contributes its height times its width.</p>'+strip(regions.stages.slice(-2),['Signed input regions','Rises, plateaus and falls'],[move('I')])+tag(65);
+    const continuity='<p>A jump between constant input heights changes the slope of the accumulated path. The total remains continuous, even where its direction changes.</p>'+strip(regions.stages.slice(-2),['Held step heights','Continuous accumulated total'],[move('I')])+tag(63);
+    const thresholds='<p>A lift that is halved before Floor becomes a half-unit input shift. It moves the jump positions; lifting after Floor would raise the finished steps instead.</p>'+compare('Move the input thresholds.',[
+      {label:'Unshifted steps',stage:steps.stages.at(-1)!},
+      {label:'Shifted steps',stage:shifted.stages.at(-1)!,before:steps.stages.at(-1)!}
+    ])+tag(60);
+    return current('Input regions become rises, plateaus and falls.',body)+recall([63],'Step heights become a continuous path',continuity)+recall([60],'Place the thresholds',thresholds)+recall([66],'Paired magnitudes',pairedMagnitudeCard(circle));
+  }
   const [slope,wave,steps,area,circle,water,bamboo]=await Promise.all([
     examples.example(50,'NAQD'),examples.example(4,'HS'),examples.example(4,'HF'),
     examples.example(4,'HFSI'),examples.circleExample('1','0','3/4'),
@@ -364,15 +376,15 @@ async function togetherReference(known:Set<number>,examples:ReferenceExamples) {
   const slopeCard=markers(32,34)+'<p>A flat place in an input is a zero in its derivative.</p>'+strip([slope.stages.at(-2)!,slope.stages.at(-1)!],['Input curve','Slope output'],[move('D')]);
   const waveCard=markers(50,54)+'<p>Sine reads input height as a circular phase.</p>'+strip([wave.stages.at(-2)!,wave.stages.at(-1)!],['Input phase','Circular height'],[move('S')]);
   const stepCard=markers(61,62)+'<p>Floor fixes jump positions; sine can map its integer heights; accumulation turns signed regions into a continuous total.</p>'+strip([steps.stages.at(-1)!,area.stages.at(-2)!,area.stages.at(-1)!],['Integer steps','Circular heights','Accumulated total'],[move('S'),move('I')]);
-  const relationCard=markers(66)+'<p>A squared-height equation can return positive and negative heights of one magnitude.</p>'+circleSketch([circle],{centre:true,spoke:true,bounds:[-1,3,-2,2]})+`<p>${tex('h^2=\\frac9{16}-(x-1)^2')}</p>`;
+  const relationCard=pairedMagnitudeCard(circle);
   const bambooCard='<p>A straight line has one constant inclination. Halving its height keeps the zero fixed and halves the rise over every horizontal interval.</p>'+strip(bamboo.stages,['Starting line','Half the rise'],[move('H')])+tag(82);
   const waterCard='<p>Scaling after sine changes the height while keeping its zeros in place. The drawing frame is already fixed, so fit the curve with blocks. Create lets you choose your own crop.</p>'+strip([water.stages.at(-2)!,water.stages.at(-1)!],['A wide wave','Half its height'],[move('H')])+tag(72);
   const moonCard="<p>The zeros of the right side set a loop's horizontal edges. Its maximum squared height sets its thickness, so a smaller maximum makes a thinner loop without moving those zeros. At one position, call the right-side value "+tex('a')+'.</p>'+circleSketch([circle],{centre:true,spoke:true,bounds:[-1,3,-2,2]})+`<p>${tex('h^2=a\\qquad h=\\pm\\sqrt a')}</p>`+tag(74);
-  const rippleCard='<p>Changes before sine set phase and period. Changes afterward set amplitude and baseline. The fixed frame keeps the useful part without changing those fitted heights.</p>'+strip([wave.stages.at(-2)!,wave.stages.at(-1)!],['Input phase','Fitted wave height'],[move('S')])+tag(76);
+  const rippleCard='<p>Input shift and scale place and size the original sine cycle. Output scaling and lifting set its height and middle level. Squaring folds the lobes and can shorten the repeat distance. The fixed frame keeps the useful part without changing its heights.</p>'+strip([wave.stages.at(-2)!,wave.stages.at(-1)!],['Input phase','Fitted wave height'],[move('S')])+tag(76);
   const artLessons:[number,string,string][]=[[82,'Set the inclination of a straight support',bambooCard],[72,'Fit height inside a fixed frame',waterCard]];
   if(known.has(73)) {
     const anchored=await examples.example(37,'I');
-    const card='<p>Accumulation stays anchored at zero even when the drawing frame starts later. The frame does not restart the accumulated amount at its left edge.</p>'+strip(anchored.stages,['Input','Area accumulated from zero'],[move('I')])+`<p>${tex('F(x)=\\int_0^x h(u)\\,\\mathrm{d}u')}</p>`+tag(73);
+    const card='<p>Accumulation stays anchored at zero even when the drawing frame starts later. The frame does not restart the accumulated amount at its left edge. Here '+tex('F')+' is the accumulated output; '+tex('u')+' runs over horizontal positions from zero to '+tex('x')+'.</p>'+strip(anchored.stages,['Input','Area accumulated from zero'],[move('I')])+`<p>${tex('F(x)=\\int_0^x h(u)\\,\\mathrm{d}u')}</p>`+tag(73);
     artLessons.push([73,'The frame keeps the same area anchor',card]);
   }
   if(known.has(74))artLessons.push([74,'Zeros and squared height size a loop',moonCard]);
@@ -413,6 +425,9 @@ async function togetherReference(known:Set<number>,examples:ReferenceExamples) {
     return current('Read the roles of intermediate curves.',body)+recall([84],'Input slope controls phase spacing',reading)+recall([66],'The right side supplies paired heights',relationCard)+recall([60,62],'Thresholds and area',stepCard)+artRecall;
   }
   if(known.has(67))return current('Mixed constructions are read one relationship at a time.',reading)+recall([66],'Paired magnitudes',relationCard)+recall([61,62],'Steps, projection and accumulation',stepCard)+recall([50,54],'Phase, amplitude and baseline',waveCard)+recall([32,34],'Slope and flat places',slopeCard)+artRecall;
-  if(known.has(65))return current('Earlier relationships remain visible inside a composition.',reading)+recall([61,62],'Steps, projection and accumulation',stepCard)+recall([50,54],'Circular phase and output height',waveCard)+recall([66],'Paired magnitudes',relationCard)+recall([32,34],'Slope and flat places',slopeCard)+artRecall;
   return current('A composition can be inspected stage by stage.',reading)+recall([32,34],'Slope and flat places',slopeCard)+recall([50,54],'Circular phase and output height',waveCard)+recall([66],'Paired magnitudes',relationCard)+artRecall;
+}
+
+function pairedMagnitudeCard(circle:Result) {
+  return markers(66)+'<p>A squared-height equation can return positive and negative heights of one magnitude.</p>'+circleSketch([circle],{centre:true,spoke:true,bounds:[-1,3,-2,2]})+`<p>${tex('h^2=\\frac9{16}-(x-1)^2')}</p>`;
 }

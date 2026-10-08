@@ -263,7 +263,7 @@ class LessonSketches {
     const three='<p>Squaring this roof makes both zero-height ends flat as well as its middle. The station turns all three flat places into zero slopes.</p>'+strip(still.stages,['Roof','Three flat places','Three zero slopes'],[move('Q'),move('D')])+'<p class="note-takeaway">Use '+viewButton('flow')+' to find the flat places. A zero slope need not change sign: check each side.</p>';
     if(!this.known.has(36))return '<h3>Build the places where change stops.</h3>'+three+recall([34],'Move a turning point',moving)+reference;
     const starting=await this.example(36,'D');
-    return '<h3>Plan the input from the output.</h3><p>The bare station produces a straight rising output. The required heights rise, fall, then rise: where will the input need to flatten and turn?</p>'+strip([starting.stages[1]],['Starting output and required heights'],[],false,starting.checkpoints)+'<p class="note-takeaway">Build the input’s turning points first. Then use the output slots to fit its final height. A matching height gap does not yet place every target.</p>'+recall([35],'Three flat places become three zeros',three)+recall([8],'Build the roof that will be squared',strip((await this.example(8,'NA')).stages,['Bowl','Turned','Roof'],[move('N'),move('A')]))+recall([34],'Move a turning point',moving)+reference;
+    return '<h3>Plan the input from the output.</h3><p>The bare station produces a straight line. The targets need an output that rises, falls, then rises. Shape how the input’s slope changes, then fit the final height.</p>'+strip([starting.stages[1]],['Starting output and required heights'],[],false,starting.checkpoints)+'<p class="note-takeaway">An input flat place becomes zero immediately after Find slope. Later output blocks can move that zero. A matching height gap does not place every target.</p>'+recall([35],'Three flat places become three zeros',three)+recall([8],'Build the roof that will be squared',strip((await this.example(8,'NA')).stages,['Bowl','Turned','Roof'],[move('N'),move('A')]))+recall([34],'Move a turning point',moving)+reference;
   }
 
   private async circleNotes():Promise<string> {
@@ -370,13 +370,13 @@ class LessonSketches {
     ])+'<p class="note-takeaway">Use '+viewButton('flow')+' to follow the input value into the circular projection. The block reads height as an angle; time still only controls playback.</p>';
     if(!this.known.has(51))return '<h3>Unfold a circle into a wave.</h3>'+quarter;
     const [phase,lift]=await Promise.all([this.example(51,'AS'),this.example(51,'SA')]);
-    const phaseLesson='<p>A lift before sine changes the angle, so peaks and zeros move sideways. A lift after sine raises every output height without moving them.</p>'+compare('Move the phase, or move the baseline?',[{label:'Lift the input',stage:phase.stages.at(-1)!,before:turn.stages.at(-1)!},{label:'Lift the output',stage:lift.stages.at(-1)!,before:turn.stages.at(-1)!}]);
+    const phaseLesson='<p>Phase is the input’s position around the circle. A lift before Sine changes where peaks and zeros occur. The baseline is the wave’s middle height. A lift after Sine raises the wave without moving its peaks sideways; zero crossings can move or disappear.</p>'+compare('Move the phase, or move the baseline?',[{label:'Lift the input',stage:phase.stages.at(-1)!,before:turn.stages.at(-1)!},{label:'Lift the output',stage:lift.stages.at(-1)!,before:turn.stages.at(-1)!}]);
     if(!this.known.has(52))return '<h3>Input lift changes phase. Output lift changes height.</h3>'+phaseLesson+recall([50],'Quarter-turn input',quarter);
     const [period,amplitude]=await Promise.all([this.example(52,'HS'),this.example(52,'SH')]);
-    const scaleLesson='<p>Halving before sine makes the angle advance half as fast, so the wave takes twice as much horizontal room. Halving after sine keeps the zeros and period but halves its amplitude.</p>'+compare('Stretch the period, or shrink the height?',[{label:'Halve the input',stage:period.stages.at(-1)!,before:turn.stages.at(-1)!},{label:'Halve the output',stage:amplitude.stages.at(-1)!,before:turn.stages.at(-1)!}]);
+    const scaleLesson='<p>The period is the horizontal distance of one repeat. Amplitude is the distance from the middle height to a peak. Halving before Sine makes the input advance half as far over the same horizontal distance, doubling the period. Halving after Sine keeps the zeros and period but halves the amplitude.</p>'+compare('Stretch the period, or shrink the height?',[{label:'Halve the input',stage:period.stages.at(-1)!,before:turn.stages.at(-1)!},{label:'Halve the output',stage:amplitude.stages.at(-1)!,before:turn.stages.at(-1)!}]);
     if(!this.known.has(53))return '<h3>Input scale changes period. Output scale changes amplitude.</h3>'+scaleLesson+recall([51],'Phase and baseline',phaseLesson)+recall([50],'Quarter-turn input',quarter);
     const folded=await this.example(53,'SQ');
-    const foldLesson='<p>Squaring after sine folds every negative lobe above zero. Zeros stay fixed, while peaks of either sign meet at height one.</p>'+compare('Keep signed lobes, or fold them?',[
+    const foldLesson='<p>Squaring after Sine folds every negative lobe above zero. Zeros stay fixed, while peaks of either sign meet at height one. The positive and negative lobes now repeat the same shape, so the repeat distance halves.</p>'+compare('Keep signed lobes, or fold them?',[
       {label:'Signed wave',stage:folded.stages.at(-2)!},
       {label:'Folded lobes',stage:folded.stages.at(-1)!,before:folded.stages.at(-2)!}
     ]);
@@ -390,14 +390,14 @@ class LessonSketches {
 
   private async stepNotes():Promise<string> {
     const floor=await this.example(56,'F');
-    const floorLesson='<p>Floor holds each integer height until the input reaches the next integer. At an exact whole input value, the new higher step is closed and the old lower step is open.</p>'+strip(floor.stages,['Rising input','Floor steps'],[move('F')]);
+    const floorLesson='<p>A threshold is a position where the input reaches an integer. Floor holds each integer height until the next threshold. In this rising input, the higher step includes the boundary and the lower step leaves it out. A filled endpoint includes the value; an open endpoint leaves it out.</p>'+strip(floor.stages,['Rising input','Floor steps'],[move('F')]);
     if(!this.known.has(57))return '<h3>Round down into steps.</h3>'+floorLesson;
     const ceil=await this.example(57,'C');
     const ceilLesson='<p>Ceiling rounds upward instead. Its jumps occur at the same integer boundaries, but the closed endpoint belongs to the lower side.</p>'+compare('Which way does the input round?',[{label:'Floor',stage:floor.stages.at(-1)!,before:floor.stages[0]},{label:'Ceiling',stage:ceil.stages.at(-1)!,before:ceil.stages[0]}]);
     if(!this.known.has(58))return '<h3>Round up into steps.</h3>'+ceilLesson+recall([56],'How floor holds a value',floorLesson);
     const [turnAfter,turnBefore]=await Promise.all([this.example(58,'FN'),this.example(58,'NF')]);
-    const direction='<p>Negating finished floor steps turns their heights over. Negating before floor also reverses which side of each jump owns the boundary. This is the floor/ceiling relation '+tex('\\lceil u\\rceil=-\\lfloor-u\\rfloor')+'.</p>'+compare('Turn the heights, or reverse the rounding?', [{label:'Floor, then negate',stage:turnAfter.stages.at(-1)!,before:turnAfter.stages[0]},{label:'Negate, then floor',stage:turnBefore.stages.at(-1)!,before:turnBefore.stages[0]}]);
-    if(!this.known.has(59))return '<h3>Negation changes rounding direction.</h3>'+direction+recall([57],'Floor and ceiling',ceilLesson)+recall([56],'Floor steps',floorLesson);
+    const direction='<p>Negating the input changes which integer Floor selects. Negating the finished result changes its sign. Negating both before and after Floor gives Ceiling: '+tex('\\lceil u\\rceil=-\\lfloor-u\\rfloor')+'.</p>'+compare('Negate before or after Floor?', [{label:'Floor, then negate',stage:turnAfter.stages.at(-1)!,before:turnAfter.stages[0]},{label:'Negate, then floor',stage:turnBefore.stages.at(-1)!,before:turnBefore.stages[0]}]);
+    if(!this.known.has(59))return '<h3>Negation changes which side owns a step boundary.</h3>'+direction+recall([57],'Floor and ceiling',ceilLesson)+recall([56],'Floor steps',floorLesson);
     const [wide,short]=await Promise.all([this.example(59,'HF'),this.example(59,'FH')]);
     const sizing='<p>Halving before floor takes twice as much input to reach each next integer, so steps become wider. Halving after floor keeps their boundaries and makes their heights smaller.</p>'+compare('Change step width, or step height?',[{label:'Halve before floor',stage:wide.stages.at(-1)!,before:wide.stages[0]},{label:'Halve after floor',stage:short.stages.at(-1)!,before:short.stages[0]}]);
     if(!this.known.has(60))return '<h3>Input scale sets width. Output scale sets height.</h3>'+sizing+recall([58],'Rounding direction',direction);
@@ -448,7 +448,7 @@ class LessonSketches {
     }
     if(this.known.has(76)) {
       const ripple=await this.example(54,'S');
-      const body='<p>Changes before sine set phase and period. Changes afterward set amplitude and baseline. The fixed frame keeps the useful part without changing those fitted heights.</p>'+strip([ripple.stages.at(-2)!,ripple.stages.at(-1)!],['Input phase','Wave height'],[move('S')])+reference(76);
+      const body='<p>Input shift and scale place and size the original sine cycle. Output scaling and lifting set its height and middle level. Squaring folds the lobes and can shorten the repeat distance. The fixed frame keeps the useful part without changing its heights.</p>'+strip([ripple.stages.at(-2)!,ripple.stages.at(-1)!],['Input phase','Wave height'],[move('S')])+reference(76);
       artLessons.push([76,'Fit phase, amplitude and baseline',body]);
     }
     if(this.known.has(77)) {
@@ -514,7 +514,7 @@ class LessonSketches {
       {label:'Lift the input',stage:inputLift.stages[2],before:ramp.stages[1]},
       {label:'Lift the output',stage:outputLift.stages[2],before:ramp.stages[1]}
     ],[{index:0,x:'0'},{index:2,x:'2'}],['Original amount','New amount']);
-    const basics='<p>The station accumulates signed area from zero: '+tex('F(x)=\\int_0^x h(u)\\,\\mathrm{d}u')+'. Its output starts at zero. Raising the input adds more at every step; raising the output changes where it starts.</p>'+strip(ramp.stages,['Input height','Signed area'],[move('I')])+lifts+'<p>Scrub '+viewButton('flow')+' to follow the input-height arrow and signed-area meter. Solid area adds; hatched area subtracts. The meter measures area from zero to the inspected horizontal position.</p>';
+    const basics='<p>The station accumulates signed area from zero: '+tex('F(x)=\\int_0^x h(u)\\,\\mathrm{d}u')+'. Here '+tex('F')+' is the accumulated output; '+tex('u')+' runs over horizontal positions from zero to '+tex('x')+'. Its output starts at zero. Raising the input adds more at every step; raising the output changes where it starts.</p>'+strip(ramp.stages,['Input height','Signed area'],[move('I')])+lifts+'<p>Scrub '+viewButton('flow')+' to follow the input-height arrow and signed-area meter. Solid area adds; hatched area subtracts. The meter measures area from zero to the inspected horizontal position.</p>';
     if(!this.known.has(38))return '<h3>Feed the accumulator.</h3>'+basics;
     const [signed,moved]=await Promise.all([this.example(38,'I'),this.example(38,'AI')]);
     const turning='<p>Positive input height adds area; negative input height subtracts it. The accumulated curve turns where the input crosses zero.</p>'+strip([moved.stages[0],moved.stages[1],moved.stages[2]],['Original crossing','Crossing moved','High point moved'],[move('A'),move('I')])+compare('Move the rate’s zero. Move the amount’s peak.',[

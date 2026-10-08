@@ -46,3 +46,7 @@ The first playable Angouri cucumber puzzle.
 
 - Compact Flow fits a complete calculus card. Dense Flight targets have whole coordinate callouts; later wave and step puzzles keep their target frame while Full curve remains reversible. The garden uses a larger picture beside its controls in short landscape.
 - Keyboard Throw/Rethrow returns focus without stealing a deliberate view selection. Library errors appear inside Save & open, preserve drafts and saved data, and clear after successful recovery. Enter saves a named recipe.
+- Responsive layout fixes keep the garden clear of its footer, show ordinary Equation comparisons together, remove redundant circle Flow scrolling, and give compact chapter entries and saved-recipe names enough room.
+- Curve-change feedback now includes cropped, station and loop recipes throughout the game. Continuous geometry morphs with its launcher; changed branches and travel directions fade together. Direct crop previews take over cleanly and reconcile even when a drag returns to its original bounds.
+- Language review corrects slope, zero, period, rounding and signed-area explanations, defines notation and concepts on first use, and gives Build a gate its own reusable Notes with the relevant earlier lessons.
+- The npm package is named `angouri`.

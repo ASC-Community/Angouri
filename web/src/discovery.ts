@@ -39,10 +39,10 @@ export function discoveryObservation(state:State,result:Result,selected?:string)
       N:'Opposite side of zero. Same distances.',Q:state.sourceId===29?'A cubic squared makes a sixth power.':state.sourceId===12?'Between zero and one, squaring brings heights closer to zero.':'Opposite heights meet above zero.',
       D:'Downhill, flat, uphill become negative, zero, positive.',I:'Positive area adds; negative area subtracts.',
       S:`One input unit is a quarter-turn: ${tex('0,1,0,-1,0')}.`,
-      F:'Down to the whole step. Whole numbers stay put.',C:'Up to the whole step. Whole numbers stay put.'
+      F:'Round down to an integer. Integers stay unchanged.',C:'Round up to an integer. Integers stay unchanged.'
     };
     finding=state.sourceId===82
-      ?op==='H'?'The straight line stays planted at zero while its rise and inclination are halved.':'The straight line rises without changing its inclination, so it no longer starts at zero.'
+      ?op==='H'?'The straight line stays planted at zero while its rise over each horizontal interval is halved.':'The straight line rises without changing its inclination, so it no longer starts at zero.'
       :state.sourceId===80&&op==='Q'?'Zero and one stay fixed. Squaring lowers the heights between them, so matching peaks alone does not determine a curve.':effects[op];
   }
   return finding?`<span class="discovery-operation ${OPS[op].color}" aria-hidden="true">${operationTex(op)}</span><span>${finding}</span>`:'';

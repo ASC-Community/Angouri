@@ -27,11 +27,11 @@ const clues:Record<number,[string,string]> = {
   33:['A straight input has the same slope everywhere. The targets need a changing slope.','What familiar shape falls, becomes flat, then rises? Build that relationship before the station.'],
   34:['Find where the output should cross zero. The input needs to be flat at that position.','Move the input line’s zero before folding it. Follow the resulting turning point through the station.'],
   35:['The roof has a flat middle. Squaring can also flatten its zero-height ends.','Inspect all three places in Flow. A flat tangent need not change sign on its two sides.'],
-  36:['Plan the input’s turning points from the output’s rises and falls.','Build the required changes before the station, then fit the output’s height afterward. A matching gap does not place every target.'],
+  36:['Read the curve immediately after Find slope. Flat places in its input give zeros there.','Build the required changes before the station, then fit the output’s height afterward. A matching gap does not place every target.'],
   37:['Over the same distance, a taller input contributes more area.','Changing the input changes how the result grows. Lifting the output only changes where it starts.'],
   38:['The accumulated curve rises under positive input and falls under negative input.','Place the input’s zero crossing where the result should turn.'],
   39:['Read the target pattern as subtracting, adding, then subtracting area.','The input needs negative, positive, then negative regions. What familiar shape can provide those two sign changes?'],
-  40:['Fitting how much the result changes is separate from choosing its starting height.','The integral itself starts at zero. Input changes affect the area; a lift after the station chooses a different baseline.'],
+  40:['Fitting how much the result changes is separate from choosing its starting height.','The integral itself starts at zero. Input changes affect the area; a lift after the station chooses a different starting height.'],
   41:['A slope remembers changes in height, but loses a constant offset.','Accumulating that slope rebuilds the change from zero. Compare the original starting height with the rebuilt one.'],
   42:['Plan the input’s signs and zeros before placing the final result.','Use the input side to shape the accumulated change. Use the output side for what remains to be fitted or placed.'],
   43:['The loop must reach both the upper and lower targets from one centre.','Changing the radius moves every point the same distance from the centre. Inspect both halves.'],
@@ -81,7 +81,7 @@ const clues:Record<number,[string,string]> = {
   17:['The accumulated shape is useful, but its scale may need changing.','Compare the result’s height gap before choosing where to place it.'],
   18:['Find the familiar shape built by accumulating this input.','Treat forming that shape and its final fit, turn and placement as separate jobs.'],
   19:['Area below zero subtracts from what area above zero has added.','Look for a balance of positive and negative area over the inspected interval.'],
-  20:['The accumulated result starts at zero even if its final baseline needs to be higher.','Distinguish changing the input’s area from lifting the result after accumulation.'],
+  20:['The accumulated result starts at zero even if its final starting height needs to be higher.','Distinguish changing the input’s area from lifting the result after accumulation.'],
   21:['Slopes preserve changes in height, but discard a constant starting height.','Accumulating rebuilds the change from zero; compare what remains missing.'],
   23:['Accumulating a bowl can build an S curve. Think about what folding that new curve would do.','Place the useful intermediate shape before folding, then fit its final orientation and height.']
 };

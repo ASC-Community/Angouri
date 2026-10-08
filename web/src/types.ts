@@ -34,8 +34,8 @@ export const OPS: Record<Op, { name: string; formula: string; description: strin
   D: { name: 'Find slope', formula: '\\frac{\\mathrm{d}\\square}{\\mathrm{d}x}', description: 'Take the input’s slope at each position.', color: 'sea' },
   I: { name: 'Accumulate', formula: '\\int_0^x\\!\\square', description: 'Accumulate signed area from zero to this position. The result starts at zero.', color: 'teal' },
   S: { name: 'Sine', formula: '\\sin\\!\\left(\\frac{\\pi\\square}{2}\\right)', description: 'Turn each input unit a quarter of a circle. Read its height.', color: 'rose' },
-  F: { name: 'Floor', formula: '\\lfloor\\square\\rfloor', description: 'Round down to the next whole number. Exact whole numbers stay put.', color: 'slate' },
-  C: { name: 'Ceiling', formula: '\\lceil\\square\\rceil', description: 'Round up to the next whole number. Exact whole numbers stay put.', color: 'sky' }
+  F: { name: 'Floor', formula: '\\lfloor\\square\\rfloor', description: 'Round down to the nearest integer at or below the input.', color: 'slate' },
+  C: { name: 'Ceiling', formula: '\\lceil\\square\\rceil', description: 'Round up to the nearest integer at or above the input.', color: 'sky' }
 };
 export const LEVELS = [
   { name: 'Lower the arc', hint: 'Which move keeps the ends at zero?', y: [-0.8,5.2] },
@@ -73,7 +73,7 @@ export const LEVELS = [
   { name: 'Make a turning point', hint: 'The station reads slopes. What input would give a changing slope?', y: [-5,5] },
   { name: 'Move the turning point', hint: 'Move the input’s zero before folding. Where will its slope change sign?', y: [-3,7] },
   { name: 'Three flat places', hint: 'Square the arch. Where does its new curve become flat?', y: [-1.5,1.5] },
-  { name: 'Shape the slope', hint: 'Build the input’s turning points, then set the output’s height.', y: [-1,4.5] },
+  { name: 'Shape the slope', hint: 'Shape how the input’s slope changes, then fit the output’s height.', y: [-1,4.5] },
   { name: 'Feed the accumulator', hint: 'A taller input adds more area over the same distance.', y: [-1,9] },
   { name: 'Move the high point', hint: 'The accumulated curve turns where its input crosses zero.', y: [-2.5,5.5] },
   { name: 'Subtract, add, subtract', hint: 'Make the input change sign twice. Follow what adds and what takes away.', y: [-2.5,4.5] },
