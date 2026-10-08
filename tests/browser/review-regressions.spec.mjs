@@ -30,15 +30,15 @@ test('compact Flow exposes a complete area relationship and preserves inspection
 
 test('normal-motion keyboard Throw and Rethrow keep an action focus without taking it from another view',async({page})=>{
   test.setTimeout(90000);await page.emulateMedia({reducedMotion:'no-preference'});
-  await ready(page,1);await place(page,'H');await page.locator('#launch').focus();await page.keyboard.press('Enter');
+  await ready(page,1);await place(page,'H');await page.locator('#launch').focus();await page.keyboard.press('Space');
   await page.waitForFunction(()=>window.angouri.flight.phase==='landed');await expect(page.locator('#launch')).toBeFocused();
-  await page.locator('#rethrow').focus();await page.keyboard.press('Enter');
+  await page.locator('#rethrow').focus();await page.keyboard.press('Space');
   await page.waitForFunction(()=>window.angouri.flight.phase==='flying');
   await page.waitForFunction(()=>window.angouri.flight.phase==='landed');await expect(page.locator('#rethrow')).toBeFocused();
-  await page.locator('#launch').focus();await page.keyboard.press('Enter');await idle(page);
+  await page.locator('#launch').focus();await page.keyboard.press('Space');await idle(page);
   expect(await page.evaluate(()=>window.angouri.state.sourceId)).toBe(2);
-  await ready(page,3);await place(page,'A');await page.locator('#launch').focus();await page.keyboard.press('Enter');
-  await page.waitForFunction(()=>window.angouri.flight.phase==='flying');await page.locator('#tab-flow').focus();await page.keyboard.press('Enter');
+  await ready(page,3);await place(page,'A');await page.locator('#launch').focus();await page.keyboard.press('Space');
+  await page.waitForFunction(()=>window.angouri.flight.phase==='flying');await page.locator('#tab-flow').focus();await page.keyboard.press('Space');
   await page.waitForFunction(()=>window.angouri.flight.phase==='landed');await expect(page.locator('#tab-flow')).toBeFocused();
 });
 

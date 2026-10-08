@@ -31,7 +31,7 @@ export function installTabStops(documentRoot: Document = document) {
   const removeModality=installFocusModality(documentRoot);
   const affordances=installKeyboardAffordances(documentRoot);
   const removeEntry=installGameEntry(documentRoot);
-  const removeDialogBoundary=installDialogTabBoundary(documentRoot);
+  const removeBoundary=installTabBoundary(documentRoot);
   const add=(root: ParentNode)=>root.querySelectorAll<HTMLElement>(NATIVE_TAB_STOPS).forEach(element=>element.tabIndex=0);
   add(documentRoot);
   const observer=new MutationObserver(records=>records.forEach(record=>record.addedNodes.forEach(node=>{
@@ -41,7 +41,7 @@ export function installTabStops(documentRoot: Document = document) {
     affordances.refresh();
   })));
   observer.observe(documentRoot.documentElement,{childList:true,subtree:true});
-  return ()=>{observer.disconnect();removeModality();affordances.remove();removeEntry();removeDialogBoundary();};
+  return ()=>{observer.disconnect();removeModality();affordances.remove();removeEntry();removeBoundary();};
 }
 
 /** The first keyboard action starts at a visible game control, without an
@@ -58,7 +58,7 @@ export function focusGameControl(documentRoot:Document=document) {
 function installGameEntry(documentRoot:Document) {
   let pending=true;
   const key=(event:KeyboardEvent)=>{
-    if(!event.isTrusted||['Alt','Control','Meta','Shift'].includes(event.key))return;
+    if(!event.isTrusted||event.altKey||event.ctrlKey||event.metaKey||['Alt','Control','Meta','Shift'].includes(event.key))return;
     if(pending&&event.key==='Tab'&&!event.shiftKey&&!documentRoot.querySelector('dialog[open]')&&[documentRoot.body,documentRoot.documentElement].includes(documentRoot.activeElement as HTMLElement)) {
       if(focusGameControl(documentRoot))event.preventDefault();
     }
@@ -70,22 +70,29 @@ function installGameEntry(documentRoot:Document) {
   return ()=>{documentRoot.removeEventListener('keydown',key,true);documentRoot.removeEventListener('pointerdown',pointer,true);};
 }
 
-/** Keep the browser's order inside a modal, but wrap its boundaries before
- * WebKit visits the unfocused page body and dialog container for two steps. */
-function installDialogTabBoundary(documentRoot:Document) {
+/** Keep the native order within the game or active modal, but wrap between
+ * actual controls before the browser inserts an empty document-focus step.
+ * Modified Tab and browser shortcuts remain untouched; About is outside this
+ * fixed-viewport game scope. */
+function installTabBoundary(documentRoot:Document) {
   const wrap=(event:KeyboardEvent)=>{
     if(event.defaultPrevented||event.key!=='Tab'||event.altKey||event.ctrlKey||event.metaKey)return;
-    const dialog=documentRoot.querySelector<HTMLDialogElement>('dialog[open]');if(!dialog)return;
-    const controls=[...dialog.querySelectorAll<HTMLElement>('button,a[href],input,select,textarea,summary,[tabindex]')].filter(element=>{
+    const dialog=documentRoot.querySelector<HTMLDialogElement>('dialog[open]');
+    const scope=dialog??documentRoot.querySelector<HTMLElement>('.game-shell');if(!scope)return;
+    const controls=[...scope.querySelectorAll<HTMLElement>('button,a[href],input,select,textarea,summary,[tabindex]')].filter(element=>{
       if(element.tabIndex<0||element.matches(':disabled')||element.closest('[inert]')||!element.getClientRects().length||getComputedStyle(element).visibility!=='visible')return false;
       // Closed details can retain nonempty layout boxes for their contents.
       // Only their summary, including any controls in it, participates in Tab.
-      for(let parent=element.parentElement;parent&&parent!==dialog;parent=parent.parentElement) {
+      for(let parent=element.parentElement;parent&&parent!==scope;parent=parent.parentElement) {
         if(parent instanceof HTMLDetailsElement&&!parent.open&&!parent.querySelector(':scope > summary')?.contains(element))return false;
       }
       return true;
     });
     const active=documentRoot.activeElement,index=controls.indexOf(active as HTMLElement);
+    // Neutral page focus can follow a pointer action or a temporarily disabled
+    // button. Preserve its native starting point; first arrival is handled by
+    // installGameEntry. Only the actual game boundaries need wrapping here.
+    if(!dialog&&index<0)return;
     // After a pointer reopens a chapter, compact WebKit can retain the closed
     // details' sequential-navigation position and skip all its puzzle rows.
     // Step from summaries explicitly, using the same visible DOM order.
@@ -95,7 +102,7 @@ function installDialogTabBoundary(documentRoot:Document) {
     if(index>=0&&(event.shiftKey?index>0:index<controls.length-1))return;
     // A revealed hint is focused for reading with tabindex=-1. Let native Tab
     // continue into its next control instead of jumping back to the header.
-    if(index<0&&active&&active!==dialog&&dialog.contains(active)) {
+    if(dialog&&index<0&&active&&active!==dialog&&dialog.contains(active)) {
       const direction=event.shiftKey?Node.DOCUMENT_POSITION_PRECEDING:Node.DOCUMENT_POSITION_FOLLOWING;
       if(controls.some(control=>active.compareDocumentPosition(control)&direction))return;
     }

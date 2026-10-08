@@ -201,6 +201,7 @@ export function installCircleHandles(root:HTMLElement,get:()=>CircleContext|unde
   root.addEventListener('pointercancel',cancel);
   root.addEventListener('lostpointercapture',()=>{if(drag)cancel();});
   root.addEventListener('keydown',event=>{
+    if(event.defaultPrevented||event.isComposing||event.altKey||event.ctrlKey||event.metaKey)return;
     if(event.key==='Escape'){cancel();return;}
     const button=(event.target as Element).closest<HTMLElement>('[data-circle-handle]'),ctx=get();
     if(!button||!ctx||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))return;

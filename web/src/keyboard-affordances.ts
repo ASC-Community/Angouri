@@ -1,22 +1,8 @@
+import { revealFocusRing } from './scroll';
+
 const READERS='.final-equation,.value-table tbody,.flow-line,.flow-goals:not(:has(button)),.notes-reading,.dialog-reading';
 const CONTAINERS='#scene,.recipe-content,.pipeline,.rail-slots,.notes-index,.flow-goals:has(button)';
-type Directions=''|'x'|'y'|'xy';
-
-function revealFocusRing(target:HTMLElement) {
-  const face=target.querySelector<HTMLElement>('.ingredient-surface')??target;
-  const style=getComputedStyle(face);
-  const margin=target.matches('input[type=range]')?8:Math.max(0,parseFloat(style.outlineWidth)+parseFloat(style.outlineOffset));
-  for(let parent=face.parentElement;parent;parent=parent.parentElement) {
-    const s=getComputedStyle(parent),rect=face.getBoundingClientRect(),box=parent.getBoundingClientRect();
-    const left=box.left+parent.clientLeft,top=box.top+parent.clientTop;
-    const dx=rect.left-margin<left?rect.left-margin-left:Math.max(0,rect.right+margin-left-parent.clientWidth);
-    const dy=rect.top-margin<top?rect.top-margin-top:Math.max(0,rect.bottom+margin-top-parent.clientHeight);
-    // Correct only local scrollports. Never resize or scroll the page, and do
-    // not move a fitting inspection merely because another control focused.
-    if(/auto|scroll/.test(s.overflowX)&&parent.scrollWidth>parent.clientWidth)parent.scrollLeft+=dx;
-    if(/auto|scroll/.test(s.overflowY)&&parent.scrollHeight>parent.clientHeight)parent.scrollTop+=dy;
-  }
-}
+type Directions=''|'x'|'y'|'xy'|'up'|'xdown';
 
 function scrollDirections(element:HTMLElement):Directions {
   if(!element.clientWidth||!element.clientHeight)return '';
@@ -26,30 +12,67 @@ function scrollDirections(element:HTMLElement):Directions {
   return x?(y?'xy':'x'):(y?'y':'');
 }
 
-/** Reading panes join Tab order only when arrow keys can actually scroll
- * them. A small, noninteractive cue describes the focused control's existing
- * arrow action; ordinary menu buttons remain ordinary Tab destinations. */
+function anchorVisible(element:HTMLElement,rect:DOMRect,anchorY:number,anchorBottom=anchorY):boolean {
+  let left=0,right=innerWidth,top=0,bottom=innerHeight;
+  for(let parent=element.parentElement;parent;parent=parent.parentElement) {
+    const style=getComputedStyle(parent),clipsX=/auto|scroll|hidden|clip/.test(style.overflowX),clipsY=/auto|scroll|hidden|clip/.test(style.overflowY);
+    if(!clipsX&&!clipsY)continue;
+    const box=parent.getBoundingClientRect();
+    if(clipsX){left=Math.max(left,box.left+parent.clientLeft);right=Math.min(right,box.left+parent.clientLeft+parent.clientWidth);}
+    if(clipsY){top=Math.max(top,box.top+parent.clientTop);bottom=Math.min(bottom,box.top+parent.clientTop+parent.clientHeight);}
+  }
+  return rect.left>=left-1&&rect.right<=right+1&&anchorY>=top-1&&anchorBottom<=bottom+1;
+}
+
+/** Reading panes join Tab order only when they can scroll. Compact keycaps
+ * share the focus outline; ordinary menu buttons retain their Tab stops. */
 export function installKeyboardAffordances(documentRoot:Document) {
   let frame=0;
   let pendingFocus:HTMLElement|undefined;
   const observed=new Set<Element>();
   const cue=documentRoot.createElement('span');
-  cue.className='keyboard-arrows';cue.setAttribute('aria-hidden','true');cue.hidden=true;
-  cue.innerHTML='<svg viewBox="0 0 60 34" fill="none" aria-hidden="true"><circle class="keyboard-knob-ring" cx="30" cy="17" r="13"/><path class="keyboard-horizontal" d="M10 11L4 17L10 23M50 11L56 17L50 23"/><path class="keyboard-vertical" d="M24 9L30 3L36 9M24 25L30 31L36 25"/></svg>';
+  cue.className='keyboard-focus-cue';cue.setAttribute('aria-hidden','true');cue.hidden=true;
+  cue.innerHTML='<kbd class="keyboard-activate">Space</kbd><span class="keyboard-direction-key"><svg viewBox="0 0 60 34" fill="none" aria-hidden="true"><circle class="keyboard-knob-ring" cx="30" cy="17" r="13"/><path class="keyboard-horizontal" d="M10 11L4 17L10 23M50 11L56 17L50 23"/><path class="keyboard-up" d="M24 9L30 3L36 9"/><path class="keyboard-down" d="M24 25L30 31L36 25"/></svg></span><kbd class="keyboard-delete">Del</kbd>';
+  const activate=cue.querySelector<HTMLElement>('.keyboard-activate')!,arrows=cue.querySelector<HTMLElement>('.keyboard-direction-key')!,remove=cue.querySelector<HTMLElement>('.keyboard-delete')!;
+  const mac=/Mac|iPhone|iPad/.test(navigator.platform);
+  for(const [id,label] of [['undo',mac?'⌘Z':'Ctrl Z'],['redo',mac?'⇧⌘Z':'Ctrl⇧Z']]) {
+    const cap=documentRoot.querySelector<HTMLElement>(`#${id} .button-hotkey`);if(cap)cap.textContent=label;
+  }
   const showCue=()=>{
     const active=documentRoot.activeElement;
     if(documentRoot.documentElement.dataset.focusModality!=='keyboard'||!(active instanceof HTMLElement)||!active.getClientRects().length){cue.hidden=true;return;}
     let directions:Directions='',knob=false;
     if(active.matches('input[type=range]:not(:disabled)')){directions='x';knob=true;}
     else if(active.matches('[data-circle-handle]'))directions='xy';
-    else if(active.matches('[role=tab],.part-body,.empty-slot'))directions='x';
+    else if(active.matches('.part-body'))directions='xdown';
+    else if(active.matches('.ingredient:not(:disabled):not([data-return])')&&!active.closest('.choice-game'))directions='up';
+    else if(active.matches('[role=tab],.empty-slot'))directions='x';
     else if(active.matches(READERS))directions=scrollDirections(active);
     if(active.id==='tab-flight'&&scrollDirections(documentRoot.querySelector<HTMLElement>('#scene')!).includes('y'))directions='xy';
-    if(!directions){cue.hidden=true;return;}
+    const dedicated=active.matches('#launch,#rethrow,#undo,#redo,#reset,[data-back-shortcut]');
+    const activation=!dedicated&&!active.matches('[role=tab],:disabled')&&(active.matches('button,summary,[role=button],input[type=checkbox],a[href]'));
+    if(!directions&&!activation){cue.hidden=true;return;}
+    activate.hidden=!activation;activate.textContent=active.matches('a[href]')?'Enter':'Space';activate.classList.toggle('is-enter',active.matches('a[href]'));
+    remove.hidden=!active.matches('.part-body');arrows.hidden=!directions;
+    cue.dataset.directions=directions;cue.classList.toggle('is-knob',knob);cue.classList.toggle('keyboard-arrows',!!directions);
+    const piece=active.matches('.part-body,.empty-slot')?active:active.querySelector('.ingredient-surface');
+    cue.classList.toggle('on-piece',!!piece);
+    if(piece) {
+      // Let the same painted object carry its cue through swaps, interrupted
+      // slides and pickup feedback. A separately positioned overlay can lag a
+      // compositor animation even when measured on every animation frame.
+      if(cue.parentElement!==piece)piece.append(cue);
+      cue.style.removeProperty('width');cue.style.removeProperty('height');cue.style.removeProperty('left');cue.style.removeProperty('top');
+      cue.hidden=false;return;
+    }
     const host=active.closest('dialog')??documentRoot.body;
     if(cue.parentElement!==host)host.append(cue);
-    const rect=active.getBoundingClientRect();
-    let width=30,height=18,left=rect.right-39,top=rect.top-9;
+    const rect=(active.querySelector('.ingredient-surface')??active).getBoundingClientRect();
+    // Floating cues must disappear with their control when a reader is
+    // scrolled manually. Clamping an offscreen control's badge to the viewport
+    // would detach it from both the control and its focus ring.
+    if(!anchorVisible(active,rect,knob?rect.top+rect.height/2:rect.top)){cue.hidden=true;return;}
+    let width=rect.width+12,height=18,left=rect.left-6,top=rect.top-9;
     if(knob) {
       const slider=active as HTMLInputElement;
       const min=Number(slider.min)||0,max=Number(slider.max)||100;
@@ -57,7 +80,6 @@ export function installKeyboardAffordances(documentRoot:Document) {
       if(getComputedStyle(slider).direction==='rtl')progress=1-progress;
       width=60;height=34;left=rect.left+9.5+progress*(rect.width-19)-width/2;top=rect.top+(rect.height-height)/2;
     }
-    cue.dataset.directions=directions;cue.classList.toggle('is-knob',knob);
     cue.style.width=`${width}px`;cue.style.height=`${height}px`;
     cue.style.left=`${Math.max(2,Math.min(window.innerWidth-width-2,left))}px`;
     cue.style.top=`${Math.max(2,Math.min(window.innerHeight-height-2,top))}px`;
@@ -81,6 +103,10 @@ export function installKeyboardAffordances(documentRoot:Document) {
     for(const element of documentRoot.querySelectorAll<HTMLElement>(CONTAINERS))if(element.tabIndex!==-1)element.tabIndex=-1;
     for(const element of observed)if(!current.has(element)){resize.unobserve(element);observed.delete(element);}
     for(const element of current)if(!observed.has(element)){resize.observe(element);observed.add(element);}
+    if(documentRoot.documentElement.dataset.focusModality==='keyboard')for(const cap of documentRoot.querySelectorAll<HTMLElement>('#palette .button-hotkey')) {
+      const face=cap.closest<HTMLElement>('.ingredient-surface')!,rect=face.getBoundingClientRect();
+      cap.classList.toggle('is-clipped',!anchorVisible(face,rect,rect.top-9,rect.bottom));
+    }
     showCue();
   };
   const schedule=()=>{if(!frame)frame=requestAnimationFrame(measure);};

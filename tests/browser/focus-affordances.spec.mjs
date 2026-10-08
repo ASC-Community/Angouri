@@ -9,7 +9,7 @@ async function ready(page,id=3,view='flight') {
 const idle=page=>page.evaluate(()=>window.angouri.whenIdle());
 const paint=page=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
 
-async function ring(page,control,label,{pixels=false,testInfo}={}) {
+async function ring(page,control,label,{pixels=false,outerEdge=false,testInfo}={}) {
   await control.focus();await page.keyboard.press('Shift');await paint(page);
   await expect(control,label).toBeFocused();
   const measured=await control.evaluate(element=>{
@@ -27,21 +27,42 @@ async function ring(page,control,label,{pixels=false,testInfo}={}) {
   expect(measured.width,`${label} visible outline`).toBeGreaterThan(0);
   expect(measured.clipped,`${label} clipped focus edges`).toEqual([]);
   if(!pixels)return;
+  // Keycaps intentionally sit over portions of the ring. Audit the complete
+  // painted outline separately; the shortcut tests inspect visible cap bounds.
+  await page.addStyleTag({content:'.keyboard-focus-cue,.button-hotkey{visibility:hidden!important}'}).then(style=>style.evaluate(el=>el.id='ring-pixel-audit'));
   const r=measured.rect,clip={x:Math.max(0,Math.floor(r.x-8)),y:Math.max(0,Math.floor(r.y-8)),width:Math.ceil(r.width+16),height:Math.ceil(r.height+16)};
   const viewport=page.viewportSize();clip.width=Math.min(clip.width,viewport.width-clip.x);clip.height=Math.min(clip.height,viewport.height-clip.y);
   const png=await page.screenshot({clip,path:testInfo?.outputPath(`${label}.png`)});
-  const counts=await page.evaluate(async({data,clip,measured})=>{
+  await page.locator('#ring-pixel-audit').evaluate(el=>el.remove());
+  const counts=await page.evaluate(async({data,clip,measured,outerEdge})=>{
     const img=new Image();img.src=`data:image/png;base64,${data}`;await img.decode();
     const canvas=document.createElement('canvas');canvas.width=img.width;canvas.height=img.height;
     const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0);const rgba=ctx.getImageData(0,0,img.width,img.height).data;
-    const color=measured.color.match(/\d+/g).slice(0,3).map(Number),r=measured.rect,d=measured.offset+measured.width/2;
+    const color=measured.color.match(/\d+/g).slice(0,3).map(Number),r=measured.rect,d=measured.offset+(outerEdge?measured.width-.75:measured.width/2);
     const centers=[[r.x-d,r.y+r.height/2],[r.x+r.width+d,r.y+r.height/2],[r.x+r.width/2,r.y-d],[r.x+r.width/2,r.y+r.height+d]];
-    return centers.map(([cx,cy])=>{let n=0;for(let y=Math.round(cy-clip.y)-6;y<=Math.round(cy-clip.y)+6;y++)for(let x=Math.round(cx-clip.x)-6;x<=Math.round(cx-clip.x)+6;x++){
+    return centers.map(([cx,cy],edge)=>{let n=0;
+      if(outerEdge){for(let offset=-5;offset<=5;offset++){
+        const x=Math.floor(cx-clip.x)+(edge<2?0:offset),y=Math.floor(cy-clip.y)+(edge<2?offset:0),i=(y*img.width+x)*4;
+        if(color.every((c,j)=>Math.abs(c-rgba[i+j])<35))n++;
+      }return n;}
+      for(let y=Math.round(cy-clip.y)-6;y<=Math.round(cy-clip.y)+6;y++)for(let x=Math.round(cx-clip.x)-6;x<=Math.round(cx-clip.x)+6;x++){
       if(x<0||y<0||x>=img.width||y>=img.height)continue;const i=(y*img.width+x)*4;if(color.every((c,j)=>Math.abs(c-rgba[i+j])<12))n++;
     }return n;});
-  },{data:png.toString('base64'),clip,measured});
-  counts.forEach((count,i)=>expect(count,`${label} painted edge ${['left','right','top','bottom'][i]}`).toBeGreaterThan(12));
+  },{data:png.toString('base64'),clip,measured,outerEdge});
+  counts.forEach((count,i)=>expect(count,`${label} painted edge ${['left','right','top','bottom'][i]}`).toBeGreaterThan(outerEdge?8:12));
 }
+
+test('history-button focus edges paint above the scrolling recipe',async({page},testInfo)=>{
+  for(const size of sizes) {
+    await page.setViewportSize(size);await ready(page,25);
+    for(const op of ['A','H']){await page.locator(`#palette [data-op="${op}"]`).click();await idle(page);}
+    await page.locator('#undo').click();await idle(page);
+    for(const scroll of [0,10000]) {
+      await page.locator('.recipe-content').evaluate((el,top)=>el.scrollTop=top,scroll);
+      for(const id of ['undo','redo','reset'])await ring(page,page.locator(`#${id}`),`${id}-${size.width}-${scroll}`,{pixels:true,outerEdge:true,testInfo});
+    }
+  }
+});
 
 test('rounded block faces, scratch cards, notes and menu controls retain all four focus edges',async({page},testInfo)=>{
   test.setTimeout(180000);
@@ -105,7 +126,7 @@ test('slider focus surrounds the current knob and arrows describe existing direc
     await slider.click();await expect(page.locator('.keyboard-arrows:visible')).toHaveCount(0);
     await page.locator('#tab-flight').click();await page.locator('[data-op="H"]').click();await idle(page);
     const block=page.locator('.part-body');await block.focus();await page.keyboard.press('Shift');
-    await expect(page.locator('.keyboard-arrows:visible')).toHaveAttribute('data-directions','x');
+    await expect(page.locator('.keyboard-arrows:visible')).toHaveAttribute('data-directions','xdown');
     await page.keyboard.press('ArrowRight');await idle(page);await expect(block).toBeFocused();
   }
 });

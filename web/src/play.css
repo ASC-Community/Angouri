@@ -22,7 +22,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 .landing .puzzle-heading { display: none; }
 .landing #axis-labels, .landing .flight-grid, .landing .flight-height-axis { display: none; }
 .intro .recipe-heading h2, .intro .history-button:disabled { visibility: hidden; }
-.recipe-content { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 8px; margin: -8px; scroll-padding: 8px; }
+.recipe-content { position: relative; z-index: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 8px; margin: -8px; scroll-padding: 8px; }
 .recipe-heading, .dock-footer { flex: none; }
 .intro .recipe-heading { min-height: 30px; }
 .launch-button { min-width: 146px; margin-left: auto; min-height: 44px; font-weight: 600; }
@@ -62,14 +62,17 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 
 .loading .play-dock { display: none; }
 .play-dock { container: recipe / inline-size; display: flex; flex-direction: column; flex-shrink: 0; max-height: min(55%,calc(100% - 214px)); overflow: hidden; width: min(100%, 940px); margin: 0 auto; padding: 12px 22px 10px; background: #fffef9; border: 1px solid #d6dfc9; border-radius: 22px; box-shadow: 0 5px 0 #e4e9d9, 0 10px 30px #31492b06; }
-.recipe-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 5px; }
+.recipe-heading { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .recipe-heading h2 { display: flex; align-items: center; gap: 12px; font-size: 11px; font-weight: 600; margin: 0; color: #647855; }
 .history-actions { display: flex; align-items: center; gap: 8px; }
 .history-button { width: 36px; height: 36px; padding: 6px; min-height: 36px; border-radius: 10px; }
 .restart-button { margin-left: 3px; }
 #undo.retry-cue { border-color: #7d965c; color: #385e32; background: #edf3df; }
 .construction { min-width: 0; margin-bottom: 12px; border-radius: 12px; background: #f2f4e9; box-shadow: inset 0 1px 3px #52673412; }
-.pipeline { --rail-piece-width: 86px; display: flex; align-items: center; gap: 10px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; padding: 11px 12px 16px; height: 82px; overscroll-behavior-x: contain; }
+.pipeline { --rail-piece-width: 96px; display: flex; align-items: center; gap: 10px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; padding: 11px 12px 16px; height: 82px; overscroll-behavior-x: contain; }
+/* Reserve the same width for occupied and empty slots, including the widest
+   available formula, before any blocks are placed. Swaps cannot resize cells. */
+.pipeline.wide-pieces { --rail-piece-width: 114px; }
 .pipeline, .palette { user-select: none; -webkit-user-select: none; }
 .pipeline input[type=text] { user-select: text; -webkit-user-select: text; cursor: text; }
 .source-part { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 66px; height: 49px; padding: 3px 8px; margin-right: 4px; border-right: 1px solid #c9d3bd; font-size: 12px; color: #657951; cursor: default; }
@@ -91,7 +94,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 .source-choice { display: flex; align-items: center; gap: 6px; min-height: 31px; padding: 3px 6px; border: 1px solid #b3c29e; border-bottom-width: 2px; border-radius: 7px; background: #fffef8; color: #456d39; cursor: pointer; }
 .source-choice:hover { background: #eef4df; border-color: #6e9154; }
 .source-part .source-choice { pointer-events: auto; }
-.insert-slot { position: relative; flex: 0 0 86px; height: 49px; display: flex; align-items: center; justify-content: center; border: 1px dashed #bac8a6; border-radius: 9px; padding: 0; color: #93a27d; background: #e9edde80; cursor: grab; touch-action: none; transition: background .12s, border-color .12s, box-shadow .12s; }
+.insert-slot { position: relative; flex: 0 0 var(--rail-piece-width); min-width: 0; height: 49px; display: flex; align-items: center; justify-content: center; border: 1px dashed #bac8a6; border-radius: 9px; padding: 0; color: #93a27d; background: #e9edde80; cursor: grab; touch-action: none; transition: background .12s, border-color .12s, box-shadow .12s; }
 .empty-slot .piece-grip { position: absolute; left: 6px; opacity: .45; }
 .insert-slot:hover, .insert-slot.selected, .insert-slot.suggested-slot { border-color: #6e8b4b; background: #e2ebd1; color: #486b35; box-shadow: inset 0 0 0 1px #8fa96d; }
 .is-dragging .insert-slot { border: 2px dashed #87a25f; color: #5b7f3e; background: #e6eed7; }
@@ -112,7 +115,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 .flow-machine { background: var(--piece-fill, #f0f3e7); }
 .recipe-part.teal .part-formula { font-size: 14px; overflow: visible; }
 .recipe-part, .ingredient-surface, .drag-ghost { position: relative; border: 1px solid var(--piece-edge); border-radius: 10px; background: var(--piece-fill); color: var(--piece-ink); box-shadow: 0 4px 0 var(--piece-base), inset 0 1px 0 #ffffffc9; user-select: none; -webkit-user-select: none; }
-.recipe-part { flex: 0 0 86px; height: 49px; }
+.recipe-part { z-index: 0; flex: 0 0 var(--rail-piece-width); min-width: 0; height: 49px; }
+.recipe-part:focus-within { z-index: 2; }
 .recipe-part.drop-target { outline: 3px solid #6b9450; outline-offset: 3px; }
 .recipe-part.receiving-cell { outline: 1px dashed #829c66; outline-offset: 3px; }
 .recipe-part.receiving-cell .part-body { cursor: pointer; }
@@ -208,13 +212,12 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 }
 @media(max-width:600px) {
   .play-dock { padding: 9px 12px 7px; border-radius: 18px; }
-  .recipe-heading { margin-bottom: 6px; }
   .recipe-heading h2 { font-size: 10px; gap: 8px; }
   .construction { margin-bottom: 9px; }
-  .pipeline { --rail-piece-width: 73px; padding: 10px 7px 15px; height: 75px; }
+  .pipeline { --rail-piece-width: 86px; padding: 10px 7px 15px; height: 75px; }
+  .pipeline.wide-pieces { --rail-piece-width: 104px; }
   .source-part { min-width: 60px; height: 44px; padding: 3px 6px; font-size: 11px; margin-right: 3px; }
-  .insert-slot { height: 44px; flex-basis: 73px; }
-  .recipe-part { flex-basis: 73px; height: 44px; }
+  .insert-slot, .recipe-part { height: 44px; }
   .part-body { padding: 5px 9px 5px 4px; gap: 5px; }
   .part-formula { font-size: 16px; }
   .palette { --piece-height: 65px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px 2px 5px; }
@@ -246,7 +249,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
   .palette[data-count] { --piece-height: 56px; }.ingredient-surface { padding-top: 5px; padding-bottom: 7px; }
   .pipeline { height: 73px; padding-top: 10px; padding-bottom: 14px; }
   .construction { margin-bottom: 7px; }
-  .recipe-heading { margin-bottom: 5px; }
   .dock-footer { padding-top: 3px; min-height: 23px; }
 }
 @media(max-height:520px) and (min-width:601px) {
@@ -264,8 +266,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
   .ingredient .piece-grip svg { width: 12px; }
   .pipeline { padding: 10px 7px 14px; height: 72px; }
   .source-part { min-width: 58px; height: 43px; }
-  .insert-slot { flex-basis: 76px; height: 43px; }
-  .recipe-part { flex-basis: 76px; height: 43px; }
+  .insert-slot, .recipe-part { height: 43px; }
   .recipe-heading h2 { font-size: 10px; gap: 7px; }
   .success { flex-direction: row; gap: 7px; }
   .success-medal { font-size: 10px; }
@@ -361,7 +362,10 @@ body.reduced-motion *, body.reduced-motion *::before, body.reduced-motion *::aft
   .palette[data-count="6"] .ingredient-cue { width: 27px; }
 }
 @container recipe (max-width:550px) {
-  .pipeline { gap: 5px; }
+  .pipeline { --rail-piece-width: 80px; gap: 5px; }
+  .pipeline.wide-pieces { --rail-piece-width: 98px; }
+  .part-body { padding: 5px 5px 5px 2px; gap: 5px; }
+  .part-formula { font-size: 16px; }
   .source-part { font-size: 11px; padding-left: 4px; padding-right: 4px; }
   .pipeline.station-pipeline { height: 90px; padding: 6px 8px 12px; }
   .rail-zone { padding-left: 0; padding-right: 0; padding-top: 14px; }

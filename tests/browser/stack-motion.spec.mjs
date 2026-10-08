@@ -101,7 +101,7 @@ test('finite hidden stock refills from below, becomes literal at three, and shar
   await page.keyboard.press('Escape');await checkLayers(page,'A',[.65,.3]);
   await page.locator('#redo').click();await idle(page);await checkStock(page,'A',3);await checkRefill(page,'A',1);
   // Taking from the four-copy supply by drag uses the same replenishment.
-  await page.locator('[data-op="H"]').focus();await page.keyboard.press('Enter');await idle(page);
+  await page.locator('[data-op="H"]').focus();await page.keyboard.press('Space');await idle(page);
   await expect(stock(page,'H')).toHaveText('4');await checkRefill(page,'H');
   const from=await page.locator('[data-op="H"]').boundingBox(),to=await page.locator('[data-empty]').first().boundingBox();
   await page.mouse.move(from.x+from.width/2,from.y+from.height/2);await page.mouse.down();await page.mouse.move(to.x+to.width/2,to.y+to.height/2,{steps:8});await page.mouse.up();await idle(page);

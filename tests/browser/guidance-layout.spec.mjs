@@ -35,6 +35,6 @@ test('Hints and discovery findings use the same recipe guidance area across view
       expect(bounds).toEqual({inside:true,overlap:false,pageOverflow:0});
     }
   }
-  await page.locator('#hints-open').focus();await page.keyboard.press('Enter');await expect(page.locator('#hints-dialog')).toBeVisible();
+  await page.locator('#hints-open').focus();await page.keyboard.press('Space');await expect(page.locator('#hints-dialog')).toBeVisible();
   await page.keyboard.press('Escape');await expect(page.locator('#hints-open')).toBeFocused();
 });

@@ -39,16 +39,16 @@ test('the opening puzzles invite direct choices, add context at 1.2, and reveal 
   await expect(page.locator('[data-op]')).toHaveCount(2);
   await expect(page.locator('[data-op="H"]')).toHaveCSS('cursor','pointer');
   const logo=await page.locator('.brand').boundingBox();expect(logo.x+logo.width/2).toBeCloseTo(page.viewportSize().width/2,0);expect(logo.width).toBeGreaterThan(200);expect(logo.height).toBeGreaterThan(60);
-  await page.locator('[data-op="A"]').focus();await page.keyboard.press('Enter');await idle(page);
+  await page.locator('[data-op="A"]').focus();await page.keyboard.press('Space');await idle(page);
   await expect(page.locator('[data-op="A"]')).toHaveAttribute('aria-pressed','true');await expect(page.locator('#launch')).toBeVisible();
   expect((await snapshot(page)).nodes.map(n=>n.op)).toEqual(['A']);expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(false);
-  await page.locator('[data-op="H"]').focus();await page.keyboard.press('Enter');await idle(page);
+  await page.locator('[data-op="H"]').focus();await page.keyboard.press('Space');await idle(page);
   expect((await snapshot(page)).nodes.map(n=>n.op)).toEqual(['H']);expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(true);
   const chosenLogo=await page.locator('.brand').boundingBox();expect(chosenLogo).toEqual(logo);
   await place(page,'H');expect((await snapshot(page)).nodes).toEqual([]);
   await expect(page.locator('[data-op="H"]')).toHaveAttribute('aria-pressed','false');await expect(page.locator('[data-op="H"]')).toBeFocused();await expect(page.locator('#launch')).toBeHidden();
   await page.keyboard.press('Control+z');await idle(page);expect((await snapshot(page)).nodes.map(n=>n.op)).toEqual(['H']);
-  await throwIt(page);await expect(page.locator('.view-tabs')).toBeHidden();await expect(page.locator('#launch')).toHaveText('Next puzzle');
+  await throwIt(page);await expect(page.locator('.view-tabs')).toBeHidden();await expect(page.locator('#launch')).toHaveAccessibleName('Next puzzle');
   await page.locator('#launch').click();await idle(page);
   expect((await snapshot(page)).sourceId).toBe(2);await expect(page.locator('.game-shell')).toHaveClass(/intro/);await expect(page.locator('.game-shell')).not.toHaveClass(/landing/);
   await expect(page.locator('#level-category')).toBeVisible();await expect(page.locator('#level-title')).toBeVisible();await expect(page.locator('#axis-labels')).toBeVisible();
@@ -92,7 +92,7 @@ test('single-slot lessons use choices without hiding learned views or changing l
     for(const selector of ['#level-category','#ideas-open','.view-tabs'])await expect(page.locator(selector)).toBeVisible();
     for(const selector of ['.construction','.recipe-heading','#launch'])await expect(page.locator(selector)).toBeHidden();
     await expect(page.locator('#scene')).toHaveAttribute('data-view','function');
-    await page.locator(`[data-op="${op}"]`).focus();await page.keyboard.press('Enter');await idle(page);
+    await page.locator(`[data-op="${op}"]`).focus();await page.keyboard.press('Space');await idle(page);
     expect((await snapshot(page)).nodes.map(n=>n.op)).toEqual([op]);await expect(page.locator(`[data-op="${op}"]`)).toHaveAttribute('aria-pressed','true');
     await expect(page.locator('.construction')).toBeHidden();await expect(page.locator('#launch')).toBeVisible();
     await changeView(page,'flow');await expect(page.locator('#scene')).toHaveAttribute('data-view','flow');
@@ -316,12 +316,12 @@ test('throw reveals targets in sequence, lands once, and only then awards comple
   expect(await page.locator('#flight-motion').getAttribute('transform')).not.toBe(await page.locator('#flight-spin').getAttribute('transform'));
   await expect(page.locator('#flight-spin .speed-lines')).toHaveCount(0);
   await page.waitForFunction(()=>window.angouri.flight.phase==='landed');
-  await expect(page.locator('.ring.hit')).toHaveCount(3);await expect(page.locator('#launch')).toHaveText('Next puzzle');
+  await expect(page.locator('.ring.hit')).toHaveCount(3);await expect(page.locator('#launch')).toHaveAccessibleName('Next puzzle');
   await expect(page.locator('#launch')).toBeEnabled();await expect(page.locator('#launch')).toHaveClass(/continue-ready/);
   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([3]);
   const resting=await page.locator('#cucumber').getAttribute('transform');await page.waitForTimeout(350);await expect(page.locator('#cucumber')).toHaveAttribute('transform',resting);
   const again=await page.locator('#rethrow').boundingBox(),next=await page.locator('#launch').boundingBox();expect(again.x+again.width).toBeLessThan(next.x);
-  await page.locator('#rethrow').click();await page.waitForFunction(()=>window.angouri.flight.position>.05);await expect(page.locator('#launch')).toHaveText('Next puzzle');await expect(page.locator('#launch')).toBeEnabled();await expect(page.locator('#rethrow')).toBeDisabled();
+  await page.locator('#rethrow').click();await page.waitForFunction(()=>window.angouri.flight.position>.05);await expect(page.locator('#launch')).toHaveAccessibleName('Next puzzle');await expect(page.locator('#launch')).toBeEnabled();await expect(page.locator('#rethrow')).toBeDisabled();
   await menu(page,'puzzles-open');await expect(puzzleOption(page,3)).toHaveAttribute('aria-label',/completed/);await page.keyboard.press('Escape');
   await menu(page,'settings-open');await page.locator('#motion-toggle').check();await page.keyboard.press('Escape');
   await page.locator('#undo').click();await idle(page);await place(page,'H');await throwIt(page);
@@ -424,7 +424,7 @@ test('zero stays labelled and inside Flight, Flow and reference plots after inte
 
 test('a miss can be revised, and an edit during flight resets the throw without awarding it',async({page})=>{
   await ready(page,'/#level=3&view=flight');await place(page,'A');await throwIt(page);
-  await expect(page.locator('.ring.miss')).toHaveCount(3);await expect(page.locator('#launch')).toHaveText('Throw again');await expect(page.locator('#success')).toBeHidden();
+  await expect(page.locator('.ring.miss')).toHaveCount(3);await expect(page.locator('#launch')).toHaveAccessibleName('Throw again');await expect(page.locator('#success')).toBeHidden();
   await place(page,'H');
   await menu(page,'settings-open');await page.locator('#motion-toggle').uncheck();await page.keyboard.press('Escape');
   await page.locator('#launch').click();await page.waitForFunction(()=>window.angouri.flight.position>.1);
@@ -470,6 +470,8 @@ test('tap a block then a slot or matching stack to move or return it',async({pag
   const state=await snapshot(page);await page.locator(`.part-body[data-stage="${state.nodes[1].id}"]`).click();
   await expect(page.locator('.recipe-editor,.part-controls,#discard-zone')).toHaveCount(0);await expect(page.locator('[data-return]')).toBeEnabled();
   await page.locator('[data-cell="0"] .part-body').click();await idle(page);expect((await snapshot(page)).nodes).toEqual([state.nodes[1],state.nodes[0]]);
+  await expect(page.locator('.part-body[aria-pressed="true"],[data-return]')).toHaveCount(0);
+  const moved=page.locator(`.part-body[data-stage="${state.nodes[1].id}"]`);await expect(moved).toBeFocused();await moved.click();
   await page.locator('[data-return]').click();await idle(page);expect((await snapshot(page)).nodes).toEqual([state.nodes[0]]);
   await page.locator('#undo').click();await idle(page);expect((await snapshot(page)).nodes).toEqual([state.nodes[1],state.nodes[0]]);
 });
@@ -489,7 +491,7 @@ test('dragging off the recipe returns to its stack; cancellation and Undo preser
 test('keyboard editing and view tabs preserve focus and share one history',async({page})=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));await ready(page,'/#level=3&view=flight');
   await expect(page.locator('#redo')).toBeVisible();await expect(page.locator('#redo')).toBeDisabled();
-  await page.locator('[data-op="H"]').focus();await page.keyboard.press('Enter');await idle(page);await page.keyboard.press('Enter');await idle(page);
+  await page.locator('[data-op="H"]').focus();await page.keyboard.press('Space');await idle(page);await page.keyboard.press('Space');await idle(page);
   expect((await snapshot(page)).nodes.map(n=>n.op)).toEqual(['H','A']);await expect(page.locator('#launch')).toBeFocused();
   let state=await snapshot(page);await page.locator(`.part-body[data-stage="${state.nodes[1].id}"]`).focus();await page.keyboard.press('ArrowLeft');await idle(page);
   expect((await snapshot(page)).nodes).toEqual([state.nodes[1],state.nodes[0]]);await expect(page.locator(`.part-body[data-stage="${state.nodes[1].id}"]`)).toBeFocused();
@@ -535,11 +537,11 @@ test('ten chapters cover 70 puzzles, then end with a chapter record and AngouriM
     if([82,72,73,74,75,83,76,77].includes(level)){await expect(page.locator('#garden-dialog')).toBeVisible();await page.keyboard.press('Escape');}
     if([1,2].includes(level)) {await expect(page.locator('#success')).toBeHidden();await expect(page.locator('.view-tabs')).toBeHidden();}
     else {const choice=(await snapshot(page)).limit===1;await expect(page.locator('#success')).toBeVisible({visible:!choice});for(const view of ['function','flow','flight']){await changeView(page,view);await expect(page.locator('#success')).toBeVisible({visible:!choice});}}
-    if(step===total&&chapter<10)await expect(page.locator('#launch')).toHaveText('Next chapter');
-    if(step===total-1)await expect(page.locator('#launch')).toHaveText(chapter===10?'Final mastery':'Chapter challenge');
+    if(step===total&&chapter<10)await expect(page.locator('#launch')).toHaveAccessibleName('Next chapter');
+    if(step===total-1)await expect(page.locator('#launch')).toHaveAccessibleName(chapter===10?'Final mastery':'Chapter challenge');
   }
   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual(lessons.map(({level})=>level));
-  await expect(page.locator('#launch')).toHaveText('Finish');await expect(page.locator('#chapter-step')).toContainText('FINAL MASTERY');
+  await expect(page.locator('#launch')).toHaveAccessibleName('Finish');await expect(page.locator('#chapter-step')).toContainText('FINAL MASTERY');
   const finalRecipe=await snapshot(page),history=await page.evaluate(()=>window.angouri.history);
   await page.locator('#launch').click();await expect(page.locator('#ending-dialog')).toBeVisible();await expect(page.locator('#ending-title')).toHaveText('A whole garden of ideas.');
   await expect(page.locator('.ending-chapter.complete')).toHaveCount(10);await expect(page.locator('#ending-progress')).toHaveText('70 of 70 puzzles complete');
@@ -552,7 +554,7 @@ test('ten chapters cover 70 puzzles, then end with a chapter record and AngouriM
 
 test('finishing after jumping ahead celebrates that flight without claiming unfinished chapters',async({page})=>{
   await ready(page,'/#level=85&view=flight');await placeRecipe(page,'DAHFISQ');await throwIt(page);
-  await expect(page.locator('#launch')).toHaveText('Finish');await page.locator('#launch').click();await expect(page.locator('#ending-title')).toHaveText('Your garden, shaped.');
+  await expect(page.locator('#launch')).toHaveAccessibleName('Finish');await page.locator('#launch').click();await expect(page.locator('#ending-title')).toHaveText('Your garden, shaped.');
   await expect(page.locator('#ending-progress')).toHaveText('1 of 70 puzzles complete');await expect(page.locator('.ending-chapter.complete')).toHaveCount(0);
   const finalRecipe=await snapshot(page);await page.locator('#ending-create').click();await expect(page.locator('#leave-dialog')).toBeVisible();
   await page.locator('#leave-cancel').click();expect(await snapshot(page)).toEqual(finalRecipe);await page.locator('#launch').click();
@@ -561,7 +563,7 @@ test('finishing after jumping ahead celebrates that flight without claiming unfi
     await page.locator('#ending-dialog').evaluate(el=>el.scrollTop=el.scrollHeight);await expect(page.getByRole('button',{name:'Back to final puzzle',exact:true})).toBeInViewport();
   }
   await page.locator('#ending-revisit').click();await expect(page.locator('#puzzles-dialog')).toBeVisible();await expect(page.locator('.chapter-group[open]>summary')).toContainText('The moonlit garden');
-  await page.keyboard.press('Escape');await expect(page.locator('#launch')).toHaveText('Finish');await page.reload();await page.waitForFunction(()=>window.angouri?.state);
+  await page.keyboard.press('Escape');await expect(page.locator('#launch')).toHaveAccessibleName('Finish');await page.reload();await page.waitForFunction(()=>window.angouri?.state);
   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([85]);
 });
 
@@ -649,11 +651,11 @@ test('creation changes its source under Start and preserves the recipe through U
   await expect(page.locator('#level-category')).toHaveText('CREATE');await expect(page.locator('.ring,#remix-source,#part-count,#checkpoint-summary')).toHaveCount(0);
   for(let i=0;i<8;i++)await place(page,'A');
   expect((await snapshot(page)).nodes).toHaveLength(8);await expect(page.locator('[data-op="A"]')).toBeEnabled();await expect(page.locator('[data-op="A"]')).toHaveAttribute('data-stock','reusable');
-  await throwIt(page);await expect(page.locator('#success')).toBeHidden();await expect(page.locator('#launch')).toHaveText('Throw again');
+  await throwIt(page);await expect(page.locator('#success')).toBeHidden();await expect(page.locator('#launch')).toHaveAccessibleName('Throw again');
   await changeView(page,'function');await expect(page.locator('th')).toHaveCount(2);await expect(page.locator('th').first().locator('annotation')).toHaveText('x');await expect(page.locator('th').last()).toHaveText('Height');
   const before=await snapshot(page);await page.locator('#menu-open').click();await expect(page.locator('#nav-create')).toBeHidden();await expect(page.getByRole('button',{name:'Starting curve',exact:true})).toHaveCount(0);await page.keyboard.press('Escape');
   await page.locator('#source-choose').click();await expect(page.locator('#curves-title')).toHaveText('Starting curve');await page.keyboard.press('Escape');await expect(page.locator('#source-choose')).toBeFocused();
-  await page.keyboard.press('Enter');await page.locator('[data-source="4"]').click();await idle(page);
+  await page.keyboard.press('Space');await page.locator('[data-source="4"]').click();await idle(page);
   expect((await snapshot(page)).mode).toBe('remix');expect((await snapshot(page)).sourceId).toBe(4);expect((await snapshot(page)).nodes).toEqual(before.nodes);await expect(page.locator('.value-table tbody tr')).toHaveCount(5);
   await page.locator('#undo').click();await idle(page);expect(await snapshot(page)).toEqual(before);await page.locator('#redo').click();await idle(page);expect((await snapshot(page)).sourceId).toBe(4);
   for(const op of ['D','D','Q','Q','Q','Q','Q','Q'])await place(page,op);expect((await snapshot(page)).nodes).toHaveLength(16);
@@ -1032,7 +1034,7 @@ test('throwing in Equation confirms the preview marks in sequence or immediately
     expect(sync.position).toBeGreaterThanOrEqual(position);expect(sync.actual).toEqual(sync.expected);
   }
   await page.waitForFunction(()=>window.angouri.flight.phase==='landed');
-  await expect(page.locator('.equation-verdict[data-status="hit"]')).toHaveCount(3);await expect(page.locator('#launch')).toHaveText('Next puzzle');
+  await expect(page.locator('.equation-verdict[data-status="hit"]')).toHaveCount(3);await expect(page.locator('#launch')).toHaveAccessibleName('Next puzzle');
   await expect(page.locator('.equation-verdict').first()).toHaveCSS('background-color','rgb(93, 128, 70)');
   await menu(page,'settings-open');await page.getByRole('checkbox',{name:/Skip animation/}).check();await page.keyboard.press('Escape');
   await page.keyboard.press('Control+z');await idle(page);await expect(page.locator('.equation-verdict[data-status="waiting"] svg')).toHaveCount(3);

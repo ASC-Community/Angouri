@@ -3,7 +3,13 @@ export function installBlockTooltip(root:HTMLElement) {
   const tip=document.createElement('div');tip.id='block-tooltip';tip.className='block-tooltip';
   tip.setAttribute('role','tooltip');tip.hidden=true;document.body.append(tip);
   let owner:HTMLButtonElement|undefined,dismissed:HTMLButtonElement|undefined,keyboardFocus=false;
-  const hide=()=>{owner?.removeAttribute('aria-describedby');owner=undefined;tip.hidden=true;};
+  const hide=()=>{
+    if(owner) {
+      const remaining=owner.getAttribute('aria-describedby')?.split(' ').filter(id=>id!==tip.id).join(' ');
+      if(remaining)owner.setAttribute('aria-describedby',remaining);else owner.removeAttribute('aria-describedby');
+    }
+    owner=undefined;tip.hidden=true;
+  };
   const block=(target:EventTarget|null)=>(target instanceof Element?target.closest<HTMLButtonElement>('.ingredient[data-block-name]'):null);
   const show=(button:HTMLButtonElement)=>{
     if(button===dismissed||button===owner)return;
@@ -14,9 +20,13 @@ export function installBlockTooltip(root:HTMLElement) {
     const anchor=button.getBoundingClientRect(),bounds=tip.getBoundingClientRect();
     tip.style.left=`${Math.max(8,Math.min(innerWidth-bounds.width-8,anchor.left+(anchor.width-bounds.width)/2))}px`;
     tip.style.top=`${anchor.top>=bounds.height+18?anchor.top-bounds.height-10:anchor.bottom+10}px`;
-    button.setAttribute('aria-describedby',tip.id);
+    button.setAttribute('aria-describedby',[button.getAttribute('aria-describedby'),tip.id].filter(Boolean).join(' '));
   };
-  root.addEventListener('pointerover',event=>{const button=block(event.target);if(button&&event.pointerType!=='touch')show(button);});
+  root.addEventListener('pointerover',event=>{
+    // A rebuilt stack under a resting mouse must not obscure a keyboard move.
+    if(document.documentElement.dataset.focusModality==='keyboard'&&!root.contains(document.activeElement))return;
+    const button=block(event.target);if(button&&event.pointerType!=='touch')show(button);
+  });
   root.addEventListener('pointerout',event=>{
     const button=block(event.target);if(button&&button!==block(event.relatedTarget)){
       if(!button.matches(':focus-visible'))hide();dismissed=undefined;

@@ -7,7 +7,7 @@ import { Kernel } from './engine';
 import { icon } from './icons';
 import { adjacentSlot, insertedSlots, movedSlots, normalizeSlots, type RailSlots } from './rail';
 import { sizeEquationTables } from './comparison-layout';
-import { revealRailCell } from './scroll';
+import { revealFocusRing, revealRailCell } from './scroll';
 import { focusGameControl, guardArrivalFocus, installTabStops, navigateTablist, rememberFocus, restoreFocus } from './keyboard';
 import { circleEdited, circleEquation, circleFlow, circleInput, circleRecipe, chooseCircleInspection, decorateCircleFlight, installCircleHandles, resetCircleInspection, sizeCircleControls, updateCircleProbe } from './circle';
 import { ShapeNotes, chapterArt } from './notes';
@@ -35,6 +35,12 @@ for(const dialog of document.querySelectorAll<HTMLDialogElement>('dialog:not(#id
   while(heading.nextSibling)body.append(heading.nextSibling);
   dialog.append(body);
 }
+for(const dialog of document.querySelectorAll<HTMLDialogElement>('dialog')) {
+  const back=dialog.querySelector<HTMLElement>('.dialog-top button,[autofocus]');
+  if(!back)continue;
+  back.dataset.backShortcut='';back.setAttribute('aria-keyshortcuts','Backspace');
+  const cap=document.createElement('kbd');cap.className='button-hotkey';cap.setAttribute('aria-hidden','true');cap.textContent='⌫';back.append(cap);
+}
 installBlockTooltip($('palette'));
 const SAVE = 'angouri:vine:v1:progress', PREF = 'angouri:vine:v1:preferences', SEEDS = 'angouri:vine:v1:seeds';
 const views: View[] = ['flight','function','flow'];
@@ -56,10 +62,11 @@ function write(key: string, value: unknown) {
 const isView = (value: unknown): value is View => views.includes(value as View);
 // Migrate the earlier view name without resetting existing recipes or preferences.
 const canonicalView = (value: unknown) => value==='equations'?'function':value;
-const preference = read(PREF) as {view?:unknown;motion?:unknown} | undefined;
+const preference = read(PREF) as {view?:unknown;motion?:unknown;characterShortcuts?:unknown} | undefined;
 const preferredView=canonicalView(preference?.view);
 let view: View = isView(preferredView) ? preferredView : 'flight';
 let reduced = typeof preference?.motion==='boolean' ? preference.motion : matchMedia('(prefers-reduced-motion: reduce)').matches;
+let characterShortcuts=preference?.characterShortcuts!==false;
 let flight: Flight = {phase:'ready',position:0};
 let throwWon=false;
 let state: State | undefined, result: Result | undefined;
@@ -171,7 +178,7 @@ const cropEditor=new CropEditor($('construction'),()=>state&&result&&pending===0
     $('flight-spin')?.setAttribute('transform',`rotate(${fruit.degrees})`);
   });
 
-function preferences() { write(PREF,{view,motion:reduced}); }
+function preferences() { write(PREF,{view,motion:reduced,characterShortcuts}); }
 function progress() { if(state) write(SAVE,{schema:1,type:'save',state,slots:railSlots,completed:[...completed],view,entry:location.hash.slice(0,8192)}); }
 let feedbackContent:string|undefined;
 function showNotice() {
@@ -215,12 +222,13 @@ function updateHintCue(history:'push'|'keep'|'clear') {
   if(unsuccessfulRevisions<3)return false;
   hintOffered=true;hintCue=true;return true;
 }
-function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:RailSlots,requestedView?:View,animateCurve=true,editedId?:string) {
+function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:RailSlots,requestedView?:View,animateCurve=true,editedId?:string,emptySelection?:number,completeSelection=false) {
   requireOk(reply);
   const firstArrival=!state;
   const previousState=state,previousResult=result,previousPoints=displayedPoints||result?.points,previousSlope=displayedSlope??result?.startSlope,previousProbeX=result?probePoints(result)[probeIndex]?.[0]:undefined;
   const previousVisual=animateCurve&&!reduced&&!state?.circle&&displayedView()==='flight'?captureFlightGeometry($('scene')):undefined;
   const previousScroll=$('construction').querySelector('.pipeline')?.scrollLeft||0;
+  const previousSlots=[...railSlots];
   const previousRects=new Map([...document.querySelectorAll<HTMLElement>('.recipe-part')].map(el=>[el.dataset.part!,el.getBoundingClientRect()]));
   const changed=state && JSON.stringify(state)!==JSON.stringify(reply.state);
   const nextSlots=normalizeSlots(reply.state,history==='clear'?slots:slots||railSlots);
@@ -229,7 +237,7 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
   // Blur can report a field that Enter already committed. Replacing controls
   // for that no-op can swallow typing in the next field. A crop can return to
   // its starting bounds while an earlier preview is still displayed, though.
-  if(state&&!changed&&!layoutChanged&&!previewChanged&&history!=='clear'&&!requestedView)return true as const;
+  if(state&&!changed&&!layoutChanged&&!previewChanged&&history!=='clear'&&!requestedView&&!(emptySelection!==undefined&&emptySelection!==insertionIndex)&&!(completeSelection&&(selectedStage||insertionIndex!==undefined)))return true as const;
   if(history==='clear') {
     undo=[];redo=[];resetFlowScroll=true;
     $('construction').querySelectorAll<HTMLElement>('.pipeline,.rail-slots').forEach(rail=>rail.scrollLeft=0);
@@ -282,10 +290,11 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
       camera={min:min<baseMin?min-padding:baseMin,max:max>baseMax?max+padding:baseMax};
     }
   }
-  if(!result.stages.some(s=>s.id===selectedStage)) selectedStage='';
-  insertionIndex=undefined;
+  if(completeSelection||!result.stages.some(s=>s.id===selectedStage)) selectedStage='';
+  insertionIndex=completeSelection?undefined:emptySelection;
   notice={text:result.relation&&!result.relation.playback.length?'No real heights yet. Bring the right side to zero or above.':state.circle?'':state.nodes.length?'':choiceActive()?'Choose a block.':'Tap or drag a block.',kind:''};
   progress();render();
+  if(emptySelection!==undefined)focusEmpty(emptySelection);
   if(repeatHint&&hintCue)for(const animation of $('hints-open').getAnimations()) {
     if(animation instanceof CSSAnimation&&animation.animationName==='hint-invite')animation.currentTime=0;
   }
@@ -295,12 +304,16 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
       document.querySelector(`[data-op="${added.op}"]`)?.closest('.ingredient-stack')?.classList.add('refilling');
     const index=railSlots.indexOf(added.id),reveal=state.mode==='remix'&&index===railSlots.length-2?index+1:index;
     revealRailCell(document.querySelector<HTMLElement>(`[data-cell="${reveal}"]`));
-    const scrollDelta=($('construction').querySelector('.pipeline')?.scrollLeft||0)-previousScroll;
-    if(scrollDelta)previousRects.forEach((r,id)=>previousRects.set(id,new DOMRect(r.x-scrollDelta,r.y,r.width,r.height)));
   }
+  // Reveal the settled destination before starting the slide. Measuring the
+  // travelling block afterward can scroll back toward its departing slot.
+  if(document.activeElement instanceof HTMLElement&&document.activeElement.closest('#construction'))revealFocusRing(document.activeElement);
+  const scrollDelta=($('construction').querySelector('.pipeline')?.scrollLeft||0)-previousScroll;
+  if(scrollDelta)previousRects.forEach((r,id)=>previousRects.set(id,new DOMRect(r.x-scrollDelta,r.y,r.width,r.height)));
   if((changed||layoutChanged)&&!newSource&&previousState&&previousResult&&previousPoints) {
-    $('move-announcement').textContent=state.circle?`Centre ${state.circle.x}, ${state.circle.y}. Radius ${state.circle.radius}. ${result.checkpoints.filter(c=>c.hit).length} targets match.`:changed?`${state.nodes.map(n=>OPS[n.op].name).join(', ')||'Recipe cleared'}. Ready to throw.`:'Empty slot moved.';
-    animateChange(previousState,previousResult,previousPoints,previousRects,previousSlope!,previousVisual);
+    const moved=state.nodes.find(node=>node.id===editedId);
+    $('move-announcement').textContent=state.circle?`Centre ${state.circle.x}, ${state.circle.y}. Radius ${state.circle.radius}. ${result.checkpoints.filter(c=>c.hit).length} targets match.`:changed?`${state.nodes.map(n=>OPS[n.op].name).join(', ')||'Recipe cleared'}. Ready to throw.`:moved?`${OPS[moved.op].name} moved to slot ${railSlots.indexOf(moved.id)+1}.`:'Empty slot moved.';
+    animateChange(previousState,previousResult,previousPoints,previousRects,previousSlots,previousSlope!,previousVisual);
   }
   if(offeredHint)$('move-announcement').textContent+=' Hints can help with this puzzle.';
   return true as const;
@@ -344,7 +357,7 @@ function palette() {
     return;
   }
   if(choices)$('palette').dataset.choices=choices;else delete $('palette').dataset.choices;
-  $('palette').innerHTML=available.map(op=>{
+  $('palette').innerHTML=available.map((op,shortcutIndex)=>{
     const n=choosing?1:inventory[op]!;
     const used=creating||choosing?0:state?.nodes.filter(node=>node.op===op).length || 0;
     const returning=state?.nodes.find(node=>node.id===(drag?.id||selectedStage)&&node.op===op);
@@ -353,7 +366,7 @@ function palette() {
     const title=choosing?OPS[op].description:returning?'Return the selected block to this stack':availability==='used'?'All copies are in your recipe':availability==='full'?'Recipe full — return a block or Undo':`${OPS[op].description} Tap to add, or drag to a recipe slot.`;
     const remaining=n-used,visibleLayers=creating?3:Math.min(remaining,3);
     const layers=visibleLayers+(returning?1:0),capacity=creating?3:Math.max(0,Math.min(n-1,3)),condensed=!creating&&n>3;
-    return `<div class="ingredient-stack ${OPS[op].color} ${creating?'reusable-stack':''} ${condensed?'condensed-stack':''} ${creating||remaining>3?'has-more-stock':''}" style="--stack-capacity:${capacity};--stack-depth:${Math.max(0,layers-1)};--return-layer:${returning?1:0}"><span class="stock-deck" aria-hidden="true">${Array.from({length:Math.max(0,layers-1)},(_,i)=>`<i style="--layer:${i+1}"></i>`).join('')}</span><button class="ingredient ${OPS[op].color} ${returning?'return-ready':''}" data-op="${op}" ${returning?`data-return="${returning.id}"`:''} data-availability="${availability}" data-stock="${creating?'reusable':remaining}" draggable="false" ${disabled?'disabled':''} ${choosing?`aria-pressed="${state?.nodes[0]?.op===op}"`:''} aria-label="${choosing?'Choose '+OPS[op].name:returning?'Return selected '+OPS[op].name+', '+(creating?'reusable stack':`${remaining} available below`):'Place '+OPS[op].name+' block, '+(creating?'reusable':`${remaining} available`)}" data-block-name="${OPS[op].name}" data-block-help="${escape(title)}"><span class="ingredient-surface"><span class="piece-grip">${icon(returning?'return':disabled?availability==='used'?'check':'lock':'grip',16)}</span><span class="ingredient-face"><span class="op-formula">${operationTex(op)}</span></span>${cue(op)}</span></button>${creating||remaining>3?`<span class="${creating?'reusable-mark':'stock-total'}" aria-hidden="true">${tex(creating?'\\infty':String(remaining))}</span>`:''}</div>`;
+    return `<div class="ingredient-stack ${OPS[op].color} ${creating?'reusable-stack':''} ${condensed?'condensed-stack':''} ${creating||remaining>3?'has-more-stock':''}" style="--stack-capacity:${capacity};--stack-depth:${Math.max(0,layers-1)};--return-layer:${returning?1:0}"><span class="stock-deck" aria-hidden="true">${Array.from({length:Math.max(0,layers-1)},(_,i)=>`<i style="--layer:${i+1}"></i>`).join('')}</span><button class="ingredient ${OPS[op].color} ${returning?'return-ready':''}" data-op="${op}" data-shortcut="${shortcutIndex+1}" ${returning?`data-return="${returning.id}"`:''} data-availability="${availability}" data-stock="${creating?'reusable':remaining}" draggable="false" ${disabled?'disabled':''} ${choosing?`aria-pressed="${state?.nodes[0]?.op===op}"`:''} aria-label="${choosing?'Choose '+OPS[op].name:returning?'Return selected '+OPS[op].name+', '+(creating?'reusable stack':`${remaining} available below`):'Place '+OPS[op].name+' block, '+(creating?'reusable':`${remaining} available`)}" ${!choosing&&!returning?'aria-describedby="deck-keyboard-help"':''} aria-keyshortcuts="${[!choosing&&!returning?'ArrowUp Space':'Space',characterShortcuts?String(shortcutIndex+1):''].filter(Boolean).join(' ')}" data-block-name="${OPS[op].name}" data-block-help="${escape(title)}"><span class="ingredient-surface"><span class="piece-grip">${icon(returning?'return':disabled?availability==='used'?'check':'lock':'grip',16)}</span><span class="ingredient-face"><span class="op-formula">${operationTex(op)}</span></span>${cue(op)}<kbd class="button-hotkey" data-character aria-hidden="true">${shortcutIndex+1}</kbd></span></button>${creating||remaining>3?`<span class="${creating?'reusable-mark':'stock-total'}" aria-hidden="true">${tex(creating?'\\infty':String(remaining))}</span>`:''}</div>`;
   }).join('');
 }
 function recipe() {
@@ -372,7 +385,7 @@ function recipe() {
   const station=state.station;
   const machine=station?`<div class="fixed-station ${OPS[station.op].color}" role="img" aria-label="Fixed ${OPS[station.op].name} station. ${station.before&&station.after?'Blocks can go before or after it.':station.before?'Blocks go before it.':'Blocks go after it.'}"><span class="station-foundation" aria-hidden="true"></span><span class="station-surface"><span class="station-title">${OPS[station.op].name}</span>${operationTex(station.op)}<span class="station-mounts" aria-hidden="true"></span></span></div>`:'';
   const rail=station?`${station.before?`<div class="rail-zone" role="group" aria-label="Before the station"><span class="rail-zone-label">Input</span><div class="rail-slots">${cells.slice(0,station.before).join('')}</div></div>`:''}${machine}${station.after?`<div class="rail-zone" role="group" aria-label="After the station"><span class="rail-zone-label">Output</span><div class="rail-slots">${cells.slice(station.before+1).join('')}</div></div>`:''}`:cells.join('');
-  $('construction').innerHTML=`<div class="pipeline ${station?'station-pipeline':''}" role="group" aria-label="${state.mode==='remix'?'Recipe with reusable blocks':station?'Recipe with a fixed transformation station':`Recipe, ${state.nodes.length} of ${state.limit} slots filled`}"><div class="source-part" aria-label="Starting curve"><span class="source-label">Start</span>${source}</div>${rail}${cropControl(state,result)}</div>`;
+  $('construction').innerHTML=`<div class="pipeline ${station?'station-pipeline':''} ${state.mode==='remix'||state.inventory.S?'wide-pieces':''}" role="group" aria-label="${state.mode==='remix'?'Recipe with reusable blocks':station?'Recipe with a fixed transformation station':`Recipe, ${state.nodes.length} of ${state.limit} slots filled`}"><div class="source-part" aria-label="Starting curve"><span class="source-label">Start</span>${source}</div>${rail}${cropControl(state,result)}</div>`;
   $('construction').querySelector('.pipeline')!.scrollLeft=previousScroll;
   $('construction').querySelectorAll<HTMLElement>('.rail-slots').forEach((zone,i)=>zone.scrollLeft=zoneScrolls[i]||0);
 }
@@ -433,7 +446,8 @@ function updatePrimary() {
   const label=advancing?(state?.mode==='puzzle'?next?isMastery(next)?next===PUZZLE_ORDER.at(-1)?'Final mastery':'Mastery challenge':chapterIndex(next)!==chapterIndex(state.sourceId)?'Next chapter':isCapstone(next)?'Chapter challenge':'Next puzzle':OPTIONAL_PUZZLES.includes(state.sourceId)?'More puzzles':'Finish':'Create'):active?'In flight':flight.phase==='landed'?'Throw again':'Throw';
   $<HTMLButtonElement>('launch').disabled=!initialized||pending>0||active&&!advancing||!!result&&!flightPoints(result).length;
   $('launch').title=result?.relation&&!result.relation.playback.length?'No real heights yet. Make the right side reach zero or above.':'';
-  $('launch').innerHTML=advancing?`<span>${label}</span>${icon('arrow',21)}`:`${icon('throw',21)}<span>${label}</span>`;
+  $('launch').innerHTML=(advancing?`<span>${label}</span>${icon('arrow',21)}`:`${icon('throw',21)}<span>${label}</span>`)+`<kbd class="button-hotkey"${advancing?' data-hotkey="activate"':''} aria-hidden="true">${advancing?'Space':'Enter'}</kbd>`;
+  $('launch').setAttribute('aria-keyshortcuts',advancing?'Space':'Enter');
   $('launch').classList.toggle('continue-ready',advancing);
   $('launch').dataset.action=advancing?'continue':'throw';
   $('launch').setAttribute('aria-label',label);
@@ -549,14 +563,20 @@ $('circle-fit').onclick=()=>{
   camera=fullCurve?fittedCamera():{...defaultCamera};
   render();$('circle-fit').focus({preventScroll:true});
 };
-function animateChange(previousState:State,previousResult:Result, from:Result['points'], rects:Map<string,DOMRect>,fromSlope:number,previousVisual?:SVGGElement) {
+function animateChange(previousState:State,previousResult:Result, from:Result['points'], rects:Map<string,DOMRect>,previousSlots:RailSlots,fromSlope:number,previousVisual?:SVGGElement) {
   if(reduced||!state||!result)return;
   if(state.circle||previousState.circle)return;
   document.querySelectorAll<HTMLElement>('.recipe-part').forEach(el=>{
     const before=rects.get(el.dataset.part!),after=el.getBoundingClientRect();
     if(!previousState.nodes.some(n=>n.id===el.dataset.part))el.classList.add('just-placed');
-    else if(before&&Math.abs(before.left-after.left)>2)el.animate([{transform:`translate(${before.left-after.left}px,${before.top-after.top}px)`},{transform:'translate(0,0)'}],{duration:220,easing:'ease-out'});
+    else if(before&&(Math.abs(before.left-after.left)>2||Math.abs(before.top-after.top)>2)) {
+      // Continue from the actual painted position if interrupted. Focus, not
+      // animation order or DOM order, determines which crossing block is above.
+      el.animate([{transform:`translate(${before.left-after.left}px,${before.top-after.top}px)`},{transform:'translate(0,0)'}],{id:'recipe-move',duration:220,easing:'ease-out'});
+    }
   });
+  for(const empty of document.querySelectorAll<HTMLElement>('.empty-slot'))if(previousSlots[Number(empty.dataset.cell)]&&empty!==document.activeElement)
+    empty.animate([{opacity:0},{opacity:1}],{duration:220,easing:'ease-out'});
   if(displayedView()!=='flight'||!previousVisual)return;
   if(!previousVisual.dataset.fromFade&&previousVisual.querySelector('.curve-change-trajectory')?.getAttribute('d')===$('trajectory')?.getAttribute('d'))return;
   const morph=previousVisual.dataset.fromFade?undefined:curveMorph(previousResult,result,from===previousResult.points?undefined:from);
@@ -642,12 +662,17 @@ function animatePosition() {
   updateTargets();
 }
 let flightActionFocus:HTMLButtonElement|undefined;
+let quickThrowFocus:Element|null|undefined;
 // Disabling an active action makes browsers move focus to the document. Restore
 // that action after playback only if the player has not chosen another focus.
-document.addEventListener('focusin',event=>{if(event.target!==flightActionFocus&&event.target!==document.body)flightActionFocus=undefined;});
-document.addEventListener('pointerdown',()=>{flightActionFocus=undefined;});
-document.addEventListener('keydown',event=>{if(event.key==='Tab')flightActionFocus=undefined;});
+document.addEventListener('focusin',event=>{
+  if(event.target!==flightActionFocus&&event.target!==document.body)flightActionFocus=undefined;
+  if(event.target!==quickThrowFocus&&event.target!==document.body)quickThrowFocus=undefined;
+});
+document.addEventListener('pointerdown',()=>{flightActionFocus=undefined;quickThrowFocus=undefined;});
+document.addEventListener('keydown',event=>{if(event.key==='Tab'){flightActionFocus=undefined;quickThrowFocus=undefined;}});
 function finishFlight() {
+  const quickOrigin=quickThrowFocus;quickThrowFocus=undefined;
   flight={phase:'landed',position:1};animatePosition();
   notice={text:state?.mode==='remix'?'':result?.solved?'':state?.circle?'Adjust the centre or radius.':choiceActive()?'Pick another block and try again.':'Adjust a block and try again.',kind:''};
   updatePrimary();$('undo').classList.toggle('retry-cue',!!state?.nodes.length&&!result?.solved);
@@ -656,6 +681,7 @@ function finishFlight() {
   if(state?.mode==='puzzle'&&isPicture(state.sourceId)&&result?.solved&&!pictureCelebrated){pictureCelebrated=true;showGarden('launch',state.sourceId);}
   const action=flightActionFocus;flightActionFocus=undefined;
   if(action&&document.activeElement===document.body&&!action.disabled&&!action.hidden&&!document.querySelector('dialog[open]'))action.focus({preventScroll:true});
+  if(quickOrigin&&throwWon&&state?.mode!=='remix'&&document.hasFocus()&&!document.querySelector('dialog[open]')&&(document.activeElement===quickOrigin||document.activeElement===document.body))$('launch').focus({preventScroll:true});
 }
 function launch() {
   if(!initialized||pending)return;
@@ -670,9 +696,10 @@ function launch() {
   }
   throwCucumber();
 }
-function throwCucumber(replay=false) {
+function throwCucumber(replay=false,focusNext=false) {
   if(!initialized||pending)return;
   if(flight.phase==='flying'||flight.phase==='releasing')return;
+  quickThrowFocus=focusNext?document.activeElement:undefined;
   flightActionFocus=document.activeElement===$('launch')?$<HTMLButtonElement>('launch'):document.activeElement===$('rethrow')?$<HTMLButtonElement>('rethrow'):undefined;
   cancelCirclePickup();
   cropEditor.cancel();
@@ -742,18 +769,23 @@ function focusPart(id:string) {
   const part=document.querySelector<HTMLElement>(`.part-body[data-stage="${CSS.escape(id)}"]`);
   part?.focus({preventScroll:true});revealRailCell(part);
 }
-function moveCell(from:number,to:number) {
+function focusEmpty(index:number) {
+  const slot=document.querySelector<HTMLElement>(`[data-empty="${index}"]`);
+  slot?.focus({preventScroll:true});revealRailCell(slot);
+}
+function moveCell(from:number,to:number,completeSelection=false) {
   if(!state)return;
   if(from===to||from<0||to<0||from>=railSlots.length||to>=railSlots.length)return;
   const id=railSlots[from],slots=movedSlots(railSlots,state,from,to);
   if(!slots)return;
+  const emptySelection=!id&&insertionIndex===from?to:undefined;
   if(state.station) {
     const nodes=slots.flatMap(id=>id?[state!.nodes.find(node=>node.id===id)!]:[]);
-    return serial(async()=>accept(await kernel.run({...state!,nodes},{type:'evaluate'}),'push',slots,undefined,true,id??undefined));
+    return serial(async()=>accept(await kernel.run({...state!,nodes},{type:'evaluate'}),'push',slots,undefined,true,id??undefined,emptySelection,completeSelection));
   }
-  if(!id)return serial(async()=>{if(!state||!result)return;return accept({status:'ok',state,result},'push',slots);});
+  if(!id)return serial(async()=>{if(!state||!result)return;return accept({status:'ok',state,result},'push',slots,undefined,true,undefined,emptySelection,completeSelection);});
   const index=slots.slice(0,to).filter(Boolean).length;
-  return perform({type:'move',id,index},'push',slots);
+  return serial(async()=>accept(await kernel.run(state,{type:'move',id,index}),'push',slots,undefined,true,id,undefined,completeSelection));
 }
 function insertIntoSlot(op:Op,index=insertionIndex??railSlots.indexOf(null)) {
   if(!state||index<0||index>=railSlots.length)return;
@@ -768,12 +800,13 @@ function insertIntoSlot(op:Op,index=insertionIndex??railSlots.indexOf(null)) {
   }
   return {id,work:perform({type:'insert',op,id,index:slots.slice(0,index).filter(Boolean).length},'push',slots)};
 }
-function removePart(id:string) {
+function removePart(id:string,keepSlot=false) {
   const index=state?.nodes.findIndex(n=>n.id===id)??-1;
   const op=state?.nodes[index]?.op;
+  const cell=railSlots.indexOf(id);
   return perform({type:'remove',id},'push',railSlots.map(slot=>slot===id?null:slot)).then(accepted=>{
     if(!accepted)return;
-    document.querySelector<HTMLElement>(`[data-op="${op}"]`)?.focus({preventScroll:true});
+    if(keepSlot)focusEmpty(cell);else document.querySelector<HTMLElement>(`[data-op="${op}"]`)?.focus({preventScroll:true});
     $('move-announcement').textContent=`${op?OPS[op].name:'Block'} returned to its stack.`;
   });
 }
@@ -846,17 +879,20 @@ document.addEventListener('click',event=>{
       return;
     }
     void insertIntoSlot(d.op as Op)?.work.then(()=>{
-      if((event as MouseEvent).detail===0)(document.querySelector<HTMLElement>('[data-op]:not(:disabled)')||$('launch')).focus({preventScroll:true});
+      // render() preserves the current logical stack, or a deliberate focus
+      // change during evaluation. Only a completely filled rail needs this
+      // fallback after every stack has become unavailable.
+      if((event as MouseEvent).detail===0&&document.activeElement===document.body)(document.querySelector<HTMLElement>('[data-op]:not(:disabled)')||$('launch')).focus({preventScroll:true});
     });
   }
   if(d.insert!==undefined){
-    if(state!.nodes.some(n=>n.id===selectedStage)){const id=selectedStage;void moveCell(railSlots.indexOf(id),Number(d.insert))?.then(()=>focusPart(id));}
-    else if(insertionIndex!==undefined){const to=Number(d.insert);if(insertionIndex!==to)void moveCell(insertionIndex,to);else{insertionIndex=undefined;render();}}
-    else if(state!.mode==='remix'||state!.nodes.length<state!.limit){insertionIndex=Number(d.insert);notice={text:'Choose a block.',kind:''};render();document.querySelector<HTMLElement>('[data-op]:not(:disabled)')?.focus({preventScroll:true});}
+    if(state!.nodes.some(n=>n.id===selectedStage)){const id=selectedStage;void moveCell(railSlots.indexOf(id),Number(d.insert),true)?.then(()=>focusPart(id));}
+    else if(insertionIndex!==undefined){const to=Number(d.insert);if(insertionIndex!==to)void moveCell(insertionIndex,to,true)?.then(()=>focusEmpty(to));else{insertionIndex=undefined;render();}}
+    else if(state!.mode==='remix'||state!.nodes.length<state!.limit){insertionIndex=Number(d.insert);notice={text:'Choose a block.',kind:''};render();focusEmpty(Number(d.insert));}
   }
   if(d.stage){
-    if(selectedStage&&selectedStage!==d.stage){const id=selectedStage;void moveCell(railSlots.indexOf(id),railSlots.indexOf(d.stage))?.then(()=>focusPart(id));}
-    else if(insertionIndex!==undefined){void moveCell(insertionIndex,railSlots.indexOf(d.stage));}
+    if(selectedStage&&selectedStage!==d.stage){const id=selectedStage;void moveCell(railSlots.indexOf(id),railSlots.indexOf(d.stage),true)?.then(()=>focusPart(id));}
+    else if(insertionIndex!==undefined){const to=railSlots.indexOf(d.stage);void moveCell(insertionIndex,to,true)?.then(()=>focusEmpty(to));}
     else{selectedStage=selectedStage===d.stage?'':d.stage;discoveryStage=d.stage;render();focusPart(d.stage);}
   }
 });
@@ -868,31 +904,78 @@ $('rethrow').onclick=()=>throwCucumber(true);
 $('nav-create').onclick=()=>{if(initialized&&state?.mode!=='remix')changeWorkspace(()=>perform({type:'remix'},'clear',railSlots).then(ok=>{if(ok)$('level-title').focus({preventScroll:true});}),'Create',true);};
 document.addEventListener('keydown',event=>{
   const target=event.target as HTMLElement;
-  if(target.matches('input,textarea,select')||document.querySelector('dialog[open]'))return;
-  if(event.key==='Escape') {
+  if(event.defaultPrevented||event.isComposing||event.altKey||event.ctrlKey&&event.metaKey||target.matches('input,textarea,select')||target.isContentEditable||document.querySelector('dialog[open]'))return;
+  const inPlay=target===document.body||!!target.closest('.game-shell');
+  if(event.key==='Escape'&&!event.ctrlKey&&!event.metaKey&&!event.shiftKey) {
     if(pointer){event.preventDefault();finishPointer(undefined,true);}
     else if(selectedStage||insertionIndex!==undefined){event.preventDefault();selectedStage='';insertionIndex=undefined;render();}
     return;
   }
-  if((event.ctrlKey||event.metaKey)&&initialized) {
-    if(event.key.toLowerCase()==='z'){event.preventDefault();void historyMove(!event.shiftKey);}
-    if(event.key.toLowerCase()==='y'){event.preventDefault();void historyMove(false);}
+  if(event.ctrlKey||event.metaKey) {
+    if(initialized&&event.key.toLowerCase()==='z'){event.preventDefault();void historyMove(!event.shiftKey);}
+    if(initialized&&!event.shiftKey&&event.key.toLowerCase()==='y'){event.preventDefault();void historyMove(false);}
     return;
   }
+  if(event.shiftKey&&!event.altKey&&['Delete','Backspace'].includes(event.key)&&inPlay) {
+    event.preventDefault();
+    if(!event.repeat&&!pointer&&!$<HTMLButtonElement>('reset').disabled)void perform({type:'reset'});
+    return;
+  }
+  if(event.key==='Enter'&&!event.altKey&&!event.shiftKey&&inPlay&&!target.closest('a[href]')) {
+    event.preventDefault();
+    if(!event.repeat&&!pointer&&flight.phase!=='flying'&&flight.phase!=='releasing'&&!$<HTMLButtonElement>('launch').disabled&&(!choiceActive()||state?.nodes.length))throwCucumber(throwWon,true);
+    return;
+  }
+  if(characterShortcuts&&inPlay&&!event.altKey&&!event.shiftKey&&['h','n'].includes(event.key.toLowerCase())) {
+    const button=$<HTMLButtonElement>(event.key.toLowerCase()==='h'?'hints-open':'ideas-open');
+    if(!event.repeat&&!button.disabled&&button.getClientRects().length){event.preventDefault();button.click();}
+    return;
+  }
+  if(characterShortcuts&&inPlay&&!event.shiftKey&&['z','x','c'].includes(event.key.toLowerCase())) {
+    const next=views[['z','x','c'].indexOf(event.key.toLowerCase())],button=$<HTMLButtonElement>(`tab-${next}`);
+    if(initialized&&!event.repeat&&!button.disabled&&button.getClientRects().length){
+      event.preventDefault();const onView=target.matches('[role=tab]');setView(next);if(onView)button.focus({preventScroll:true});
+    }
+    return;
+  }
+  if(characterShortcuts&&inPlay&&!event.shiftKey&&/^[1-9]$/.test(event.key)) {
+    // Keep the palette's authored order, including depleted stacks. A number
+    // invokes that visible control; it never changes to the next available kind.
+    const button=$('palette').querySelectorAll<HTMLButtonElement>('[data-op]')[Number(event.key)-1];
+    if(initialized&&!pending&&!event.repeat&&button&&!button.disabled&&button.getClientRects().length) {
+      event.preventDefault();
+      if(choiceActive()||button.dataset.return)button.click();
+      else {const placed=insertIntoSlot(button.dataset.op as Op);if(placed)void placed.work.then(accepted=>{if(accepted)focusPart(placed.id);});}
+    }
+    return;
+  }
+  if(characterShortcuts&&inPlay&&event.key==='?'){event.preventDefault();if(!event.repeat)open('help-dialog');return;}
+  if(event.shiftKey)return;
   if(navigateTablist(event,views.map(view=>$(`tab-${view}`)),tab=>setView(tab.dataset.view as View)))return;
+  if(target.matches('.ingredient:not(:disabled):not([data-return])')&&!choiceActive()&&!pending&&event.key==='ArrowUp') {
+    event.preventDefault();
+    const placed=insertIntoSlot(target.dataset.op as Op);
+    if(placed)void placed.work.then(accepted=>{if(accepted)focusPart(placed.id);});
+  }
   if(target.matches('.part-body')&&state&&!pending) {
     const id=target.dataset.stage!,index=railSlots.indexOf(id);
     if(event.key==='ArrowLeft'||event.key==='ArrowRight') {
       event.preventDefault();const to=adjacentSlot(railSlots,state,index,event.key==='ArrowLeft'?-1:1);
       if(to!==index){selectedStage=id;void moveCell(index,to)?.then(()=>focusPart(id));}
     }
-    if(event.key==='Delete'||event.key==='Backspace'){event.preventDefault();void removePart(id);}
+    if(event.key==='ArrowDown'||event.key==='Delete'||event.key==='Backspace'){event.preventDefault();void removePart(id,event.key!=='ArrowDown');}
   }
   if(target.matches('.empty-slot')&&!pending&&(event.key==='ArrowLeft'||event.key==='ArrowRight')) {
     event.preventDefault();const from=Number(target.dataset.empty),to=adjacentSlot(railSlots,state!,from,event.key==='ArrowLeft'?-1:1);
-    void moveCell(from,to)?.then(()=>document.querySelector<HTMLElement>(`[data-empty="${to}"]`)?.focus({preventScroll:true}));
+    void moveCell(from,to)?.then(()=>focusEmpty(to));
   }
-  if(event.key==='?'){event.preventDefault();open('help-dialog');}
+});
+document.addEventListener('keydown',event=>{
+  if(event.defaultPrevented||event.isComposing||event.repeat||event.key!=='Backspace'||event.altKey||event.ctrlKey||event.metaKey||event.shiftKey)return;
+  const target=event.target as HTMLElement,dialog=document.querySelector<HTMLDialogElement>('dialog[open]');
+  if(!dialog||target.isContentEditable||target.matches('input:not([type=checkbox]):not([type=radio]):not([type=range]),textarea,select'))return;
+  const back=dialog.querySelector<HTMLButtonElement>('[data-back-shortcut]:not(:disabled)');
+  if(back){event.preventDefault();back.click();}
 });
 
 let drag: {op?:Op;id?:string;empty?:number} | undefined, suppressClick=false;
@@ -1009,9 +1092,16 @@ window.addEventListener('blur',()=>finishPointer(undefined,true));
 const open=(id:string,returnId='menu-open')=>{
   cancelCirclePickup();if(pointer)finishPointer(undefined,true);closeDialogs();$(returnId).focus({preventScroll:true});
   const dialog=$<HTMLDialogElement>(id);dialog.showModal();
-  // Opening a page is not keyboard navigation. Keep focus inside its modal
-  // without selecting a control; Tab then reaches the first action normally.
-  if(!dialog.querySelector('[autofocus]'))dialog.focus({preventScroll:true});
+  if(!dialog.querySelector('[autofocus]')) {
+    const back=dialog.querySelector<HTMLElement>('.dialog-top button');
+    const keyboard=document.documentElement.dataset.focusModality==='keyboard';
+    if(keyboard&&back) {
+      back.focus({preventScroll:true});
+      // WebKit can defer focusability until after showModal. Never override a
+      // subsequent input or the more specific Back-to-origin restoration.
+      requestAnimationFrame(()=>{if(dialog.open&&document.activeElement===dialog&&document.documentElement.dataset.focusModality==='keyboard')back.focus({preventScroll:true});});
+    } else dialog.focus({preventScroll:true});
+  }
 };
 document.querySelectorAll<HTMLDialogElement>('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();const e=event as MouseEvent;if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}}));
 for(const [button,dialog] of [['help-open','help-dialog'],['menu-open','menu-dialog'],['settings-open','settings-dialog']])$(button).onclick=()=>open(dialog);
@@ -1077,6 +1167,19 @@ renderBrand(document.querySelector<HTMLElement>('.brand')!);
 $('axis-help').innerHTML=`The dashed ${operationTex()} in a block stands for its input. ${tex('x')} is horizontal position and ${tex('h')} is height. An equation such as ${tex('h=x')} describes the path; ${tex('h^2=x')} can describe two heights at one position. The blocks shape the path; throwing speed does not affect the result.`;
 $<HTMLInputElement>('motion-toggle').checked=reduced;document.body.classList.toggle('reduced-motion',reduced);
 $<HTMLInputElement>('motion-toggle').onchange=()=>{reduced=$<HTMLInputElement>('motion-toggle').checked;document.body.classList.toggle('reduced-motion',reduced);preferences();if(reduced&&(flight.phase==='flying'||flight.phase==='releasing'))finishFlight();render();};
+function reflectCharacterShortcuts() {
+  document.documentElement.dataset.characterShortcuts=String(characterShortcuts);
+  $<HTMLInputElement>('character-shortcuts').checked=!characterShortcuts;
+  for(const [id,key] of [['hints-open','H'],['ideas-open','N'],['help-open','?'],['tab-flight','Z'],['tab-function','X'],['tab-flow','C']]) {
+    if(characterShortcuts)$(id).setAttribute('aria-keyshortcuts',key);else $(id).removeAttribute('aria-keyshortcuts');
+  }
+  for(const button of $('palette').querySelectorAll<HTMLButtonElement>('[data-op]')) {
+    const base=!choiceActive()&&!button.dataset.return?'ArrowUp Space':'Space';
+    button.setAttribute('aria-keyshortcuts',[base,characterShortcuts?button.dataset.shortcut:''].filter(Boolean).join(' '));
+  }
+}
+reflectCharacterShortcuts();
+$<HTMLInputElement>('character-shortcuts').onchange=()=>{characterShortcuts=!$<HTMLInputElement>('character-shortcuts').checked;reflectCharacterShortcuts();preferences();};
 
 
 let sharingArtifact: Artifact | {schema:number;type:string;sourceId:number;view:View} | undefined;

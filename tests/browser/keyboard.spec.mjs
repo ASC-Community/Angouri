@@ -14,6 +14,38 @@ async function hasVisibleOutline(locator) {
   });
 }
 
+test('Backspace follows menu Back and Cancel without intercepting text editing',async({page})=>{
+  await ready(page);await page.locator('#menu-open').focus();await page.keyboard.press('Space');await page.locator('#settings-open').focus();await page.keyboard.press('Space');
+  await expect(page.locator('#settings-dialog [data-back-shortcut] .button-hotkey')).toBeVisible();
+  await page.keyboard.press('Backspace');await expect(page.locator('#menu-dialog')).toBeVisible();await expect(page.locator('#settings-open')).toBeFocused();
+  await page.keyboard.press('Backspace');await expect(page.locator('dialog[open]')).toHaveCount(0);await expect(page.locator('#menu-open')).toBeFocused();
+  await page.keyboard.press('Space');await page.locator('#library-open').focus();await page.keyboard.press('Space');
+  const name=page.locator('#seed-name');await name.fill('abc');await page.keyboard.press('Backspace');await expect(name).toHaveValue('ab');await expect(page.locator('#library-dialog')).toBeVisible();
+  await expect(page.locator('#library-dialog [data-back-shortcut] .button-hotkey')).toBeHidden();
+  await page.locator('#library-dialog [data-back-shortcut]').focus();await page.keyboard.press('Backspace');await expect(page.locator('#menu-dialog')).toBeVisible();
+  await page.locator('#settings-open').focus();await page.keyboard.press('Space');await page.locator('#motion-toggle').focus();await page.keyboard.press('Backspace');await expect(page.locator('#menu-dialog')).toBeVisible();
+  await page.locator('#settings-open').focus();await page.keyboard.press('Space');await page.locator('#reset-progress-open').focus();await page.keyboard.press('Space');
+  await expect(page.locator('#reset-progress-cancel')).toBeFocused();await page.keyboard.press('Backspace');await expect(page.locator('#settings-dialog')).toBeVisible();await expect(page.locator('#reset-progress-open')).toBeFocused();
+});
+
+test('a focus badge disappears with its scrolled-out control and returns without moving focus',async({page},testInfo)=>{
+  await page.setViewportSize({width:320,height:568});await ready(page,'/#level=25');
+  await page.keyboard.press('?');
+  const summary=page.locator('#help-dialog summary'),reader=page.locator('#help-dialog .dialog-reading'),cue=page.locator('.keyboard-focus-cue');
+  await summary.focus();await page.keyboard.press('Space');await expect(cue).toBeVisible();
+  const original=await reader.evaluate(el=>el.scrollTop);
+  await reader.evaluate(el=>el.scrollTop=el.scrollHeight);
+  await expect.poll(async()=>{
+    const control=await summary.boundingBox(),pane=await reader.boundingBox();return control.y+control.height<pane.y;
+  }).toBe(true);
+  await expect(summary).toBeFocused();await expect(cue).toBeHidden();
+  expect(await page.evaluate(()=>[scrollX,scrollY])).toEqual([0,0]);
+  await page.screenshot({path:testInfo.outputPath('help-scrolled-focus.png')});
+  await reader.evaluate((el,top)=>el.scrollTop=top,original);await expect(cue).toBeVisible();await expect(summary).toBeFocused();
+  const control=await summary.boundingBox(),badge=await cue.boundingBox();expect(badge.y).toBeCloseTo(control.y-9,0);
+  await page.keyboard.press('Backspace');await expect(page.locator('#menu-dialog')).toBeVisible();
+});
+
 test('arrival leaves controls unselected and the first Tab shows keyboard focus',async({page})=>{
   // Native Safari can nominate a tabbable page target while the asynchronous
   // game is still arriving. Reproduce that timing independently of the engine.
@@ -50,6 +82,60 @@ test('first Tab starts directly at visible play controls without a skip link or 
   }
 });
 
+test('the complete game Tab cycle has no empty page stop in either direction',async({page})=>{
+  await page.setViewportSize({width:1146,height:850});
+  const choices=['#palette [data-op="H"]','#palette [data-op="A"]'];
+  const header=['a.brand','#ideas-open','#menu-open'];
+  const recipe=['#construction [data-empty="0"]','#construction [data-empty="1"]',...choices,'#launch',...header];
+  for(const [path,order] of [
+    ['/#level=1',[...choices,'a.brand','#menu-open']],
+    ['/#level=2',[...choices,'#palette [data-op="N"]','a.brand','#menu-open']],
+    ['/#level=3&view=flight',['#tab-flight',...recipe]],
+    ['/#level=3&view=function',['#tab-function',...recipe]],
+    ['/#level=3&view=flow',['#tab-flow','#flow-position',...recipe]]
+  ]) {
+    await page.goto('/about/');await ready(page,path);
+    // Firefox's comparison rows are slightly taller. Include a reader when
+    // its actual content overflows, independently of its assigned tabindex.
+    const readers=path.includes('function')?['.final-equation','.value-table tbody']:path.includes('flow')?['.flow-goals','.flow-line']:[];
+    const overflowing=[];
+    for(const selector of readers)if(await page.locator(selector).evaluate(el=>el.scrollHeight>el.clientHeight+1||el.scrollWidth>el.clientWidth+1))overflowing.push(selector);
+    order.splice(path.includes('flow')?2:1,0,...overflowing);
+    for(const selector of [...order,...order]) {
+      await page.keyboard.press('Tab');await expect(page.locator(selector),`${path}: ${selector}`).toBeFocused();
+      expect(await page.evaluate(()=>document.hasFocus()&&document.activeElement!==document.body)).toBe(true);
+    }
+    await page.keyboard.press('Tab');await expect(page.locator(order[0])).toBeFocused();
+    for(const selector of [...order].reverse()) {
+      await page.keyboard.press('Shift+Tab');await expect(page.locator(selector),`${path} backwards: ${selector}`).toBeFocused();
+      expect(await page.evaluate(()=>document.hasFocus()&&document.activeElement!==document.body)).toBe(true);
+    }
+    expect(await page.evaluate(()=>[scrollY,document.documentElement.scrollHeight-innerHeight])).toEqual([0,0]);
+  }
+});
+
+test('game Tab boundaries follow enabled controls and leave browser shortcuts available',async({page})=>{
+  await ready(page,'/#level=1');
+  await page.evaluate(()=>document.addEventListener('keydown',event=>{
+    if(event.key==='Tab'&&(event.ctrlKey||event.altKey||event.metaKey))window.modifiedTabPrevented=event.defaultPrevented;
+  }));
+  await page.keyboard.press('Control+Tab');expect(await page.evaluate(()=>window.modifiedTabPrevented)).toBe(false);
+  await page.keyboard.press('Tab');await expect(page.locator('#palette [data-op="H"]')).toBeFocused();
+  const brand=page.locator('a.brand'),add=page.locator('#palette [data-op="A"]');
+  await add.focus();await page.keyboard.press('Tab');await expect(brand).toBeFocused();
+  await page.keyboard.press('Shift+Tab');await expect(add).toBeFocused();
+  await page.locator('#palette [data-op="H"]').click();await idle(page);
+  await brand.focus();await page.keyboard.press('Shift+Tab');await expect(page.locator('#launch')).toBeFocused();
+  expect(await page.locator('#launch').evaluate(el=>[
+    {key:'Tab',ctrlKey:true},{key:'Tab',altKey:true},{key:'Tab',metaKey:true},
+    {key:'F6'},{key:'l',ctrlKey:true},{key:'l',metaKey:true}
+  ].every(keys=>el.dispatchEvent(new KeyboardEvent('keydown',{...keys,bubbles:true,cancelable:true}))))).toBe(true);
+  await page.keyboard.press('Tab');await expect(brand).toBeFocused();
+  await page.locator('#menu-open').click();await page.keyboard.press('Tab');
+  await expect(page.getByRole('button',{name:'Back to game',exact:true})).toBeFocused();
+  await page.keyboard.press('Shift+Tab');await expect(page.locator('#menu-dialog a[href="./about/"]')).toBeFocused();
+});
+
 test('pointer dialog return keeps focus without a keyboard ring',async({page})=>{
   await ready(page);
   const notes=page.locator('#ideas-open');
@@ -59,9 +145,8 @@ test('pointer dialog return keeps focus without a keyboard ring',async({page})=>
   await expect(page.locator('html')).toHaveAttribute('data-focus-modality','pointer');
   expect(await hasVisibleOutline(notes)).toBe(false);
 
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('Space');
   const back=page.getByRole('button',{name:'Back to puzzle',exact:true});
-  await page.keyboard.press('Tab');
   await expect(back).toBeFocused();
   expect(await hasVisibleOutline(back)).toBe(true);
   await page.keyboard.press('Enter');
@@ -78,6 +163,30 @@ test('pointer dialog return keeps focus without a keyboard ring',async({page})=>
   const checkbox=page.locator('#motion-toggle');await checkbox.focus();await page.keyboard.press('Shift');
   expect(await hasVisibleOutline(checkbox)).toBe(true);
   await checkbox.click();expect(await hasVisibleOutline(checkbox)).toBe(false);
+});
+
+test('keyboard-opened menu pages focus Back immediately and confirmations retain Cancel',async({page})=>{
+  await ready(page,'/#level=25');
+  for(const opener of ['ideas-open','hints-open','menu-open']) {
+    const button=page.locator(`#${opener}`);await button.focus();await page.keyboard.press('Space');
+    const dialog=page.locator('dialog[open]'),back=dialog.locator('.dialog-top button').first();
+    await expect(back).toBeFocused();expect(await hasVisibleOutline(back)).toBe(true);
+    await page.keyboard.press('Tab');await expect(back).not.toBeFocused();
+    await page.keyboard.press('Shift+Tab');await expect(back).toBeFocused();
+    await page.keyboard.press('Escape');await expect(button).toBeFocused();
+  }
+  await page.keyboard.press('Space');await expect(page.locator('#menu-dialog .dialog-top button')).toBeFocused();
+  for(const opener of ['puzzles-open','library-open','settings-open','help-open','menu-version']) {
+    const tile=page.locator(`#${opener}`);await tile.focus();await page.keyboard.press('Enter');
+    const back=page.locator('dialog[open] .dialog-top button').first();await expect(back).toBeFocused();
+    await page.keyboard.press('Enter');await expect(tile).toBeFocused();
+  }
+  await page.locator('#settings-open').focus();await page.keyboard.press('Enter');
+  await page.locator('#reset-progress-open').focus();await page.keyboard.press('Enter');
+  await expect(page.locator('#reset-progress-cancel')).toBeFocused();
+  await page.keyboard.press('Enter');await page.keyboard.press('Escape');
+  await page.locator('#menu-open').click();await expect(page.locator('#menu-dialog')).toBeFocused();
+  await expect(page.locator('#menu-dialog button:focus-visible')).toHaveCount(0);
 });
 
 test('pointer puzzle navigation returns to a visible play control without its keyboard ring',async({page})=>{
@@ -192,7 +301,7 @@ test('Save and its name field keep complete focus rings inside the dialog scroll
 
 test('menu Tab cycles wrap directly between visible controls in both directions',async({page})=>{
   await ready(page);
-  for(const [destination,buttons] of [[undefined,11],['library-open',6],['settings-open',4],['help-open',3],['puzzles-open',19]]) {
+  for(const [destination,buttons] of [[undefined,11],['library-open',6],['settings-open',5],['help-open',3],['puzzles-open',19]]) {
     await page.locator('#menu-open').click();if(destination)await page.locator(`#${destination}`).click();
     await page.keyboard.press('Tab');
     const count=buttons+await page.locator('dialog[open] .dialog-reading[tabindex="0"]').count();
@@ -204,7 +313,7 @@ test('menu Tab cycles wrap directly between visible controls in both directions'
       await page.keyboard.press('Tab');
     }
     expect(await first.evaluate(el=>el===document.activeElement)).toBe(true);
-    if(destination==='settings-open')expect(seen.has('motion-toggle')).toBe(true);
+    if(destination==='settings-open'){expect(seen.has('motion-toggle')).toBe(true);expect(seen.has('character-shortcuts')).toBe(true);}
     for(let i=0;i<count;i++) {
       await page.keyboard.press('Shift+Tab');
       expect(await page.evaluate(()=>document.activeElement!==document.querySelector('dialog[open]')&&!!document.activeElement.closest('dialog[open]'))).toBe(true);
@@ -267,7 +376,7 @@ test('view tabs follow the focused tab while Tab and Shift+Tab keep native order
 test('undoing a focused block keeps focus in the recipe for continued editing',async({page})=>{
   await ready(page);
   await page.getByRole('button',{name:/Place Halve/}).focus();
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('Space');
   await idle(page);
 
   const placed=page.getByRole('button',{name:/Halve, slot 1/});
@@ -284,7 +393,7 @@ test('undoing a focused block keeps focus in the recipe for continued editing',a
   await page.keyboard.press('Tab');
   const add=page.getByRole('button',{name:/Place Add one/});
   await expect(add).toBeFocused();
-  await expect(add).toHaveAttribute('aria-describedby','block-tooltip');
+  await expect(add).toHaveAttribute('aria-describedby',/\bblock-tooltip\b/);
   await expect(page.getByRole('tooltip')).toContainText('Add one');
 });
 
@@ -292,7 +401,7 @@ test('native dialog Escape and menu Back restore the documented openers',async({
   await ready(page);
   const menu=page.getByRole('button',{name:'Menu',exact:true});
   await menu.focus();
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('Space');
   const settings=page.getByRole('button',{name:'Settings',exact:true});
   await settings.focus();
   await page.keyboard.press('Enter');
@@ -300,7 +409,7 @@ test('native dialog Escape and menu Back restore the documented openers',async({
   await page.keyboard.press('Escape');
   await expect(menu).toBeFocused();
 
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('Space');
   await settings.focus();
   await page.keyboard.press('Enter');
   await page.getByRole('button',{name:'Back to menu',exact:true}).press('Enter');
