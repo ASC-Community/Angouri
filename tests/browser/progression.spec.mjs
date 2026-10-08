@@ -58,7 +58,7 @@ test('discoveries report the chosen effect, keep Hints away, and lead into the l
   await add(page,'A');await expect(page.locator('#feedback')).toHaveClass(/discovery-feedback/);await expect(page.locator('#feedback')).toContainText('Every height rises equally');
 
   await ready(page,68);await expect(page.locator('#ideas-open')).toBeVisible();await expect(page.locator('#hints-open')).toBeHidden();
-  await add(page,'A');await expect(page.locator('#feedback')).toContainText('The two heights move apart');
+  await add(page,'A');await expect(page.locator('#feedback')).toContainText('Existing real heights move farther from zero');
   await ready(page,69);await expect(page.locator('#ideas-open')).toBeVisible();await expect(page.locator('#hints-open')).toBeHidden();
   await add(page,'H');await expect(page.locator('#feedback')).toContainText('scales by');
   await add(page,'H');await expect(page.locator('#feedback')).toContainText('Two halves');

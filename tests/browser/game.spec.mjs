@@ -1154,13 +1154,13 @@ test('return slots sit above all remaining stock without moving the existing pil
   await page.locator('.part-body').click();await expect(top).toHaveAttribute('data-stock','reusable');await expect(lower).toHaveCount(3);
   expect(await documentBox(lower.first())).toEqual(reusable);expect(await page.locator('#palette').evaluate(element=>({width:element.clientWidth,height:element.clientHeight}))).toEqual(creationLayout);
   await top.click();await idle(page);await expect(lower).toHaveCount(2);await expect(top).toHaveAttribute('data-stock','reusable');
-  await choosePuzzle(page,25);await expect(page.locator('.ingredient-stack:has([data-op="A"]) .stock-total')).toHaveText('6');await place(page,'A');await page.locator('.part-body').click();
+  await choosePuzzle(page,25);await expect(page.locator('.ingredient-stack:has([data-op="A"]) .stock-total annotation')).toHaveText('6');await place(page,'A');await page.locator('.part-body').click();
   const condensed=page.locator('.ingredient-stack:has([data-op="A"])');
-  await expect(condensed.locator('.stock-deck i')).toHaveCount(3);await expect(condensed.locator('.ingredient')).toHaveAttribute('data-stock','5');await expect(condensed.locator('.stock-total')).toHaveText('5');
+  await expect(condensed.locator('.stock-deck i')).toHaveCount(3);await expect(condensed.locator('.ingredient')).toHaveAttribute('data-stock','5');await expect(condensed.locator('.stock-total annotation')).toHaveText('5');
   await condensed.locator('[data-return]').click();await idle(page);await expect(condensed.locator('.stock-deck i')).toHaveCount(2);
-  await expect(condensed.locator('.stock-total')).toHaveText('6');
+  await expect(condensed.locator('.stock-total annotation')).toHaveText('6');
   const condensedLayout=await page.locator('#palette').evaluate(element=>({width:element.clientWidth,height:element.clientHeight}));
-  for(const remaining of [5,4,3,2,1,0]){await place(page,'A');await expect(condensed.locator('.stock-total')).toHaveText(String(remaining));}
+  for(const remaining of [5,4,3,2,1,0]){await place(page,'A');await expect(condensed.locator('.stock-total annotation')).toHaveText(String(remaining));}
   await expect(condensed.locator('.ingredient')).toBeDisabled();await expect(condensed.locator('.stock-deck i')).toHaveCount(0);
   expect(await page.locator('#palette').evaluate(element=>({width:element.clientWidth,height:element.clientHeight}))).toEqual(condensedLayout);
 });

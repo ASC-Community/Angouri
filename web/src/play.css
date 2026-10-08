@@ -123,16 +123,18 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 .recipe-part.inspected { outline: 2px solid var(--piece-ink); outline-offset: 2px; }
 .recipe-part.inspected::before { content: ''; position: absolute; bottom: 3px; left: calc(50% - 6px); width: 12px; height: 2px; border-radius: 2px; background: var(--piece-ink); }
 .palette { --piece-height: 74px; --stack-step: 8px; display: flex; justify-content: center; align-items: end; gap: 12px; flex-wrap: wrap; padding: 10px 3px 5px; min-height: calc(var(--piece-height) + var(--stack-room,0) * var(--stack-step) + 15px); }
-.ingredient-stack { --stock-top: calc((var(--stack-capacity,0) - var(--stack-depth,0)) * var(--stack-step)); position: relative; flex: 1 1 135px; min-width: 0; max-width: 218px; height: calc(var(--piece-height) + var(--stack-capacity,0) * var(--stack-step)); background: transparent; isolation: isolate; }
+.palette:has(.condensed-stack,.reusable-stack) { --stock-mark-room: 20px; }
+.ingredient-stack { --stock-top: calc((var(--stack-capacity,0) - var(--stack-depth,0)) * var(--stack-step)); --pile-height: calc(var(--piece-height) + var(--stack-capacity,0) * var(--stack-step)); position: relative; flex: 1 1 135px; min-width: 0; max-width: 218px; height: calc(var(--pile-height) + var(--stock-mark-room,0px)); background: transparent; isolation: isolate; }
 .ingredient { position: relative; top: var(--stock-top); z-index: 6; display: flex; width: 100%; min-width: 0; height: var(--piece-height); padding: 0; border-radius: 10px; text-align: left; cursor: grab; touch-action: none; background: transparent; color: var(--piece-ink); transition: transform .12s; }
 .ingredient-surface { z-index: 1; display: flex; flex: 1; height: var(--piece-height); align-items: center; gap: 9px; padding: 9px 13px 11px 7px; min-width: 0; }
-.stock-deck { position: absolute; inset: 0; pointer-events: none; }
+.stock-deck { position: absolute; inset: 0 0 auto; height: var(--pile-height); pointer-events: none; }
 .stock-deck i { position: absolute; z-index: calc(5 - var(--layer)); top: calc(var(--stock-top) + var(--layer) * var(--stack-step)); left: 0; width: 100%; height: var(--piece-height); border: 1px solid var(--piece-edge); border-radius: 10px; background: var(--piece-fill); box-shadow: 0 3px 0 var(--piece-base), inset 0 -1px 0 #ffffff70; }
-.reusable-stack .stock-deck { mask-image: linear-gradient(to bottom,#000 64%,#0009 84%,transparent 100%); -webkit-mask-image: linear-gradient(to bottom,#000 64%,#0009 84%,transparent 100%); }
-.reusable-stack.refilling .stock-deck i { animation: refill-stack .26s ease-out; }
+.has-more-stock .stock-deck { mask-image: linear-gradient(to bottom,#000 calc(100% - 2 * var(--stack-step)),#0009 calc(100% - var(--stack-step)),transparent 100%); -webkit-mask-image: linear-gradient(to bottom,#000 calc(100% - 2 * var(--stack-step)),#0009 calc(100% - var(--stack-step)),transparent 100%); }
+.refilling .stock-deck i, .refilling .ingredient:not(.return-ready) .ingredient-surface { animation: refill-stack .26s ease-out; }
+.refilling .stock-deck i:last-child { animation-name: refill-bottom; }
 @keyframes refill-stack { from { transform: translateY(var(--stack-step)); } to { transform: translateY(0); } }
-.stock-total { position: absolute; z-index: 7; right: 7px; bottom: -3px; min-width: 20px; padding: 1px 4px; text-align: center; border: 1px solid var(--piece-edge); border-radius: 5px; background: #fffef8; color: var(--piece-ink); font-size: 11px; line-height: 1.25; }
-.reusable-mark { position: absolute; right: 7px; bottom: -18px; color: var(--piece-ink); opacity: .75; font-size: 14px; line-height: 1; }
+@keyframes refill-bottom { from { transform: translateY(var(--stack-step)); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.stock-total, .reusable-mark { position: absolute; z-index: 7; right: 7px; bottom: 0; height: var(--stock-mark-room); display: flex; align-items: center; color: var(--piece-ink); opacity: .75; font-size: 14px; line-height: 1; pointer-events: none; }
 /* Each formula uses its face, including the height freed by removing captions.
    Template-specific proportions keep fractions readable without growing stacks. */
 .ingredient-face { container-type: size; display: grid; flex: 1; place-items: center; text-align: center; min-width: 0; height: 100%; }
@@ -173,14 +175,18 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 .just-placed { animation: place-piece .24s ease-out; }
 @keyframes place-piece { from { transform: translateY(-9px) scale(1.06); } to { transform: translateY(0) scale(1); } }
 .dock-footer { padding-top: 8px; min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dock-footer:has(.discovery-feedback) { flex-wrap: wrap; }
 .recipe-guidance { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.recipe-guidance:has(.discovery-feedback) { flex: 1 1 260px; }
 .recipe-guidance .feedback { min-width: 0; }
 .recipe-guidance .hints-button { min-height: 32px; padding: 5px 9px; font-size: 11px; }
 .dock-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-shrink: 0; min-height: 44px; }
 .rethrow-button { width: 42px; height: 42px; }
 .feedback { display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 11px; color: #7d8e6c; text-align: center; line-height: 1.4; padding: 3px 4px; }
 .feedback.error { padding: 7px 10px; background: #f8e9e1; color: #94563c; border-radius: 7px; }
-.discovery-feedback { color: #526c42; max-width: 400px; text-align: left; }
+.discovery-feedback { color: #526c42; max-width: 400px; text-align: left; flex-wrap: wrap; justify-content: flex-start; }
+.discovery-feedback > span:last-child { flex: 1 1 180px; }
+.discovery-feedback > span:last-child .katex { display: inline-block; white-space: nowrap; }
 .discovery-operations { display: inline-flex; align-items: center; gap: 3px; flex: none; }
 .discovery-order { display: flex; color: #728660; }
 .discovery-operation { display: grid; place-items: center; flex: none; min-width: 28px; min-height: 28px; border-radius: 8px; background: var(--piece-fill); color: var(--piece-ink); padding: 2px 5px; }
@@ -241,6 +247,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 }
 @media(max-height:520px) and (min-width:601px) {
   .play-dock { width: 310px; max-width: 43%; max-height: 100%; overflow-y: auto; margin: auto 0; padding: 8px 10px; }
+  .game-shell:has(.discovery-feedback,.stock-total,.reusable-mark) { height: auto; min-height: max(370px,100dvh); }
+  .play-dock:has(.discovery-feedback,.stock-total,.reusable-mark) { max-height: none; overflow: visible; }
   .palette { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }.palette[data-count] { --piece-height: 55px; }
   .palette[data-count="6"] { grid-template-columns: repeat(3,minmax(0,1fr)); }
   .palette[data-count="3"] { grid-template-columns: repeat(3,minmax(0,1fr)); }

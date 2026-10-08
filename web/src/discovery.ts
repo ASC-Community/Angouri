@@ -23,8 +23,8 @@ export function isDiscovery(state:State) {
 
 // These describe adjacent stages, never the whole recipe after later blocks.
 const pairFindings:Partial<Record<string,string>>={
-  AH:'The lift is halved too, leaving half the added height of the reverse order.',
-  HA:'The lift comes after Halve, so the added unit stays whole.',
+  AH:`Every height is halved. The added lift shrinks: ${tex('1\\to\\frac12')}.`,
+  HA:`The halved curve is raised by ${tex('1')}.`,
   AN:'Negate reverses the lift too: that added unit now points downward.',
   NA:'Negate turns the shape over; the following lift raises it again.',
   HQ:'Halving before Square quarters the squared result.',
@@ -48,9 +48,16 @@ function explicitFinding(state:State,index:number):string|Finding|undefined {
   // halve. This is the authored operation identity, not a curve evaluator.
   if([3,24].includes(state.sourceId)&&op==='A') {
     const halves=after.filter(next=>next==='H').length;
-    return halves===0?'No Halve follows this lift: it adds a whole unit to the final height.'
-      :halves===1?`One later Halve makes this lift contribute ${tex('\\frac12')} to the final height.`
-      :`Two later Halves make this lift contribute ${tex('\\frac14')} to the final height.`;
+    if(!halves)return before.at(-1)==='H'
+      ?{text:pairFindings.HA!,indices:[index-1,index]}
+      :`Raises every height by ${tex('1')}.`;
+    // Show the actual sequence through the last affected stage. Do not omit
+    // another lift between the selected one and a later halve.
+    const end=ops.lastIndexOf('H'),indices=ops.map((_,i)=>i).slice(index,end+1);
+    const lift=ops.slice(index+1,end).includes('A')?'The first lift':'The added lift';
+    return {text:halves===1
+      ?`Every height is halved. ${lift} shrinks: ${tex('1\\to\\frac12')}.`
+      :`Every height is halved twice. ${lift} shrinks: ${tex('1\\to\\frac12\\to\\frac14')}.`,indices};
   }
   // The signed-step lesson compares the order of two movable operations before
   // its fixed accumulator. Describe the actual order, not a recipe to copy.

@@ -12,20 +12,22 @@ async function add(page,op,slot) {
 const readings=page=>page.evaluate(()=>window.angouri.result.checkpoints.map(point=>point.actual));
 const snapshot=page=>page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}));
 
-test('actual lift arrangements explain fractional contributions through selection, moves and history',async({page})=>{
+test('actual lift arrangements show their block order through selection, moves and history',async({page})=>{
   await ready(page,3);await expect(page.locator('#hints-open')).toBeHidden();await expect(page.locator('#ideas-open')).toBeVisible();
   await add(page,'H');await add(page,'A');
-  await expect(page.locator('#feedback')).toContainText('a whole unit');
+  await expect(page.locator('#feedback')).toContainText('The halved curve is raised by');
+  await expect(page.locator('#feedback .discovery-operations')).toHaveAccessibleName('Block 1: Halve; then Block 2: Add one');
   await page.locator('.part-body').last().focus();await page.keyboard.press('ArrowLeft');await idle(page);
-  await expect(page.locator('#feedback')).toContainText('One later Halve');
-  await expect(page.locator('#feedback annotation').last()).toHaveText('\\frac12');
+  await expect(page.locator('#feedback')).toContainText('Every height is halved. The added lift shrinks:');
+  await expect(page.locator('#feedback annotation').last()).toHaveText('1\\to\\frac12');
+  await expect(page.locator('#feedback .discovery-operations')).toHaveAccessibleName('Block 1: Add one; then Block 2: Halve');
   expect((await readings(page))[0]).toBe('1/2');
-  await page.locator('#undo').click();await idle(page);await expect(page.locator('#feedback')).toContainText('a whole unit');
+  await page.locator('#undo').click();await idle(page);await expect(page.locator('#feedback')).toContainText('The halved curve is raised by');
   expect((await readings(page))[0]).toBe('1');
-  await page.locator('#redo').click();await idle(page);await expect(page.locator('#feedback')).toContainText('One later Halve');
-  for(const view of ['function','flow','flight']) {await page.locator(`#tab-${view}`).click();await expect(page.locator('#feedback')).toContainText('One later Halve');}
+  await page.locator('#redo').click();await idle(page);await expect(page.locator('#feedback')).toContainText('The added lift shrinks:');
+  for(const view of ['function','flow','flight']) {await page.locator(`#tab-${view}`).click();await expect(page.locator('#feedback')).toContainText('The added lift shrinks:');}
   await page.keyboard.press('Escape');await page.locator('.part-body').last().click();
-  await expect(page.locator('#feedback')).toContainText('The lift is halved too');
+  await expect(page.locator('#feedback')).toContainText('Every height is halved. The added lift shrinks:');
   await expect(page.locator('#feedback .discovery-operation')).toHaveCount(2);
   await expect(page.locator('#feedback .discovery-operations')).toHaveAccessibleName('Block 1: Add one; then Block 2: Halve');
   await expect(page.locator('#feedback .discovery-operation').last()).toHaveClass(/sage/);
@@ -36,14 +38,36 @@ test('actual lift arrangements explain fractional contributions through selectio
   expect(await snapshot(page)).toEqual(before);await expect(page.locator('#feedback')).toHaveText(finding);
 });
 
-test('an insertion before existing blocks and a drag follow the edited block, not the last block',async({page})=>{
+test('an insertion before existing blocks and a drag follow the edited block, not the last block',async({page},testInfo)=>{
   await ready(page,24);await add(page,'H',1);await add(page,'H',2);await add(page,'A',0);
-  await expect(page.locator('#feedback')).toContainText('Two later Halves');
-  await expect(page.locator('#feedback .discovery-operation')).toHaveClass(/peach/);
+  await expect(page.locator('#feedback')).toContainText('Every height is halved twice. The added lift shrinks:');
+  await expect(page.locator('#feedback annotation').last()).toHaveText('1\\to\\frac12\\to\\frac14');
+  await expect(page.locator('#feedback .discovery-operations')).toHaveAccessibleName('Block 1: Add one; then Block 2: Halve; then Block 3: Halve');
+  await expect(page.locator('#feedback .discovery-operation').first()).toHaveClass(/peach/);
+  expect((await readings(page))[0]).toBe('1/4');
   const from=await page.locator('.part-body').first().boundingBox(),to=await page.locator('[data-empty="3"]').boundingBox();
   await page.mouse.move(from.x+from.width/2,from.y+from.height/2);await page.mouse.down();await page.mouse.move(to.x+to.width/2,to.y+to.height/2,{steps:10});await page.mouse.up();await idle(page);
-  await expect(page.locator('#feedback')).toContainText('a whole unit');
-  await page.locator('#undo').click();await idle(page);await expect(page.locator('#feedback')).toContainText('Two later Halves');
+  await expect(page.locator('#feedback')).toContainText('The halved curve is raised by');
+  expect((await readings(page))[0]).toBe('1');
+  await page.locator('#undo').click();await idle(page);await expect(page.locator('#feedback')).toContainText('Every height is halved twice');
+  await page.keyboard.press('Escape');await add(page,'A',3);
+  await page.locator('.part-body').last().focus();await page.keyboard.press('ArrowLeft');await idle(page);
+  expect((await readings(page))[0]).toBe('3/4');
+  // Follow the first lift through the actual intervening block, without
+  // presenting the two halves as if they were adjacent in this recipe.
+  await page.keyboard.press('Escape');const before=await snapshot(page);await page.locator('.part-body').first().click();
+  expect(await snapshot(page)).toEqual(before);
+  await expect(page.locator('#feedback')).toContainText('The first lift shrinks:');
+  await expect(page.locator('#feedback .discovery-operations')).toHaveAccessibleName('Block 1: Add one; then Block 2: Halve; then Block 3: Add one; then Block 4: Halve');
+  for(const viewport of [{width:1146,height:850},{width:320,height:568},{width:844,height:390}]) {
+    await page.setViewportSize(viewport);
+    const layout=await page.locator('#feedback').evaluate(feedback=>{
+      const text=feedback.getBoundingClientRect(),action=document.querySelector('.dock-actions').getBoundingClientRect(),dock=feedback.closest('.play-dock').getBoundingClientRect();
+      return {overflow:document.documentElement.scrollWidth-innerWidth,clip:feedback.scrollWidth-feedback.clientWidth,overlap:Math.min(text.right,action.right)>Math.max(text.left,action.left)&&Math.min(text.bottom,action.bottom)>Math.max(text.top,action.top),actionInside:action.top>=dock.top&&action.bottom<=dock.bottom};
+    });
+    expect(layout).toEqual({overflow:0,clip:0,overlap:false,actionInside:true});
+    await page.screenshot({path:testInfo.outputPath(`lift-sequence-${viewport.width}.png`),fullPage:true});
+  }
 });
 
 test('fixed slope and area stations teach the arrangement on each side without a Hints detour',async({page})=>{
@@ -106,7 +130,7 @@ test('station discovery findings fit with the Flight diagram and actions through
   await expect(page.locator('#feedback')).toContainText('halves the squared result');
   await page.keyboard.press('Escape');await page.locator('.part-body').nth(1).click();
   await expect(page.locator('#feedback .discovery-operations')).toHaveAccessibleName('Block 3: Halve; then Block 4: Add one');
-  await expect(page.locator('#feedback')).toContainText('added unit stays whole');
+  await expect(page.locator('#feedback')).toContainText('The halved curve is raised by');
   for(const size of [{width:1512,height:982},{width:1146,height:610},{width:390,height:844},{width:844,height:390},{width:320,height:568}]) {
     await page.setViewportSize(size);await expect(page.locator('#feedback')).toBeVisible();
     await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
