@@ -1,10 +1,13 @@
-import { chromium } from '@playwright/test';
+import { chromium, firefox, webkit } from '@playwright/test';
 
 const baseUrl=process.env.ANGOURI_BENCH_URL||'http://127.0.0.1:4187/';
 const samples=Number(process.env.ANGOURI_BENCH_SAMPLES||5);
 if(!Number.isInteger(samples)||samples<1||samples>20)throw Error('ANGOURI_BENCH_SAMPLES must be an integer from 1 to 20.');
+const engineName=process.env.ANGOURI_BENCH_ENGINE||'chromium';
+const engine={chromium,firefox,webkit}[engineName];
+if(!engine)throw Error('ANGOURI_BENCH_ENGINE must be chromium, firefox or webkit.');
 
-const browser=await chromium.launch({headless:true});
+const browser=await engine.launch({headless:true});
 const page=await browser.newPage();
 await page.goto(baseUrl);
 const report=await page.evaluate(async samples=>{
@@ -59,13 +62,18 @@ const report=await page.evaluate(async samples=>{
 await page.close();
 
 const uiRecipe='AAAAAAHHHH';
+const uiCases=[
+  {name:'height',sourceId:25,recipe:uiRecipe,expected:uiRecipe},
+  {name:'wave-input',sourceId:54,recipe:'AHQ',expected:'ASHQ'},
+  {name:'wave-output',sourceId:54,recipe:'QHA',expected:'SQHA',afterStation:true}
+];
 const uiRuns=[];
-for(const view of ['flight','function','flow']){
+for(const scenario of uiCases)for(const view of ['flight','function','flow']){
   const context=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion:'reduce'});
   const uiPage=await context.newPage();
   await uiPage.goto(baseUrl);
   await uiPage.waitForFunction(()=>window.angouri?.state&&window.angouri?.whenIdle);
-  uiRuns.push(await uiPage.evaluate(async({view,recipe})=>{
+  uiRuns.push(await uiPage.evaluate(async({view,recipe,sourceId,name,expected,afterStation})=>{
     const idle=()=>Promise.race([
       window.angouri.whenIdle(),
       new Promise((_,reject)=>setTimeout(()=>reject(Error('UI edit timed out.')),10000))
@@ -75,15 +83,16 @@ for(const view of ['flight','function','flow']){
       if(!(element instanceof HTMLElement))throw Error(`Missing UI control ${selector}`);
       element.click();
     };
-    click('[data-level="25"]');
+    click(`[data-level="${sourceId}"]`);
     await idle();
-    if(window.angouri.state.sourceId!==25)throw Error('Could not open source 25.');
+    if(window.angouri.state.sourceId!==sourceId)throw Error(`Could not open source ${sourceId}.`);
     click(`#tab-${view}`);
     await idle();
     if(window.angouri.view!==view)throw Error(`Could not open ${view} view.`);
 
     const rows=[];
     const measure=async(kind,action,index)=>{
+      if(kind==='insert'&&afterStation)click(`[data-insert="${window.angouri.state.station.before+1+index}"]`);
       const beforeMeasurements=window.angouri.measurements.edits.length;
       const beforeBlocks=window.angouri.state.nodes.length;
       const started=performance.now();
@@ -100,9 +109,10 @@ for(const view of ['flight','function','flow']){
     for(let index=0;index<recipe.length;index++)await measure('insert',recipe[index],index);
     for(const [index,action] of ['undo','redo','undo','redo'].entries())await measure(action,action,index);
     const finalRecipe=window.angouri.state.nodes.map(node=>node.op).join('');
-    if(finalRecipe!==recipe)throw Error(`${view} ended with ${finalRecipe}, expected ${recipe}.`);
-    return {view,finalRecipe,rows};
-  },{view,recipe:uiRecipe}));
+    if(finalRecipe!==expected)throw Error(`${view} ended with ${finalRecipe}, expected ${expected}.`);
+    if(afterStation&&!window.angouri.result.solved)throw Error('The fitted wave must still solve exactly.');
+    return {name,sourceId,view,finalRecipe,rows};
+  },{view,...scenario}));
   await context.close();
 }
 
@@ -128,18 +138,23 @@ const summarizeUiRows=rows=>({
   worker:distribution(rows.map(row=>row.workerMilliseconds)),
   outsideWorker:distribution(rows.map(row=>row.outsideWorkerMilliseconds))
 });
-const ui=Object.fromEntries(uiRuns.map(run=>{
+const summarizeUiRun=run=>{
   const inserts=run.rows.filter(row=>row.kind==='insert');
   const undos=run.rows.filter(row=>row.action==='undo');
   const redos=run.rows.filter(row=>row.action==='redo');
-  return [run.view,{
+  return {
     finalRecipe:run.finalRecipe,
     firstPlacement:inserts[0],
     inserts:summarizeUiRows(inserts),
     undo:summarizeUiRows(undos),
     redo:summarizeUiRows(redos),
     actions:run.rows
-  }];
-}));
-console.log(JSON.stringify({url:baseUrl,readyMilliseconds:report.readyMilliseconds,cases:summary,ui:{sourceId:25,recipe:uiRecipe,views:ui}},null,2));
+  };
+};
+const ui=Object.fromEntries(uiRuns.filter(run=>run.sourceId===25).map(run=>[run.view,summarizeUiRun(run)]));
+const waves=Object.fromEntries(uiCases.filter(scenario=>scenario.sourceId===54).map(scenario=>[scenario.name,{
+  sourceId:scenario.sourceId,recipe:scenario.expected,
+  views:Object.fromEntries(uiRuns.filter(run=>run.name===scenario.name).map(run=>[run.view,summarizeUiRun(run)]))
+}]));
+console.log(JSON.stringify({engine:engineName,url:baseUrl,readyMilliseconds:report.readyMilliseconds,cases:summary,ui:{sourceId:25,recipe:uiRecipe,views:ui},waves},null,2));
 await browser.close();

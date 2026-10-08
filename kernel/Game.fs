@@ -1620,6 +1620,7 @@ module Game =
         let initialStage = Piecewise.create sourceEntities[s.Source-1] sourceEndpoints[s.Source-1]
         let sourceRange = Piecewise.tryAffineRange x initialStage
         let mutable previous = initialStage
+        let mutable previousValues: Entity list option = None
         let mutable operationPrefix = ""
         let stageCores =
             [0..s.Nodes.Length]
@@ -1637,8 +1638,11 @@ module Game =
                                 | Ok next -> next
                                 | Error message -> invalidInput "preview" message
                         let values =
-                            presentationGoals |> List.map (fun goal ->
-                                Piecewise.evaluateAt x (Piecewise.parseRational goal.X) stage)
+                            previousValues
+                            |> Option.bind (fun values -> Piecewise.tryMapExactValues s.Nodes[index-1].Op values)
+                            |> Option.defaultWith (fun () ->
+                                presentationGoals |> List.map (fun goal ->
+                                    Piecewise.evaluateAt x (Piecewise.parseRational goal.X) stage))
                         let known =
                             (presentationGoals,values)
                             ||> List.map2 (fun goal value ->
@@ -1654,6 +1658,7 @@ module Game =
                           Values=values
                           Evaluators=evaluators })
                 previous <- core.Stage
+                previousValues <- Some core.Values
                 core)
         let stages = stageCores |> List.map (fun core -> core.Stage)
         let sampleXs = piecewiseSampleXs presentationGoals stages sourceEndpoints[s.Source-1]

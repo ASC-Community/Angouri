@@ -105,6 +105,10 @@ export function sizeFlightAnnotations(root:HTMLElement) {
   if(callouts) {
     // Whole coordinates occupy reserved rows outside the curve. These leaders
     // are laid out only on render/resize, never during validation or playback.
+    // Read every placed formula before moving any of them. Interleaving these
+    // reads with each label's writes forces one layout per dense target.
+    const formulaBounds=new Map(rows.flatMap(row=>row.entries.map(({label})=>
+      [label,label.querySelector('.katex-html')!.getBoundingClientRect()] as const)));
     const leaders:string[]=[],offset={top:8,bottom:box.height-parseFloat(root.style.getPropertyValue('--callout-bottom'))+8};
     for(const {entries,side} of rows) {
       const height=Math.max(...entries.map(entry=>entry.height));
@@ -119,7 +123,7 @@ export function sizeFlightAnnotations(root:HTMLElement) {
       let edge=box.width-12;
       for(const point of [...placed].reverse()){point.x=Math.min(point.x,edge-point.entry.width/2);edge=point.x-point.entry.width/2-18;}
       for(const {entry,x} of placed) {
-        const parent=entry.label.parentElement!,rect=entry.label.querySelector('.katex-html')!.getBoundingClientRect();
+        const parent=entry.label.parentElement!,rect=formulaBounds.get(entry.label)!;
         const y=offset[side]+height/2;
         entry.label.style.left=`${parseFloat(entry.label.style.left)+box.left+x-(rect.left+rect.width/2)}px`;
         entry.label.style.top=`${parseFloat(entry.label.style.top)+box.top+y-(rect.top+rect.height/2)}px`;

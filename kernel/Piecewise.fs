@@ -54,6 +54,8 @@ module internal Piecewise =
     let private derivativeOrder = Queue<string>()
     let private exactEqualityCache = Dictionary<string,bool>()
     let private exactEqualityOrder = Queue<string>()
+    let private pointwiseValueCache = Dictionary<string,Entity>()
+    let private pointwiseValueOrder = Queue<string>()
 
     let private boundedExpressionCached (cache: Dictionary<string,'value>) (order: Queue<string>) key create =
         match lock expressionCacheGate (fun () ->
@@ -703,22 +705,36 @@ module internal Piecewise =
             Error "This authored outline contains nested rounding that cannot be partitioned exactly yet."
         | _ -> Ok (create expression endpoint)
 
-    let apply (x: Entity.Variable) maxSegments op fn =
-        let half = MathS.FromString("2")
-        let oneEntity = MathS.FromString("1")
+    // The same pointwise operation builds a stage and advances its exact
+    // checkpoint readings. Reusing a preceding reading avoids substituting
+    // through (and simplifying) every earlier sine again after a lift or scale.
+    let private pointwiseOperation op =
         match op with
-        | "H" -> Ok (mapExpressions (fun expression -> (expression/half).InnerSimplified) fn)
-        | "A" -> Ok (mapExpressions (fun expression -> (expression+oneEntity).InnerSimplified) fn)
-        | "N" -> Ok (mapExpressions (fun expression -> -expression) fn)
-        | "Q" -> Ok (mapExpressions (fun expression -> expression.Pow(half).InnerSimplified) fn)
+        | "H" -> Some (fun (expression: Entity) -> (expression/twoEntity).InnerSimplified)
+        | "A" -> Some (fun expression -> (expression+exactOneEntity).InnerSimplified)
+        | "N" -> Some (fun expression -> -expression)
+        | "Q" -> Some (fun expression -> expression.Pow(twoEntity).InnerSimplified)
         | "S" ->
-            let template = MathS.FromString("sin(pi*x/2)")
-            Ok (mapExpressions (fun expression -> template.Substitute(x,expression)) fn)
-        | "F" -> roundFunction x maxSegments floorRational true fn
-        | "C" -> roundFunction x maxSegments ceilRational false fn
-        | "D" -> differentiateFunction x fn
-        | "I" -> integrateFunction x fn
-        | _ -> Error "Unknown operation."
+            Some (fun expression -> MathS.Sin(piEntity*expression/twoEntity))
+        | _ -> None
+
+    let tryMapExactValues op (values: Entity list) =
+        pointwiseOperation op |> Option.map (fun transform ->
+            values |> List.map (fun value ->
+                let key = op+"\u001f"+value.ToString()
+                boundedExpressionCached pointwiseValueCache pointwiseValueOrder key (fun () ->
+                    (transform value).InnerSimplified)))
+
+    let apply (x: Entity.Variable) maxSegments op fn =
+        match pointwiseOperation op with
+        | Some transform -> Ok (mapExpressions transform fn)
+        | None ->
+            match op with
+            | "F" -> roundFunction x maxSegments floorRational true fn
+            | "C" -> roundFunction x maxSegments ceilRational false fn
+            | "D" -> differentiateFunction x fn
+            | "I" -> integrateFunction x fn
+            | _ -> Error "Unknown operation."
 
     let rightSlopeAt (x: Entity.Variable) point fn =
         let rightSegment =

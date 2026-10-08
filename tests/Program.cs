@@ -3051,6 +3051,27 @@ static class ContractTests
 
     private static void PiecewisePresentationContract()
     {
+        var fittedWave = PlayExtendedPuzzle(54, "SQHA")["result"]!.AsObject();
+        Equal("1,5/4,3/2,5/4,1,3/2,1", string.Join(',', fittedWave["checkpoints"]!.AsArray()
+                .Select(point => point!["actual"]!.GetValue<string>())),
+            "8.7 keeps exact fractional shoulders after squaring, scaling and lifting sine");
+        Equal(true, fittedWave["solved"]!.GetValue<bool>(), "8.7 fitted output still solves exactly");
+        var shiftedWave = PlayExtendedPuzzle(54, "ASQH")["result"]!.AsObject();
+        Equal("1/2,1/4,0,1/4,1/2,0,1/2", string.Join(',', shiftedWave["checkpoints"]!.AsArray()
+                .Select(point => point!["actual"]!.GetValue<string>())),
+            "reusing sine readings respects a changed input phase");
+        Equal(false, shiftedWave["solved"]!.GetValue<bool>(), "a changed input cannot inherit a solved output");
+        foreach (var (recipe, expected) in new[] {
+            ("QDHSQA", "1,2,1,2,1"),
+            ("FIHANQ", "1,1,9/4,25/4,16"),
+            ("CIHANQ", "1,9/4,25/4,16,36")
+        })
+        {
+            var readings = ImportCreation(50, recipe.Select(op=>op.ToString()).ToArray())["result"]!["checkpoints"]!.AsArray();
+            Equal(expected, string.Join(',', readings.Select(point=>point!["actual"]!.GetValue<string>())),
+                $"{recipe} advances exact pointwise readings after the full calculus or rounding stage");
+        }
+
         var floor = PlayExtendedPuzzle(56, "F")["result"]!.AsObject();
         var floorPaths = floor["paths"]!.AsArray();
         Equal(5, floorPaths.Count, "floor has four half-open steps and its closed endpoint value");

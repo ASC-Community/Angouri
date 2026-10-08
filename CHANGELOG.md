@@ -4,6 +4,7 @@
 
 The first playable Angouri cucumber puzzle.
 
+- Block placements keep a scrolled page in place, including Safari's dense 8.7 layout. Recipe reveals scroll horizontally, dense labels avoid repeated layout work, and later blocks reuse exact sine readings to reduce edit delays.
 - Short arrangement lessons throughout the chapters explain the accepted experiment directly, including order and station-side effects, instead of offering redundant Hints. Feedback follows selection, insertion, movement and history; larger planning puzzles retain Hints.
 
 - Dense Flight plots reserve their complete diagram above or beside the recipe, with explicit SVG heights and refreshed label projection through Safari reflow; this addresses the reported clipping on 8.7 and 8.8.

@@ -6,6 +6,7 @@ import { renderBrand } from './brand';
 import { Kernel } from './engine';
 import { icon } from './icons';
 import { adjacentSlot, insertedSlots, movedSlots, normalizeSlots, type RailSlots } from './rail';
+import { preservePageScroll, revealRailCell } from './scroll';
 import { installTabStops, navigateTablist, rememberFocus, restoreFocus } from './keyboard';
 import { circleEdited, circleEquation, circleFlow, circleInput, circleRecipe, chooseCircleInspection, decorateCircleFlight, installCircleHandles, resetCircleInspection, sizeCircleControls, updateCircleProbe } from './circle';
 import { ShapeNotes, chapterArt } from './notes';
@@ -255,7 +256,7 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
   if(added&&!newSource) {
     if(state.mode==='remix'&&!reduced)document.querySelector(`[data-op="${added.op}"]`)?.closest('.ingredient-stack')?.classList.add('refilling');
     const index=railSlots.indexOf(added.id),reveal=state.mode==='remix'&&index===railSlots.length-2?index+1:index;
-    document.querySelector<HTMLElement>(`[data-cell="${reveal}"]`)?.scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'});
+    revealRailCell(document.querySelector<HTMLElement>(`[data-cell="${reveal}"]`));
     const scrollDelta=($('construction').querySelector('.pipeline')?.scrollLeft||0)-previousScroll;
     if(scrollDelta)previousRects.forEach((r,id)=>previousRects.set(id,new DOMRect(r.x-scrollDelta,r.y,r.width,r.height)));
   }
@@ -325,8 +326,12 @@ function recipe() {
   $('construction').querySelector('.pipeline')!.scrollLeft=previousScroll;
   $('construction').querySelectorAll<HTMLElement>('.rail-slots').forEach((zone,i)=>zone.scrollLeft=zoneScrolls[i]||0);
 }
+let levelMenuKey='';
 function renderLevels() {
   if(!state)return;
+  const key=`${state.mode}:${state.sourceId}:${[...completed].join(',')}`;
+  if(key===levelMenuKey)return;
+  levelMenuKey=key;
   const option=(id:number)=>{
     const level=LEVELS[id-1],current=state!.mode==='puzzle'&&state!.sourceId===id;
     const challenge=isMastery(id)?id===PUZZLE_ORDER.at(-1)?'Final mastery':'Mastery challenge':isPicture(id)?'Picture piece':isCapstone(id)?'Chapter challenge':'';
@@ -381,6 +386,9 @@ function updatePrimary() {
   showNotice();
 }
 function render() {
+  preservePageScroll(renderGame);
+}
+function renderGame() {
   if(!state||!result)return;
   // Read before replacing the tray. WebKit can clamp the old Flow scroller
   // during that temporary layout, before its own replacement is rendered.
@@ -653,7 +661,7 @@ function showEnding() {
 }
 function focusPart(id:string) {
   const part=document.querySelector<HTMLElement>(`.part-body[data-stage="${CSS.escape(id)}"]`);
-  part?.focus({preventScroll:true});part?.scrollIntoView({block:'nearest',inline:'nearest'});
+  part?.focus({preventScroll:true});revealRailCell(part);
 }
 function moveCell(from:number,to:number) {
   if(!state)return;
@@ -904,7 +912,7 @@ function finishPointer(event?:PointerEvent,cancel=false){
         const target=accepted?document.querySelector<HTMLElement>(returning?`[data-op="${op}"]`:'cell' in transfer?`[data-empty="${transfer.cell}"]`:`[data-part="${transfer.id}"]`):undefined;
         if(target){
           target.classList.remove('just-placed');target.getAnimations().forEach(animation=>animation.cancel());
-          target.scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'});
+          revealRailCell(target);
           if(returning)$('move-announcement').textContent=`${OPS[op!].name} returned to its stack.`;
         }
         settleGhost(floating,target?.getBoundingClientRect()||origin,!!target,target||undefined);
