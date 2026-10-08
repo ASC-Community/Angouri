@@ -27,11 +27,11 @@ const SAVE = 'angouri:vine:v1:progress', PREF = 'angouri:vine:v1:preferences', S
 const views: View[] = ['flight','function','flow'];
 const clone = <T>(value: T): T => structuredClone(value);
 let storageAvailable = true;
-function read(key: string): unknown {
+function read(key: string,maxLength=65536): unknown {
   let s: string | null;
   try { s = localStorage.getItem(key); }
   catch { storageAvailable=false; return undefined; }
-  try {return s && s.length<=65536 ? JSON.parse(s) : undefined;}catch{return undefined;}
+  try {return s && s.length<=maxLength ? JSON.parse(s) : undefined;}catch{return undefined;}
 }
 function write(key: string, value: unknown) {
   let saved=true;
@@ -79,8 +79,18 @@ function cancelCurveChange(settle=false) {
   if(settle&&state&&result&&displayedView()==='flight'){paintTrajectory(result.points);animatePosition();}
 }
 interface Seed { name: string; artifact: Artifact; snapshot?:Snapshot; view?:View; savedAt?:string }
-const storedSeeds = read(SEEDS);
-let seeds: Seed[] = Array.isArray(storedSeeds) ? storedSeeds.slice(0,12).filter((s):s is Seed=>!!s&&typeof s.name==='string'&&s.name.length<=60&&s.artifact?.type==='creation') : [];
+interface DeletedSeed extends Seed { deletedAt:string; deletedIndex:number }
+const seedStorageLimit=1024*1024;
+const storedSeeds = read(SEEDS,seedStorageLimit);
+const libraryEntries:(Seed|DeletedSeed)[]=Array.isArray(storedSeeds)?storedSeeds.filter((s):s is Seed=>!!s&&typeof s.name==='string'&&s.name.length<=60&&s.artifact?.type==='creation'):[];
+const isDeletedSeed=(seed:Seed|DeletedSeed):seed is DeletedSeed=>'deletedAt' in seed&&typeof seed.deletedAt==='string';
+let seeds:Seed[]=libraryEntries.filter(seed=>!isDeletedSeed(seed)).slice(0,12);
+let deletedSeeds:DeletedSeed[]=libraryEntries.filter(isDeletedSeed);
+// One write keeps removal and its recovery copy atomic, retaining old arrays.
+function writeLibrary(next:Seed[],deleted=deletedSeeds) {
+  const entries=[...next,...deleted];
+  return JSON.stringify(entries).length<=seedStorageLimit&&write(SEEDS,entries);
+}
 const kernel = new Kernel((message)=> { notice={text:message,kind:'error'}; showNotice(); });
 const shapeNotes = new ShapeNotes(kernel);
 const garden = new Garden($('garden-content'),kernel,{reduced:()=>reduced,onFinish:()=>$('garden-back').click(),onBuild:(id:number)=>goToPuzzle(id)});
@@ -153,7 +163,10 @@ function showNotice() {
   $('feedback').classList.toggle('discovery-feedback',!!finding);
   const content=finding||`${notice.kind==='error'?'':icon('hand',16)}<span>${escape(notice.text)}</span>`;
   if(content!==feedbackContent){$('feedback').innerHTML=content;feedbackContent=content;}
-  $('feedback').hidden=!(finding||notice.text)||(throwWon&&notice.kind!=='error');
+  const hints=!!state&&state.mode==='puzzle'&&!introActive()&&!isDiscovery(state)&&!throwWon;
+  $('hints-open').hidden=!hints;
+  $('feedback').hidden=!(finding||notice.text)||(throwWon&&notice.kind!=='error')||(hints&&notice.text==='Tap or drag a block.'&&notice.kind!=='error');
+  $('recipe-guidance').hidden=$('feedback').hidden&&!hints;
 }
 function error(message: string) { notice={text:message,kind:'error'}; showNotice(); }
 function serial<T>(work: ()=>Promise<T>,retainCirclePreview=false): Promise<T | undefined> {
@@ -428,7 +441,6 @@ function renderGame() {
   $<HTMLButtonElement>('ideas-open').disabled=false;
   if(result.solved)hintCue=false;
   $<HTMLButtonElement>('hints-open').disabled=false;
-  $('hints-open').hidden=state.mode!=='puzzle'||isDiscovery(state);
   $('hints-open').classList.toggle('hint-cue',hintCue);
   // Compare the displayed projection, not just the stored bounds: equal-scale
   // circles can have different bounds yet put every point in the same place.
@@ -1048,24 +1060,28 @@ $('download-save').onclick=()=>{if(state)download({schema:1,type:'save',state,sl
 let renamingSeed:number|undefined;
 function renderSeeds(){
   const dateFormat=new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeStyle:'short'});
-  $('favorites-list').innerHTML=seeds.length?seeds.map((s,i)=>{
+  const metadata=(s:Seed)=>{
     const saved=s.snapshot?.state,chapter=saved?chapterIndex(saved.sourceId):-1;
     const context=saved?.mode==='puzzle'?chapter<0?'Puzzle':`Puzzle ${puzzleLabel(saved.sourceId)}`:saved?.mode==='challenge'?'Shared challenge':'Create';
     const date=typeof s.savedAt==='string'?new Date(s.savedAt):undefined;
     const when=date&&Number.isFinite(date.getTime())?`<time datetime="${date.toISOString()}">${escape(dateFormat.format(date))}</time>`:'<span>Date unavailable</span>';
-    const meta=`<span class="favorite-meta"><span class="favorite-context">${context}</span><span aria-hidden="true">·</span>${when}</span>`;
+    return `<span class="favorite-meta"><span class="favorite-context">${context}</span><span aria-hidden="true">·</span>${when}</span>`;
+  };
+  $('favorites-list').innerHTML=seeds.length?seeds.map((s,i)=>{
+    const meta=metadata(s);
     if(renamingSeed===i)return `<form class="favorite-row favorite-edit" data-rename-form="${i}"><div class="favorite-info"><label for="rename-seed">Recipe name</label><input id="rename-seed" type="text" maxlength="60" required value="${escape(s.name)}" aria-describedby="rename-error">${meta}</div><div class="favorite-actions"><button type="button" class="button" data-cancel-rename="${i}">Cancel</button><button class="button primary" type="submit">${icon('check',16)} Save name</button></div><p id="rename-error" class="reset-progress-error" role="alert" hidden></p></form>`;
     return `<div class="favorite-row"><div class="favorite-info"><span class="favorite-name">${escape(s.name)}</span>${meta}</div><div class="favorite-actions"><button class="button" data-seed="${i}" aria-label="Open ${escape(s.name)}">${icon('folder',16)} Open</button><button class="icon-button" data-rename-seed="${i}" aria-label="Rename ${escape(s.name)}" title="Rename">${icon('rename',16)}</button><button class="icon-button" data-delete-seed="${i}" aria-label="Delete ${escape(s.name)}" title="Delete">${icon('trash',16)}</button></div></div>`;
-  }).join(''):`<div class="empty-library">${icon('folder',32)}<p>Your saved recipes appear here.</p></div>`;
+  }).join(''):deletedSeeds.length?'':`<div class="empty-library">${icon('folder',32)}<p>Your saved recipes appear here.</p></div>`;
+  if(deletedSeeds.length)$('favorites-list').insertAdjacentHTML('beforeend',`<section class="deleted-seeds" aria-labelledby="deleted-seeds-title"><h3 id="deleted-seeds-title">Recently deleted</h3>${deletedSeeds.map((seed,i)=>`<div class="deleted-seed-row"><div class="favorite-info"><span class="deleted-seed-name">${escape(seed.name)}</span>${metadata(seed)}</div><button class="button" data-restore-seed="${i}" aria-label="Undo deletion of ${escape(seed.name)}">${icon('undo',16)} Undo</button></div>`).join('')}</section>`);
 }
 $('library-open').onclick=()=>{renamingSeed=undefined;$('library-error').hidden=true;renderSeeds();open('library-dialog');};
 function saveRecipe(name:string) {
   return serial(async()=>{
     if(!state)return;
-    if(seeds.length>=12)throw new Error('Your library is full. Delete a saved recipe to make room. Open and export it first if you want a copy.');
+    if(seeds.length>=12)throw new Error('Your library is full. Delete a saved recipe to make room. Its Undo stays available in Save & open.');
     const reply=await kernel.run(state,{type:'export',kind:'creation',view});requireOk(reply);
     const next=[...seeds,{name:name.trim().slice(0,60)||'My next great throw',artifact:reply.artifact!,snapshot:{state:clone(state),slots:[...railSlots]},view,savedAt:new Date().toISOString()}];
-    if(!write(SEEDS,next))throw new Error('Could not save on this device. Keep this recipe open and export progress from Save & open.');
+    if(!writeLibrary(next))throw new Error('Could not save on this device. Keep this recipe open and export progress from Save & open.');
     seeds=next;notice={text:'',kind:''};showNotice();renderSeeds();return true;
   });
 }
@@ -1090,6 +1106,12 @@ function finishRename(index:number) {
   renamingSeed=undefined;renderSeeds();
   $('favorites-list').querySelector<HTMLButtonElement>(`[data-rename-seed="${index}"]`)?.focus({preventScroll:true});
 }
+function libraryRowError(button:HTMLElement,text:string) {
+  const row=button.closest('.favorite-row,.deleted-seed-row')!;
+  let message=row.querySelector<HTMLElement>('.favorite-error');
+  if(!message){message=document.createElement('p');message.className='favorite-error reset-progress-error';message.setAttribute('role','alert');row.append(message);}
+  message.textContent=text;
+}
 $('favorites-list').onclick=event=>{
   const b=(event.target as Element).closest<HTMLElement>('button');if(!b)return;
   if(b.dataset.renameSeed!==undefined){
@@ -1099,13 +1121,25 @@ $('favorites-list').onclick=event=>{
   if(b.dataset.cancelRename!==undefined)finishRename(Number(b.dataset.cancelRename));
   if(b.dataset.deleteSeed!==undefined){
     const index=Number(b.dataset.deleteSeed),next=seeds.filter((_,i)=>i!==index);
-    if(write(SEEDS,next)){seeds=next;renamingSeed=undefined;$('library-error').hidden=true;notice={text:'',kind:''};showNotice();renderSeeds();($('favorites-list').querySelector<HTMLButtonElement>(`[data-seed="${Math.min(index,seeds.length-1)}"]`)||$('seed-name')).focus({preventScroll:true});}
-    else {
-      const row=b.closest('.favorite-row')!;
-      let message=row.querySelector<HTMLElement>('.favorite-error');
-      if(!message){message=document.createElement('p');message.className='favorite-error reset-progress-error';message.setAttribute('role','alert');row.append(message);}
-      message.textContent='Could not delete on this device. Your saved recipe is still here.';
+    const removed={...seeds[index],deletedAt:new Date().toISOString(),deletedIndex:index},deleted=[removed,...deletedSeeds];
+    if(writeLibrary(next,deleted)){
+      seeds=next;deletedSeeds=deleted;renamingSeed=undefined;$('library-error').hidden=true;notice={text:'',kind:''};showNotice();renderSeeds();
+      $('favorites-list').querySelector<HTMLButtonElement>('[data-restore-seed="0"]')!.focus();
+      $('library-status').textContent=`${removed.name} deleted. Undo stays available in Recently deleted.`;
     }
+    else libraryRowError(b,'Could not delete on this device. Your saved recipe is still here.');
+  }
+  if(b.dataset.restoreSeed!==undefined){
+    if(seeds.length>=12){libraryRowError(b,'Your library is full. Delete another saved recipe, then retry Undo.');return;}
+    const index=Number(b.dataset.restoreSeed),{deletedAt,deletedIndex,...seed}=deletedSeeds[index];
+    const position=Number.isInteger(deletedIndex)?Math.max(0,Math.min(deletedIndex,seeds.length)):seeds.length;
+    const next=[...seeds.slice(0,position),seed,...seeds.slice(position)],deleted=deletedSeeds.filter((_,i)=>i!==index);
+    if(writeLibrary(next,deleted)){
+      seeds=next;deletedSeeds=deleted;renamingSeed=undefined;$('library-error').hidden=true;notice={text:'',kind:''};showNotice();renderSeeds();
+      $('favorites-list').querySelector<HTMLButtonElement>(`[data-seed="${position}"]`)!.focus();
+      $('library-status').textContent=`${seed.name} restored.`;
+    }
+    else libraryRowError(b,'Could not restore on this device. Your recipe is still available here; try Undo again.');
   }
   if(b.dataset.seed!==undefined){const seed=seeds[Number(b.dataset.seed)];changeWorkspace(()=>openSeed(seed).then(ok=>{if(ok)closeDialogs();}),seed.name);}
 };
@@ -1116,7 +1150,7 @@ $('favorites-list').addEventListener('submit',event=>{
   const fail=(message:string)=>{$('rename-error').textContent=message;$('rename-error').hidden=false;input.focus({preventScroll:true});};
   if(!name){fail('Enter a recipe name.');return;}
   const next=seeds.map((seed,i)=>i===index?{...seed,name}:seed);
-  if(!write(SEEDS,next)){fail('Could not save the name on this device. Try again.');return;}
+  if(!writeLibrary(next)){fail('Could not save the name on this device. Try again.');return;}
   seeds=next;finishRename(index);$('move-announcement').textContent=`Recipe renamed to ${name}.`;
 });
 $('favorites-list').addEventListener('keydown',event=>{

@@ -130,8 +130,21 @@ test('circle reward traverses by phase, shares all views, and restores the Flow 
 test('circle Flow reveals components and a selectable chord without changing the construction',async({page})=>{
   await ready(page,46,'flow');const before=await snapshot(page),history=await page.evaluate(()=>window.angouri.history);
   await expect(page.locator('.distance-components')).toBeVisible();await expect(page.locator('.circle-chord,.circle-bisector')).toHaveCount(2);
+  await expect(page.locator('.circle-target-name')).toHaveText(['Target 1','Target 2','Target 3']);
+  await expect(page.locator('#circle-pair option')).toHaveText(['Targets 1 and 2','Targets 2 and 3','Targets 3 and 1']);
+  await expect(page.locator('#circle-pair-explanation')).toContainText('Any centre equally far from both');
   const line=await page.locator('.circle-bisector').getAttribute('d');await page.locator('#circle-pair').selectOption('1');await expect(page.locator('#circle-pair')).toBeFocused();expect(await page.locator('.circle-bisector').getAttribute('d')).not.toBe(line);
+  const selected=await page.locator('.circle-pair-points annotation').allTextContents();
+  expect(selected).toEqual(await page.locator('[data-circle-target="1"] annotation,[data-circle-target="2"] annotation').allTextContents());
   await page.locator('[data-circle-target="2"]').click();await expect(page.locator('[data-circle-target="2"]')).toBeFocused();await expect(page.locator('[data-circle-target="2"]')).toHaveAttribute('aria-pressed','true');
+  for(const viewport of [{width:1146,height:850},{width:320,height:568},{width:844,height:390}]){
+    await page.setViewportSize(viewport);
+    const bounds=await page.locator('.circle-flow-controls').evaluate(controls=>{
+      const r=controls.getBoundingClientRect();
+      return {clipped:[...controls.querySelectorAll('[data-circle-target]')].some(button=>{const b=button.getBoundingClientRect();return b.left<r.left||b.right>r.right||button.scrollWidth>button.clientWidth+1;}),overflow:document.documentElement.scrollWidth-innerWidth};
+    });
+    expect(bounds).toEqual({clipped:false,overflow:0});
+  }
   expect(await snapshot(page)).toEqual(before);expect(await page.evaluate(()=>window.angouri.history)).toEqual(history);
   await page.locator('#tab-function').click();await expect(page.locator('.gap-comparison')).toHaveCount(0);await expect(page.locator('.value-table')).toContainText('Distance');
 });

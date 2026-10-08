@@ -11,7 +11,7 @@ export const move=(op:Op)=>`<span class="note-operation ${OPS[op].color}" aria-l
 export const viewButton=(view:'function'|'flow')=>{const label=view==='function'?'Equation':'Flow';return `<button class="note-view-button" data-view="${view}" aria-label="Open ${label} view">${icon(view,16)}<span>${label}</span></button>`;};
 export const recall=(sources:number[],title:string,body:string)=>`<section class="note-recall" data-recall-sources="${sources.join(',')}"><h4 class="note-recall-heading"><span class="note-lesson-numbers">${sources.map(puzzleLabel).join(', ')}</span><span>${title}</span></h4>${body}</section>`;
 
-type NoteChoice={label:string;stage:Stage;before?:Stage};
+type NoteChoice={label:string;stage:Stage;before?:Stage;description?:string};
 // KaTeX stays in HTML: WebKit can misplace its descendants in foreignObject.
 const notePlot=(label:string,zero:number,contents:string)=>`<div class="note-plot-frame"><svg class="note-plot" viewBox="0 0 176 116" role="img" aria-label="${escape(label)}"><path d="M17 10V103" class="note-axis"/><path d="M17 ${zero}H163" class="note-zero-line" data-zero-line/>${contents}</svg><span class="note-zero" style="top:${zero/116*100}%" aria-hidden="true">${tex('0')}</span></div>`;
 const stagePoints=(stage:Stage)=>stage.paths?.flatMap(path=>path.points)??stage.points;
@@ -78,8 +78,8 @@ export function compare(title:string,choices:NoteChoice[],readings:{index:number
     <div class="note-choices" role="group" aria-label="${escape(title)}">${choices.map((choice,i)=>`<button type="button" data-note-choice="${i}" aria-pressed="${i===0}">${escape(choice.label)}</button>`).join('')}</div>
     <div class="note-comparison-panels" aria-live="polite" aria-atomic="true">${choices.map((choice,i)=>`<figure data-note-panel="${i}" ${i?'hidden':''}>
       ${notePlot(choice.label+': '+choice.stage.expression,zero,`${choice.before?drawStage(choice.before,xy,'note-previous'):''}${drawStage(choice.stage,xy,'note-curve')}${segmentedStage(choice.stage)?'':choice.stage.points.filter((_,j)=>j===0||j===Math.floor(choice.stage.points.length/2)||j===choice.stage.points.length-1).map(point=>{const [x,y]=xy(point);return `<circle cx="${x}" cy="${y}" r="2.8" class="note-point"/>`;}).join('')}`)}
-      <figcaption><div class="note-formula">${tex(choice.stage.latex)}</div>${readings.map(({index,x})=>`<div class="note-reading">${tex(`${heightAtFormula(x)}=${rationalTex(choice.stage.values[index])}`)}</div>`).join('')}</figcaption>
-    </figure>`).join('')}</div>${choices.some(choice=>choice.before)?`<small class="note-comparison-key"><i></i>${legend[0]} <i></i>${legend[1]}</small>`:''}</section>`;
+      <figcaption>${choice.before?`<div class="note-expression previous"><span class="note-expression-label"><i aria-hidden="true"></i>${escape(legend[0])}</span><div class="note-formula">${tex(choice.before.latex)}</div></div>`:''}<div class="note-expression"><span class="note-expression-label"><i aria-hidden="true"></i>${escape(choice.before?legend[1]:choice.label)}</span><div class="note-formula">${tex(choice.stage.latex)}</div></div>${readings.map(({index,x})=>`<div class="note-reading">${tex(`${heightAtFormula(x)}=${rationalTex(choice.stage.values[index])}`)}</div>`).join('')}${choice.description?`<p class="note-observation">${choice.description}</p>`:''}</figcaption>
+    </figure>`).join('')}</div></section>`;
 }
 
 export function strip(stages:Stage[],captions:string[],links:string[],connection=false,goals:Checkpoint[]=[]) {

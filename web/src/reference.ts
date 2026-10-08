@@ -33,19 +33,19 @@ async function heightReference(known:Set<number>,examples:ReferenceExamples) {
     examples.example(50,'A'),examples.example(50,'AH'),examples.example(50,'HA'),examples.example(50,'AHH')
   ]);
   const scaling='<p>Halving divides every height by two and keeps every zero fixed.</p>'+strip([base.stages[0],half.stages.at(-1)!],['Input height','Halved height'],[move('H')])+tag(1);
-  const lifting='<p>Adding one raises every height equally. Differences between two heights stay unchanged. Here '+tex('u')+' and '+tex('v')+' are the incoming heights at two fixed positions.</p>'+strip([base.stages[0],lift.stages.at(-1)!],['Input height','Raised height'],[move('A')])+`<p>${tex('(v+1)-(u+1)=v-u')}</p>`+tag(2);
+  const lifting='<p>Adding one raises every height equally. Differences between two heights stay unchanged. Here '+tex('u')+' and '+tex('v')+' are the incoming heights at two fixed positions.</p>'+strip([base.stages[0],lift.stages.at(-1)!],['Input height','Raised height'],[move('A')])+`<p>The added units cancel in the height difference: ${tex('(v+1)-(u+1)=v-u')}.</p>`+tag(2);
   const ordering='<p>Operations are read from left to right. A later halve also halves every earlier lift. Here '+tex('u')+' is the incoming height at one position.</p>'+compare('Same blocks. Different results.',[
     {label:'Lift, then halve',stage:liftHalf.stages.at(-1)!,before:base.stages[0]},
     {label:'Halve, then lift',stage:halfLift.stages.at(-1)!,before:base.stages[0]}
-  ])+`<p>${tex('\\frac{u+1}{2}')} ${tex('\\ne')} ${tex('\\frac u2+1')}</p>`+(known.has(25)?'':`<p>${viewButton('function')} compares the resulting heights at the same positions.</p>`)+tag(3);
-  const pieces='<p>A lift contributes less when more halves follow it. The rule is algebraic and applies to any input curve.</p>'+compare('How much of the lift remains?',[
+  ])+`<p>The two orders give ${tex('\\frac{u+1}{2}')} and ${tex('\\frac u2+1')}: the first adds half a unit, the second a whole unit.</p>`+(known.has(25)?'':`<p>${viewButton('function')} compares the resulting heights at the same positions.</p>`)+tag(3);
+  const pieces='<p>A lift contributes less when more halves follow it.</p>'+compare('How much of the lift remains?',[
     {label:'One later halve',stage:liftHalf.stages.at(-1)!,before:half.stages.at(-1)!},
     {label:'Two later halves',stage:quarterLift.stages.at(-1)!,before:doubleHalf.stages.at(-1)!}
-  ])+`<p>${tex('\\frac{u+1}{2}-\\frac u2=\\frac12')} ${tex('\\qquad')} ${tex('\\frac{u+1}{4}-\\frac u4=\\frac14')}</p>`+(known.has(25)?'':`<p>${viewButton('flow')} tracks how a lift changes through later operations.</p>`)+tag(24);
+  ])+`<p>For incoming height ${tex('u')}, one later halve leaves ${tex('\\frac{u+1}{2}-\\frac u2=\\frac12')} of the lift; two leave ${tex('\\frac{u+1}{4}-\\frac u4=\\frac14')}.</p>`+(known.has(25)?'':`<p>Use ${viewButton('flow')} to trace the lift through later blocks, or ${viewButton('function')} to compare the final heights.</p>`)+tag(24);
   const measurements='<p>A lift changes vertical placement but preserves every height difference. A halve scales every height and height difference.</p>'+compare('Vertical shift or scale change?',[
     {label:'Raised',stage:lift.stages.at(-1)!,before:base.stages[0]},
     {label:'Halved',stage:half.stages.at(-1)!,before:base.stages[0]}
-  ])+`<p>${tex('(v+1)-(u+1)=v-u')} ${tex('\\qquad')} ${tex('\\frac v2-\\frac u2=\\frac{v-u}{2}')}</p><p>For example, ${tex(`${heightAtFormula('1')}-${heightAtFormula('0')}`)} compares two positions, while ${tex(rationalTex('1/2'))} is an exact scale factor.</p><p>${viewButton('function')} compares exact heights and their signed difference. ${viewButton('flow')} follows the same values through each operation.</p>`+tag(25);
+  ])+`<p>For heights ${tex('u')} and ${tex('v')} at two fixed positions, a lift cancels from their difference: ${tex('(v+1)-(u+1)=v-u')}. A halve also halves it: ${tex('\\frac v2-\\frac u2=\\frac{v-u}{2}')}.</p><p>${viewButton('function')} compares exact heights and their signed difference. ${viewButton('flow')} follows the same values through each operation.</p>`+tag(25);
   if(known.has(25))return current('Vertical placement and height difference are separate.',measurements)+recall([24],'Fractional lift contributions',pieces)+recall([3],'Why order matters',ordering)+recall([1,2],'Scale and lift',scaling+lifting);
   if(known.has(24))return current('A lift can contribute a fraction.',pieces)+recall([3],'Why order matters',ordering)+recall([1,2],'Scale and lift',scaling+lifting);
   if(known.has(3))return current('Order changes the result.',ordering)+recall([2],'Uniform lifting',lifting)+recall([1],'Uniform scaling',scaling);
@@ -58,22 +58,24 @@ async function reflectionReference(known:Set<number>,examples:ReferenceExamples)
     examples.example(50,''),examples.example(50,'N'),examples.example(50,'NA'),
     examples.example(50,'AN'),examples.example(50,'HN')
   ]);
-  const signs='<p>Negation changes every sign and keeps zeros fixed.</p>'+strip([base.stages[0],turned.stages.at(-1)!],['Input height','Negated height'],[move('N')])+`<p>${tex('u\\longmapsto -u')}</p><p>Negation also reverses every signed height difference: ${tex('(-v)-(-u)=-(v-u)')}. ${viewButton('function')} compares that gap at fixed positions.</p>`+tag(6);
-  const orientation='<p>Negation controls orientation. A later lift moves the reflected output without changing its shape.</p>'+compare('Turn or move?',[
-    {label:'Turned',stage:turned.stages.at(-1)!,before:base.stages[0]},
-    {label:'Turned and raised',stage:turnedRaised.stages.at(-1)!,before:turned.stages.at(-1)!}
-  ])+tag(8);
+  const signs='<p>Negation changes every sign and keeps zeros fixed.</p>'+strip([base.stages[0],turned.stages.at(-1)!],['Input height','Negated height'],[move('N')])+`<p>For input heights ${tex('u')} and ${tex('v')}, negating both reverses their signed difference: ${tex('(-v)-(-u)=-(v-u)')}. ${viewButton('function')} compares that gap at fixed positions.</p>`+tag(6);
+  // Halve the supplied bowl so the reference has a different depth from play.
+  const bowl=known.has(8)?await examples.example(8,'HNA'):undefined;
+  const orientation=bowl?'<p>Negate turns a bowl into a roof. Add one then raises every height equally, keeping the roof’s shape.</p>'+compare('Compare the two changes.',[
+    {label:'Negate',stage:bowl.stages[2],before:bowl.stages[1],description:'The heights change sign. The bottom becomes a peak at the same horizontal position.'},
+    {label:'Then Add one',stage:bowl.stages[3],before:bowl.stages[2],description:'Every height rises by one. The peak stays above the same position.'}
+  ])+`<p>To follow these changes in your own recipe, use ${viewButton('flow')} to compare the curve before and after each block.</p>`+tag(8):'';
   const size='<p>Scaling changes distance from the zero line. Negation changes its side. These effects are independent.</p>'+compare('Change size or side?',[
     {label:'Turned',stage:turned.stages.at(-1)!,before:base.stages[0]},
     {label:'Smaller and turned',stage:smallerTurned.stages.at(-1)!,before:base.stages[0]}
-  ])+`<p>${tex('-\\frac u2=\\frac{-u}{2}')}</p>`+tag(9);
+  ])+`<p>For incoming height ${tex('u')}, either order gives the same result: ${tex('-\\frac u2=\\frac{-u}{2}')}.</p>`+tag(9);
   const offset='<p>An existing offset is negated when it enters negation. A lift after negation is not the same operation order.</p>'+compare('Where does the lift act?',[
     {label:'Lift, then negate',stage:raisedTurned.stages.at(-1)!,before:base.stages[0]},
     {label:'Negate, then lift',stage:turnedRaised.stages.at(-1)!,before:base.stages[0]}
-  ])+`<p>${tex('-(u+1)=-u-1')} ${tex('\\ne')} ${tex('-u+1')}</p>`+tag(26);
+  ])+`<p>For incoming height ${tex('u')}, lifting first gives ${tex('-(u+1)=-u-1')}; lifting last gives ${tex('-u+1')}.</p>`+tag(26);
   if(known.has(26))return current('Reflection includes every existing offset.',offset)+recall([9],'Size and orientation',size)+recall([8],'Turning and vertical placement',orientation)+recall([6],'Sign reversal',signs);
   if(known.has(9))return current('Scale and reflection have separate effects.',size)+recall([8],'Turning and vertical placement',orientation)+recall([6],'Sign reversal',signs);
-  if(known.has(8))return current('Turning and vertical placement are separate.',orientation)+recall([6],'Sign reversal',signs);
+  if(known.has(8))return current('Negate turns. Add one lifts.',orientation)+recall([6],'Sign reversal',signs);
   return current('Reflection reverses signs.',signs);
 }
 
@@ -82,11 +84,11 @@ async function squareReference(known:Set<number>,examples:ReferenceExamples) {
     examples.example(4,'A'),examples.example(4,'AQ'),examples.example(4,'AHQ'),examples.example(4,'AQH'),
     examples.example(4,'AQN'),examples.example(4,'AQA'),examples.example(50,'Q'),examples.example(50,'AQ')
   ]);
-  const folding='<p>Squaring makes opposite heights agree and keeps zero fixed.</p>'+strip([shifted.stages.at(-1)!,squared.stages.at(-1)!],['Offset line','Squared height'],[move('Q')])+`<p>${tex('u^2=(-u)^2')}</p>`+tag(7);
+  const folding='<p>Squaring makes opposite heights agree and keeps zero fixed.</p>'+strip([shifted.stages.at(-1)!,squared.stages.at(-1)!],['Offset line','Squared height'],[move('Q')])+`<p>For any incoming height ${tex('u')}, ${tex('u^2=(-u)^2')}: the original sign no longer matters.</p>`+tag(7);
   const order='<p>A scale before squaring is squared too. A scale afterward acts only once.</p>'+compare('Where does the halve act?',[
     {label:'Halve, then square',stage:halfBefore.stages.at(-1)!,before:shifted.stages.at(-1)!},
     {label:'Square, then halve',stage:halfAfter.stages.at(-1)!,before:shifted.stages.at(-1)!}
-  ])+`<p>${tex('\\left(\\frac u2\\right)^2=\\frac{u^2}{4}')} ${tex('\\ne')} ${tex('\\frac{u^2}{2}')}</p>`+tag(10);
+  ])+`<p>For incoming height ${tex('u')}, halving first gives ${tex('\\left(\\frac u2\\right)^2=\\frac{u^2}{4}')}; halving last gives ${tex('\\frac{u^2}{2}')}.</p>`+tag(10);
   const composition='<p>The output of one relationship is the input to the next. Squaring sets a nonnegative shape; output negation or output lifting changes that shape in a different way.</p>'+compare('Same squared input. Different output change.',[
     {label:'Negated square',stage:reflected.stages.at(-1)!,before:squared.stages.at(-1)!},
     {label:'Raised square',stage:raised.stages.at(-1)!,before:squared.stages.at(-1)!}
@@ -118,7 +120,7 @@ async function powerReference(known:Set<number>,examples:ReferenceExamples) {
     {label:'Second power',stage:second.stages.at(-1)!,before:small.stages.at(-1)!},
     {label:'Fourth power',stage:fourth.stages.at(-1)!,before:small.stages.at(-1)!},
     {label:'Sixth power',stage:sixth.stages.at(-1)!,before:sixth.stages.at(-2)!}
-  ])+`<p>${tex('(u^3)^2=u^6')} ${tex('\\qquad')} ${tex('(u^2)^2=u^4')}</p>`+tag(29);
+  ])+`<p>For incoming height ${tex('u')}, squaring a cube gives ${tex('(u^3)^2=u^6')}; squaring a square gives ${tex('(u^2)^2=u^4')}.</p>`+tag(29);
   const reuse='<p>Higher even powers keep the same sign and zeros. Reflection changes orientation without changing those horizontal landmarks.</p>'+compare('Power landmarks survive reflection.',[
     {label:'Sixth power',stage:sixth.stages.at(-1)!,before:sixth.stages.at(-2)!},
     {label:'Reflected sixth power',stage:negatedSixth.stages.at(-1)!,before:sixth.stages.at(-1)!}
@@ -126,7 +128,7 @@ async function powerReference(known:Set<number>,examples:ReferenceExamples) {
   const fitting='<p>Squaring shrinks magnitudes below one and grows magnitudes above one.</p>'+compare('Below one or above one?',[
     {label:'Scaled input',stage:second.stages.at(-1)!,before:small.stages.at(-1)!},
     {label:'Raised input',stage:raisedSquared.stages.at(-1)!,before:raised.stages.at(-1)!}
-  ])+`<p>${tex('0<|u|<1\\Rightarrow u^2<|u|')} ${tex('\\qquad')} ${tex('|u|>1\\Rightarrow u^2>|u|')}</p>`+compare('Repeated squares add higher even powers.',[
+  ])+`<p>Here ${tex('|u|')} is the input’s distance from zero: ${tex('0<|u|<1\\Rightarrow u^2<|u|')}, while ${tex('|u|>1\\Rightarrow u^2>|u|')}.</p>`+compare('Repeated squares add higher even powers.',[
     {label:'Second power',stage:second.stages.at(-1)!,before:small.stages.at(-1)!},
     {label:'Fourth power',stage:fourth.stages.at(-1)!,before:small.stages.at(-1)!},
     {label:'Eighth power',stage:eighth.stages.at(-1)!,before:small.stages.at(-1)!}
@@ -153,7 +155,7 @@ async function slopeReference(known:Set<number>,examples:ReferenceExamples) {
   const sides='<p>A lift before differentiation does not change slope. A lift after differentiation raises the slope output.</p>'+compare('Which side receives the lift?',[
     {label:'Lift input',stage:liftBefore.stages.at(-1)!,before:slope.stages.at(-1)!},
     {label:'Lift output',stage:liftAfter.stages.at(-1)!,before:slope.stages.at(-1)!}
-  ])+`<p>${tex('\\frac{\\mathrm d}{\\mathrm dx}(u+1)=\\frac{\\mathrm du}{\\mathrm dx}')}</p>`;
+  ])+`<p>Writing the incoming height as ${tex('u')}, the input lift disappears: ${tex('\\frac{\\mathrm d}{\\mathrm dx}(u+1)=\\frac{\\mathrm du}{\\mathrm dx}')}.</p>`;
   const turning='<p>A squared line has a changing slope. Its flat point becomes a zero of the derivative.</p>'+strip([bowlSlope.stages.at(-2)!,bowlSlope.stages.at(-1)!],['Squared line','Slope'],[move('D')])+tag(33);
   const moving='<p>Changing the input zero before squaring moves the flat point and therefore moves the derivative’s zero.</p>'+compare('Where is the slope zero?',[
     {label:'Unshifted fold',stage:bowlSlope.stages.at(-1)!,before:bowlSlope.stages.at(-2)!},
@@ -174,7 +176,7 @@ async function areaReference(known:Set<number>,examples:ReferenceExamples) {
     examples.example(50,'HI'),examples.example(50,'IH'),examples.example(4,'HI'),examples.example(4,'HAI'),
     examples.example(4,'QHNAI'),examples.example(50,'ADI')
   ]);
-  const basics='<p>Accumulation adds signed area from zero to the inspected position. Its own output starts at zero. In these formulas, '+tex('u(t)')+' is the incoming height at horizontal position '+tex('t')+'.</p>'+strip([line.stages[0],area.stages.at(-1)!],['Input height','Accumulated area'],[move('I')])+`<p>${tex('\\int_0^x u(t)\\,\\mathrm dt')} ${viewButton('flow')} shows positive and negative contributions.</p>`+tag(37);
+  const basics='<p>Accumulation adds signed area from zero to the inspected position. Its own output starts at zero. In these formulas, '+tex('u(t)')+' is the incoming height at horizontal position '+tex('t')+'.</p>'+strip([line.stages[0],area.stages.at(-1)!],['Input height','Accumulated area'],[move('I')])+`<p>The total is ${tex('\\int_0^x u(t)\\,\\mathrm dt')}. Use ${viewButton('flow')} to see which areas add and which subtract.</p>`+tag(37);
   const turning='<p>Positive input makes the total rise; negative input makes it fall. An input zero is where growth can change direction.</p>'+compare('Move the input zero.',[
     {label:'Original input',stage:crossing.stages.at(-1)!,before:crossing.stages.at(-2)!},
     {label:'Raised input',stage:movedCrossing.stages.at(-1)!,before:movedCrossing.stages.at(-2)!}
@@ -183,12 +185,12 @@ async function areaReference(known:Set<number>,examples:ReferenceExamples) {
   const scale='<p>Halving either side halves the accumulated change because integration is linear.</p>'+compare('Halve input or output?',[
     {label:'Halve input',stage:inputHalf.stages.at(-1)!,before:line.stages[0]},
     {label:'Halve output',stage:outputHalf.stages.at(-1)!,before:line.stages[0]}
-  ])+`<p>${tex('\\int_0^x \\frac{u(t)}2\\,\\mathrm dt=\\frac12\\int_0^x u(t)\\,\\mathrm dt')}</p>`;
+  ])+`<p>For input height ${tex('u(t)')} at position ${tex('t')}, both orders agree: ${tex('\\int_0^x \\frac{u(t)}2\\,\\mathrm dt=\\frac12\\int_0^x u(t)\\,\\mathrm dt')}.</p>`;
   const baseline='<p>A lift after accumulation changes the starting amount. A lift before accumulation changes the rate everywhere.</p>'+compare('Rate change or starting amount?',[
     {label:'Lift input',stage:inputLift.stages.at(-1)!,before:area.stages.at(-1)!},
     {label:'Lift output',stage:outputLift.stages.at(-1)!,before:area.stages.at(-1)!}
   ])+tag(40);
-  const recovery='<p>Differentiation removes a constant offset. Accumulating the derivative rebuilds the change from zero.</p>'+strip(recovered.stages.slice(1),['Raised line','Slope','Recovered change'],[move('D'),move('I')])+`<p>${tex('\\int_0^x \\frac{\\mathrm du}{\\mathrm dt}\\,\\mathrm dt=u(x)-u(0)')}</p>`+tag(41);
+  const recovery='<p>Differentiation removes a constant offset. Accumulating the derivative rebuilds the change from zero.</p>'+strip(recovered.stages.slice(1),['Raised line','Slope','Recovered change'],[move('D'),move('I')])+`<p>If ${tex('u')} is the original height, accumulation recovers its change: ${tex('\\int_0^x \\frac{\\mathrm du}{\\mathrm dt}\\,\\mathrm dt=u(x)-u(0)')}.</p>`+tag(41);
   const roles='<p>Input signs control where the accumulated result rises or falls. Output scaling and lifting control its size and starting height.</p>'+scale+tag(42);
   if(known.has(42))return current('Input shape and output placement are separate.',roles)+recall([41],'Recovering change',recovery)+recall([40],'Scale and starting amount',scale+baseline)+recall([39,38],'Signs and turning',signs+turning)+recall([37],'Anchored accumulation',basics);
   if(known.has(41))return current('Accumulated slope recovers change from zero.',recovery)+recall([40],'Scale and starting amount',scale+baseline)+recall([39,38],'Signs and turning',signs+turning)+recall([37],'Anchored accumulation',basics);
@@ -269,7 +271,7 @@ async function changingPhaseReference(examples:ReferenceExamples) {
 async function waveReference(known:Set<number>,examples:ReferenceExamples) {
   // Hidden future lessons must not delay the reference the player opened.
   const wave=await examples.example(4,'HS');
-  const cycle='<p>Sine reads its input as quarter-turns around a circle.</p>'+strip([wave.stages.at(-2)!,wave.stages.at(-1)!],['Scaled input','Circular height'],[move('S')])+`<p>${tex('S(u)=\\sin\\!\\left(\\frac{\\pi u}{2}\\right)')}</p><p>Inputs ${tex('0,1,2,3,4')} give heights ${tex('0,1,0,-1,0')}.</p>`+tag(50);
+  const cycle='<p>Sine reads its input as quarter-turns around a circle.</p>'+strip([wave.stages.at(-2)!,wave.stages.at(-1)!],['Scaled input','Circular height'],[move('S')])+`<p>For input height ${tex('u')}, the block returns ${tex('S(u)=\\sin\\!\\left(\\frac{\\pi u}{2}\\right)')}. Inputs ${tex('0,1,2,3,4')} give heights ${tex('0,1,0,-1,0')}.</p>`+tag(50);
   if(!known.has(51))return current('Sine turns input height into circular height.',cycle);
   const [phase,baseline]=await Promise.all([examples.example(4,'HAS'),examples.example(4,'HSA')]);
   const phaseLesson='<p>Phase is the input’s position around the circle. Lifting the input shifts the wave sideways. The baseline is the wave’s middle height; lifting the output raises it without moving its peaks sideways. Zero crossings can move or disappear.</p>'+compare('Phase or baseline?',[
@@ -288,7 +290,7 @@ async function waveReference(known:Set<number>,examples:ReferenceExamples) {
     inputOrder='<p>A halve before sine makes the input advance half as far over the same horizontal distance. It also halves any shift that comes before it. Reversing those two input blocks preserves period but places the peaks differently.</p>'+compare('Same period, different phase.',[
       {label:'Shift then scale input',stage:shiftScale.stages.at(-1)!},
       {label:'Scale then shift input',stage:scaleShift.stages.at(-1)!,before:shiftScale.stages.at(-1)!}
-    ])+`<p>${tex('S((u+1)/2)\\ne S(u/2+1)')}</p>`+tag(79);
+    ])+`<p>Writing Sine as ${tex('S')} and the incoming height as ${tex('u')}, the two orders give different waves: ${tex('S((u+1)/2)\\ne S(u/2+1)')}.</p>`+tag(79);
   }
   const movable='<p>A movable sine block still separates two jobs. Read the expression entering sine in '+viewButton('flow')+': it sets where the wave reaches each quarter-turn. Blocks after sine change those output heights. Removing the fixed station changes the editor, not this relationship.</p>'+scaleLesson+tag(81);
   if(!known.has(53)) {
@@ -309,7 +311,7 @@ async function waveReference(known:Set<number>,examples:ReferenceExamples) {
     shoulders='<p>Two curves can agree at every zero and peak yet disagree between them. Squaring preserves zero and one while lowering each height strictly between them. A lift or a halve would move a peak that already fits.</p>'+compare('Same endpoints and peak. Different shoulders.',[
       {label:'Squared wave',stage:rounded.stages.at(-1)!},
       {label:'Squared again',stage:narrowed.stages.at(-1)!,before:rounded.stages.at(-1)!}
-    ],[{index:1,x:'1'}])+`<p>${tex('0<a<1\\quad\\Longrightarrow\\quad a^2<a')}.</p><p>A single missed point is evidence about shape, not a reason to rebuild everything. In ${viewButton('function')}, note which exact heights already agree; use ${viewButton('flow')} to look for a change that preserves them.</p>`+tag(80);
+    ],[{index:1,x:'1'}])+`<p>At an intermediate height ${tex('a')}, ${tex('0<a<1\\quad\\Longrightarrow\\quad a^2<a')}: that is why the shoulder moves while zero and one stay fixed.</p><p>A single missed point is evidence about shape, not a reason to rebuild everything. In ${viewButton('function')}, note which exact heights already agree; use ${viewButton('flow')} to look for a change that preserves them.</p>`+tag(80);
   }
   const changing=known.has(84)?await changingPhaseReference(examples):'';
   if(known.has(55))return current('Input and output changes control different wave features.',roles)+recall([84],'Changing phase changes spacing',changing)+recall([80],'Agreement at peaks is not agreement between them',shoulders)+recall([81],'Place the movable sine',movable)+recall([54],'Amplitude and baseline',range)+recall([53],'Folding lobes',fold)+recall([79],'Input shift and scale order',inputOrder)+recall([52,51],'Period and phase',scaleLesson+phaseLesson)+recall([50],'Quarter-turn projection',cycle);

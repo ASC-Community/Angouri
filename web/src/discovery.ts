@@ -23,8 +23,8 @@ export function isDiscovery(state:State) {
 
 // These describe adjacent stages, never the whole recipe after later blocks.
 const pairFindings:Partial<Record<string,string>>={
-  AH:'The lift is halved too. This pair adds only half as much height as lifting last.',
-  HA:'The lift comes after Halve, so this added unit stays whole at this step.',
+  AH:'The lift is halved too, leaving half the added height of the reverse order.',
+  HA:'The lift comes after Halve, so the added unit stays whole.',
   AN:'Negate reverses the lift too: that added unit now points downward.',
   NA:'Negate turns the shape over; the following lift raises it again.',
   HQ:'Halving before Square quarters the squared result.',
@@ -41,7 +41,8 @@ const pairFindings:Partial<Record<string,string>>={
   FH:'Halving after Floor halves the step heights without moving their thresholds.'
 };
 
-function explicitFinding(state:State,index:number):string|undefined {
+type Finding={text:string;indices:number[]};
+function explicitFinding(state:State,index:number):string|Finding|undefined {
   const ops=state.nodes.map(node=>node.op),op=ops[index],before=ops.slice(0,index),after=ops.slice(index+1);
   // Height's short experiments track the selected lift through every later
   // halve. This is the authored operation identity, not a curve evaluator.
@@ -69,36 +70,37 @@ function explicitFinding(state:State,index:number):string|undefined {
   if(derivative>=0&&op==='Q')return index<derivative
     ?state.sourceId===35?'Squaring makes the roof’s zero-height ends flat too. Find slope reads three flat places as zeros.'
       :'Squaring makes a flat place at the incoming zero. Find slope reads that flat place as zero.'
-    :'Squaring the slopes folds negative values upward. Their zeros stay fixed at this step.';
+    :'Squaring the slopes folds negative values upward. Their zeros stay fixed.';
   if(state.sourceId===41&&op==='A'&&after.join('')==='ID')return 'Accumulate followed by Find slope preserves this input lift.';
 
   // A neighboring pair describes the actual order even on either side of a
   // station (for example Add then Halve in a sine input).
-  const pair=pairFindings[op+(after[0]??'')]??pairFindings[(before.at(-1)??'')+op];
-  if(pair)return `At this pair: ${pair}`;
+  const nextPair=pairFindings[op+(after[0]??'')],previousPair=pairFindings[(before.at(-1)??'')+op];
+  if(nextPair)return {text:nextPair,indices:[index,index+1]};
+  if(previousPair)return {text:previousPair,indices:[index-1,index]};
   const sine=ops.indexOf('S');
   if(sine>=0&&op!=='S') {
     const input=index<sine;
     if(op==='A')return input?'Lifting the input advances the turn and shifts Sine’s wave sideways.'
-      :'At this step, the lift raises the wave’s baseline without changing its repeat distance.';
+      :'The lift raises the wave’s baseline without changing its repeat distance.';
     if(op==='H')return input?'The halved input turns half as far over the same horizontal distance. Sine’s wave spreads out.'
-      :'At this step, Halve shrinks the wave’s height range without changing its repeat distance.';
+      :'Halve shrinks the wave’s height range without changing its repeat distance.';
     if(op==='Q')return input?'A steeper input turns the circle farther over the same distance. The crests crowd closer.'
-      :'Squaring the output folds the lobes upward. Their zero positions stay fixed at this step.';
+      :'Squaring the output folds the lobes upward. Their zero positions stay fixed.';
     if(op==='N')return 'Negating after Sine turns its peaks into troughs and keeps its zeros.';
   }
 
-  if(derivative>=0&&op==='A'&&index>derivative&&!before.includes('I'))return 'Lift the output: the new heights rise at this step.';
+  if(derivative>=0&&op==='A'&&index>derivative&&!before.includes('I'))return 'Lift the output: the new heights rise.';
 
   const integral=ops.indexOf('I');
   if(integral>=0&&op==='A')return index<integral
     ?state.sourceId===38?'Lifting the input moves its zero, and with it the accumulated path’s turning point.'
       :'Lifting the input adds a strip of positive area over the same distance.'
-    :'Lift the output: a new starting height, the same growth at this step.';
+    :'Lift the output: a new starting height, the same growth.';
   if(integral>=0&&op==='H')return 'Halving the input or the accumulated result halves the change from its starting height.';
   if(integral>=0&&op==='N')return index<integral
-    ?'Negating the input reverses which areas add and which subtract at this step.'
-    :'Negating the accumulated result reverses its heights at this step.';
+    ?'Negating the input reverses which areas add and which subtract.'
+    :'Negating the accumulated result reverses its heights.';
   if(op==='S')return 'Sine turns the incoming values around a circle; blocks before it shape the turn, blocks after it shape the heights.';
   return undefined;
 }
@@ -110,7 +112,7 @@ export function discoveryObservation(state:State,result:Result,selected?:string)
   if(!edits.length)return '';
   const current=edits.find(node=>node.id===selected)??edits.at(-1)!;
   const op=current.op;
-  let finding='';
+  let finding:string|Finding='';
   if(state.sourceId===32) {
     const before=state.nodes.indexOf(current)<state.nodes.findIndex(node=>node.id===state.station!.id);
     finding=op==='N'?before?'Negating the input reverses each slope.':'Negating the output reverses its heights.':before?'Lift the input: its slopes stay the same.':'Lift the output: the new heights rise.';
@@ -129,7 +131,7 @@ export function discoveryObservation(state:State,result:Result,selected?:string)
       ?'The tips stay at zero and the peaks keep unit magnitude. Squaring draws the shoulders inward; the two branches form one pointed petal.'
       :state.sourceId===66&&op==='Q'
       ?'The solved heights change from square roots of the roof to positive and negative copies of it. The rounded ends become pointed.'
-      :state.sourceId===69&&edits.every(node=>node.op==='H')&&edits.length===2?`Two halves of ${tex('h^2')} make one half of ${tex('|h|')}.`:effects[op]?`At this step: ${effects[op]}`:'';
+      :state.sourceId===69&&edits.every(node=>node.op==='H')&&edits.length===2?{text:`Two halves of ${tex('h^2')} make one half of ${tex('|h|')}.`,indices:state.nodes.map((_,i)=>i)}:effects[op]??'';
   } else {
     const effects:Record<Op,string>={
       A:'Every height rises equally. The gaps stay the same.',H:'Heights halve. The zeros stay put.',
@@ -141,7 +143,11 @@ export function discoveryObservation(state:State,result:Result,selected?:string)
     finding=state.sourceId===82
       ?op==='H'?'The straight line stays planted at zero while its rise over each horizontal interval is halved.':'The straight line rises without changing its inclination, so it no longer starts at zero.'
       :state.sourceId===80&&op==='Q'?'Zero and one stay fixed. Squaring lowers the heights between them, so matching peaks alone does not determine a curve.'
-      :explicitFinding(state,state.nodes.indexOf(current))??(edits.length>1?`At this step: ${effects[op]}`:effects[op]);
+      :explicitFinding(state,state.nodes.indexOf(current))??effects[op];
   }
-  return finding?`<span class="discovery-operation ${OPS[op].color}" aria-hidden="true">${operationTex(op)}</span><span>${finding}</span>`:'';
+  if(!finding)return '';
+  const {text,indices}=typeof finding==='string'?{text:finding,indices:[state.nodes.indexOf(current)]}:finding;
+  const label=indices.map(index=>`Block ${index+1}: ${OPS[state.nodes[index].op].name}`).join('; then ');
+  const blocks=indices.map(index=>{const operation=state.nodes[index].op;return `<span class="discovery-operation ${OPS[operation].color}" aria-hidden="true">${operationTex(operation)}</span>`;}).join(`<span class="discovery-order" aria-hidden="true">${icon('arrow',12)}</span>`);
+  return `<span class="discovery-operations" role="img" aria-label="${label}" title="${label}">${blocks}</span><span>${text}</span>`;
 }

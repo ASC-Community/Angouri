@@ -67,10 +67,13 @@
 .circle-sample-target.sample { stroke: #84917a; }
 .circle-sample-choice { padding: 6px 9px; color: #607355; border-radius: 7px; background: transparent; }
 .circle-target-choice { cursor: pointer; border: 1px solid transparent; min-height: 36px; }
+.circle-target-name { font-size: 10px; color: #637754; }
+.circle-flow-controls .flow-goals { flex-wrap: wrap; overflow: visible; }
 .circle-target-choice[aria-pressed=true] { border-color: #7b9cb3; background: #edf4f7; }
 .circle-chord-lesson { border-top: 1px solid #e1e6d7; margin-top: 14px; padding-top: 14px; }
-.circle-chord-lesson label { display: flex; align-items: center; justify-content: space-between; gap: 9px; font-size: 12px; }
-.circle-chord-lesson select { width: auto; min-width: 77px; padding: 5px 7px; margin: 0; font-size: 12px; }
+.circle-chord-lesson label { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 9px; font-size: 12px; }
+.circle-chord-lesson select { width: auto; max-width: 100%; padding: 5px 7px; margin: 0; font-size: 12px; }
+.circle-pair-points { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .circle-note-sketch { position: relative; width: min(100%,300px); aspect-ratio: 5/3; margin: 10px auto; }
 .circle-note-sketch svg { display: block; width: 100%; height: auto; }
 .circle-note-zero { position: absolute; left: 4%; top: 50%; transform: translateY(-50%); font-size: 11px; color: #6c7d61; }

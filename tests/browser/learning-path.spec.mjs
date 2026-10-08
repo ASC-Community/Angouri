@@ -7,6 +7,30 @@ async function recipe(page,ops){
 }
 const workspace=page=>page.evaluate(()=>({state:window.angouri.state,history:window.angouri.history,slots:window.angouri.slots,progress:localStorage.getItem('angouri:vine:v1:progress')}));
 
+test('reflection Notes connect the chosen operation, both curves and a purposeful view link',async({page})=>{
+  await ready(page,8);const before=await workspace(page);
+  await page.locator('#ideas-open').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
+  await expect(page.locator('#notes-concept')).toHaveText('Negate turns. Add one lifts.');
+  await expect(page.locator('#notes-heading')).not.toContainText('2.2');
+  await expect(page.locator('[data-note-lesson="8"] .note-lesson-numbers')).toHaveText('2.2');
+  await expect(page.locator('#notes-content [data-view]')).toHaveCount(1);
+  const comparison=page.getByRole('region',{name:'Compare the two changes.'});
+  const panel=comparison.locator('[data-note-panel]:visible');
+  await expect(panel.locator('.note-expression-label')).toHaveText(['Before','After']);
+  await expect(panel.locator('.note-observation')).toContainText('bottom becomes a peak');
+  const reflected=await panel.locator('.note-expression:not(.previous) annotation').textContent();
+  const camera=await panel.locator('[data-zero-line]').getAttribute('d');
+  await comparison.getByRole('button',{name:'Then Add one'}).focus();await page.keyboard.press('Enter');
+  await expect(comparison.getByRole('button',{name:'Then Add one'})).toBeFocused();
+  await expect(panel.locator('.note-expression.previous annotation')).toHaveText(reflected);
+  await expect(panel.locator('.note-observation')).toContainText('Every height rises by one');
+  expect(await panel.locator('[data-zero-line]').getAttribute('d')).toBe(camera);
+  expect(await workspace(page)).toEqual(before);
+  await page.locator('#notes-content [data-view="flow"]').click();
+  await expect(page.locator('#ideas-dialog')).not.toBeVisible();await expect(page.locator('#tab-flow')).toBeFocused();
+  expect(await workspace(page)).toEqual({...before,progress:JSON.stringify({...JSON.parse(before.progress),view:'flow'})});
+});
+
 test('small input lessons connect loop translation, phase order and a movable sine',async({page})=>{
   test.setTimeout(120000);
   for(const [source,ops,next] of [[78,'AQNA',68],[79,'AHS',81],[81,'HAS',53]]){
@@ -62,10 +86,10 @@ test('puzzle Notes offer relevant dependencies while Create keeps the complete b
     await page.setViewportSize(viewport);
     const bounds=await page.locator('#ideas-dialog').evaluate(dialog=>{
       const heading=dialog.querySelector('#notes-concept').getBoundingClientRect(),index=dialog.querySelector('#notes-index').getBoundingClientRect(),content=dialog.querySelector('#notes-content').getBoundingClientRect();
-      return {headingFirst:heading.bottom<=index.top+.1,indexFirst:index.bottom<=content.top+.1,overflow:dialog.scrollWidth-dialog.clientWidth,
+      return {navigationFirst:index.bottom<=heading.top+.1,explanationNext:heading.bottom<=content.top+.1,overflow:dialog.scrollWidth-dialog.clientWidth,
         clipped:[...dialog.querySelectorAll('#notes-heading,#notes-index button')].filter(el=>el.scrollWidth>el.clientWidth+1).map(el=>el.textContent)};
     });
-    expect(bounds).toEqual({headingFirst:true,indexFirst:true,overflow:0,clipped:[]});
+    expect(bounds).toEqual({navigationFirst:true,explanationNext:true,overflow:0,clipped:[]});
   }
   const folding=page.locator('[data-note-lesson="53"]');await folding.focus();await page.keyboard.press('Enter');await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
   await expect(folding).toBeFocused();await expect(folding).toHaveAttribute('aria-pressed','true');

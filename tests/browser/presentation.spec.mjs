@@ -25,7 +25,7 @@ test('Hints guide the puzzle while Notes follow relevant prerequisites',async({p
   await expect(page.locator('#notes-content [data-reference-lesson="31"]')).toHaveCount(1);
   await expect(page.locator('#notes-content')).not.toContainText('Fit first. Then square again.');
   await page.locator('[data-note-lesson="24"]').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
-  await expect(page.locator('#notes-content')).toContainText('lift');await expect(page.locator('.note-question')).toContainText('1.4');
+  await expect(page.locator('#notes-content')).toContainText('lift');await expect(page.locator('[data-note-lesson][aria-pressed=true]')).toContainText('1.4');
   await page.keyboard.press('Escape');await expect(page.locator('#ideas-open')).toBeFocused();expect(await workspace(page)).toEqual(before);
   await page.locator('#hints-open').click();await page.locator('#hints-content [data-view="function"]').click();await expect(page.locator('#tab-function')).toBeFocused();
   expect(await workspace(page)).toEqual(before);

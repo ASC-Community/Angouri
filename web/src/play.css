@@ -173,11 +173,16 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 .just-placed { animation: place-piece .24s ease-out; }
 @keyframes place-piece { from { transform: translateY(-9px) scale(1.06); } to { transform: translateY(0) scale(1); } }
 .dock-footer { padding-top: 8px; min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.recipe-guidance { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.recipe-guidance .feedback { min-width: 0; }
+.recipe-guidance .hints-button { min-height: 32px; padding: 5px 9px; font-size: 11px; }
 .dock-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-shrink: 0; min-height: 44px; }
 .rethrow-button { width: 42px; height: 42px; }
 .feedback { display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 11px; color: #7d8e6c; text-align: center; line-height: 1.4; padding: 3px 4px; }
 .feedback.error { padding: 7px 10px; background: #f8e9e1; color: #94563c; border-radius: 7px; }
 .discovery-feedback { color: #526c42; max-width: 400px; text-align: left; }
+.discovery-operations { display: inline-flex; align-items: center; gap: 3px; flex: none; }
+.discovery-order { display: flex; color: #728660; }
 .discovery-operation { display: grid; place-items: center; flex: none; min-width: 28px; min-height: 28px; border-radius: 8px; background: var(--piece-fill); color: var(--piece-ink); padding: 2px 5px; }
 .success { display: flex; align-items: center; gap: 16px; padding: 4px 0; }
 .success-medal { display: flex; align-items: center; gap: 9px; color: #4c703a; font-size: 12px; }

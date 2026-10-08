@@ -26,7 +26,10 @@ test('actual lift arrangements explain fractional contributions through selectio
   for(const view of ['function','flow','flight']) {await page.locator(`#tab-${view}`).click();await expect(page.locator('#feedback')).toContainText('One later Halve');}
   await page.keyboard.press('Escape');await page.locator('.part-body').last().click();
   await expect(page.locator('#feedback')).toContainText('The lift is halved too');
-  await expect(page.locator('#feedback .discovery-operation')).toHaveClass(/sage/);
+  await expect(page.locator('#feedback .discovery-operation')).toHaveCount(2);
+  await expect(page.locator('#feedback .discovery-operations')).toHaveAccessibleName('Block 1: Add one; then Block 2: Halve');
+  await expect(page.locator('#feedback .discovery-operation').last()).toHaveClass(/sage/);
+  await expect(page.locator('#feedback')).not.toContainText(/At this (step|pair)/);
   // A cancelled drag must not describe a proposed order as an accepted lesson.
   const before=await snapshot(page),finding=await page.locator('#feedback').textContent(),box=await page.locator('.part-body').last().boundingBox();
   await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x-30,box.y-30,{steps:4});await page.keyboard.press('Escape');await page.mouse.up();
@@ -72,7 +75,7 @@ test('Notes reopens at the current lesson after reading a prerequisite',async({p
   await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
   await expect(page.locator('[data-note-lesson="81"]')).toHaveAttribute('aria-pressed','true');
   expect(await page.locator('#ideas-dialog').evaluate(dialog=>dialog.scrollTop)).toBe(0);
-  await expect(page.locator('.note-question')).toContainText('8.5');
+  await expect(page.locator('[data-note-lesson][aria-pressed=true]')).toContainText('8.5');
 });
 
 test('equivalent orders say what stays the same and threshold orders describe their own input',async({page})=>{
@@ -98,6 +101,12 @@ test('short reuse lessons expose discoveries while planning puzzles keep Hints',
 
 test('station discovery findings fit with the Flight diagram and actions through compact reflow',async({page},testInfo)=>{
   await ready(page,54);await add(page,'Q',2);await add(page,'H',3);await add(page,'A',4);
+  await page.keyboard.press('Escape');await page.locator('.part-body').first().click();
+  await expect(page.locator('#feedback .discovery-operations')).toHaveAccessibleName('Block 2: Square; then Block 3: Halve');
+  await expect(page.locator('#feedback')).toContainText('halves the squared result');
+  await page.keyboard.press('Escape');await page.locator('.part-body').nth(1).click();
+  await expect(page.locator('#feedback .discovery-operations')).toHaveAccessibleName('Block 3: Halve; then Block 4: Add one');
+  await expect(page.locator('#feedback')).toContainText('added unit stays whole');
   for(const size of [{width:1512,height:982},{width:1146,height:610},{width:390,height:844},{width:844,height:390},{width:320,height:568}]) {
     await page.setViewportSize(size);await expect(page.locator('#feedback')).toBeVisible();
     await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));

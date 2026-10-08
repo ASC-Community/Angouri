@@ -92,7 +92,7 @@ export class ShapeNotes {
     const focused=this.source&&!OPTIONAL_PUZZLES.includes(this.source);
     const referenceSource=focused?this.referenceSource:this.source;
     this.index.querySelectorAll<HTMLElement>('[data-note]').forEach(button=>button.setAttribute('aria-pressed',String(Number(button.dataset.note)===topic)));
-    this.heading.innerHTML=`<p class="note-question">${focused?escape(lesson(referenceSource)):escape(CHAPTERS[topic].name)}</p>`;
+    this.heading.innerHTML='<h3 id="notes-concept">Opening notes…</h3>';
     document.getElementById('ideas-dialog')!.scrollTop=0;
     this.content.setAttribute('aria-busy','true');
     this.content.innerHTML='<p class="notes-loading">Opening the sketches…</p>';
@@ -113,12 +113,13 @@ export class ShapeNotes {
         }
       }
       const title=template.content.querySelector('h3');
-      if(title){title.id='notes-concept';this.heading.append(title);}
-      const html=template.innerHTML;
-      const links=['function',...(this.known.has(24)?['flow']:[])].filter(view=>!html.includes(`data-view="${view}"`)).map(view=>viewButton(view as 'function'|'flow')).join(' ');
-      this.content.innerHTML=html+(links?`<p class="note-actions">${links}</p>`:'');
+      if(title){title.id='notes-concept';this.heading.replaceChildren(title);}
+      // View links belong to the explanation that gives them a purpose.
+      // Do not append a second, unexplained navigation row to every lesson.
+      this.content.innerHTML=template.innerHTML;
     } catch {
       if(version!==this.version)return;
+      this.heading.innerHTML='<h3 id="notes-concept">Notes unavailable</h3>';
       this.content.innerHTML='<p>The sketches could not load.</p><button class="button" data-retry-notes>Try again</button>';
     } finally {if(version===this.version)this.content.setAttribute('aria-busy','false');}
   }

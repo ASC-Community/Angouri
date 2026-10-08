@@ -176,14 +176,17 @@ test('shape notes connect earlier lessons without changing a recipe, history, vi
   await page.getByRole('button',{name:'Back to puzzle',exact:true}).click();await expect(page.locator('#ideas-open')).toBeFocused();
   expect(await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history,view:window.angouri.view,scroll:document.querySelector('.flow-line').scrollTop,save:localStorage.getItem('angouri:vine:v1:progress')}))).toEqual(before);
   await page.locator('#ideas-open').click();await page.keyboard.press('Escape');await expect(page.locator('#ideas-open')).toBeFocused();
+  await choosePuzzle(page,25);await placeRecipe(page,'AAHHHH');
+  await page.locator('.flow-line').evaluate(el=>el.scrollTop=el.scrollHeight);
+  const shortcutBefore=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history,scroll:document.querySelector('.flow-line').scrollTop}));
   for(const view of ['function','flow']) {
     await page.locator('#ideas-open').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
     const shortcut=page.locator(`.note-view-button[data-view="${view}"]`).first();
     expect(await shortcut.locator('svg').innerHTML()).toBe(await page.locator(`#tab-${view} svg`).innerHTML());
     await shortcut.click();await expect(page.locator('#ideas-dialog')).not.toBeVisible();await expect(page.locator(`#tab-${view}`)).toBeFocused();await expect(page.locator('#scene')).toHaveAttribute('data-view',view);
-    expect(await snapshot(page)).toEqual(before.state);expect(await page.evaluate(()=>window.angouri.history)).toEqual(before.history);
+    expect(await snapshot(page)).toEqual(shortcutBefore.state);expect(await page.evaluate(()=>window.angouri.history)).toEqual(shortcutBefore.history);expect(await page.evaluate(()=>window.angouri.slots)).toEqual(shortcutBefore.slots);
   }
-  expect(await page.locator('.flow-line').evaluate(el=>el.scrollTop)).toBe(before.scroll);
+  expect(await page.locator('.flow-line').evaluate(el=>el.scrollTop)).toBe(shortcutBefore.scroll);
 });
 
 test('the full 1.5 reference survives replay and stays available in Create',async({page})=>{
