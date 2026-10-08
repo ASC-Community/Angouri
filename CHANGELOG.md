@@ -4,6 +4,8 @@
 
 The first playable Angouri cucumber puzzle.
 
+- Notes puts the selected lesson's title before its navigation and separates current and related lessons without repeating prerequisite sections. Full curve hides when it cannot change the frame, and the view selector stays centred when the button appears.
+- Reference and menu pages open without outlining an automatically selected control, including in Safari. Tab starts normal visible keyboard navigation, and closing a page restores its opener.
 - Block placements keep a scrolled page in place, including Safari's dense 8.7 layout. Recipe reveals scroll horizontally, dense labels avoid repeated layout work, and later blocks reuse exact sine readings to reduce edit delays.
 - Short arrangement lessons throughout the chapters explain the accepted experiment directly, including order and station-side effects, instead of offering redundant Hints. Feedback follows selection, insertion, movement and history; larger planning puzzles retain Hints.
 

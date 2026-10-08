@@ -174,12 +174,16 @@ test('out-and-back crop commits and rejected preview edits reconcile the unchang
   await expect(page.locator('#feedback')).toHaveClass(/error/);
 });
 
-test('gate Notes retain the current area relationship and its actual prerequisite recalls',async({page})=>{
+test('gate Notes keep the area relationship and open its prerequisites separately',async({page})=>{
   await ready(page,65);const before=await page.evaluate(()=>window.angouri.state);
   await page.locator('#ideas-open').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
-  await expect(page.locator('#notes-content h3').first()).toHaveText('Input regions become rises, plateaus and falls.');
-  await expect(page.locator('[data-recall-sources="63"]')).toBeVisible();
-  await expect(page.locator('[data-recall-sources="60"]')).toBeVisible();
+  await expect(page.locator('#notes-concept')).toHaveText('Input regions become rises, plateaus and falls.');
+  await expect(page.locator('#notes-content .note-recall')).toHaveCount(0);
+  for(const [id,title] of [[63,'Step accumulation is continuous with sharp corners.'],[60,'Input shift sets step phase.']]) {
+    await page.locator(`[data-note-lesson="${id}"]`).click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
+    await expect(page.locator('#notes-concept')).toHaveText(title);
+    await expect(page.locator('#notes-content .note-recall')).toHaveCount(0);
+  }
   await expect(page.locator('.katex-error')).toHaveCount(0);
   expect(await page.evaluate(()=>window.angouri.state)).toEqual(before);
 });

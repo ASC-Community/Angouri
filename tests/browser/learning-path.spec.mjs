@@ -53,6 +53,28 @@ test('a single missed shoulder is repaired without moving the five matching land
 });
 
 test('puzzle Notes offer relevant dependencies while Create keeps the complete book',async({page})=>{
+  await ready(page,54);const wave=await workspace(page);await page.locator('#ideas-open').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
+  expect(await page.locator('[data-note-lesson]').evaluateAll(buttons=>buttons.map(b=>Number(b.dataset.noteLesson)))).toEqual([54,53,25]);
+  await expect(page.locator('#notes-concept')).toHaveText('Amplitude and baseline are separate.');
+  await expect(page.locator('#notes-content .note-recall,#notes-content .note-reference:visible')).toHaveCount(0);
+  await expect(page.locator('#notes-content')).not.toContainText('Squaring a sine output');
+  for(const viewport of [{width:1146,height:850},{width:320,height:568},{width:844,height:390}]) {
+    await page.setViewportSize(viewport);
+    const bounds=await page.locator('#ideas-dialog').evaluate(dialog=>{
+      const heading=dialog.querySelector('#notes-concept').getBoundingClientRect(),index=dialog.querySelector('#notes-index').getBoundingClientRect(),content=dialog.querySelector('#notes-content').getBoundingClientRect();
+      return {headingFirst:heading.bottom<=index.top+.1,indexFirst:index.bottom<=content.top+.1,overflow:dialog.scrollWidth-dialog.clientWidth,
+        clipped:[...dialog.querySelectorAll('#notes-heading,#notes-index button')].filter(el=>el.scrollWidth>el.clientWidth+1).map(el=>el.textContent)};
+    });
+    expect(bounds).toEqual({headingFirst:true,indexFirst:true,overflow:0,clipped:[]});
+  }
+  const folding=page.locator('[data-note-lesson="53"]');await folding.focus();await page.keyboard.press('Enter');await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
+  await expect(folding).toBeFocused();await expect(folding).toHaveAttribute('aria-pressed','true');
+  await expect(page.locator('#notes-concept')).toHaveText('Squaring folds signed lobes.');
+  await expect(page.locator('#notes-content')).toContainText('negative lobes upward');
+  await expect(page.locator('#notes-content .note-recall')).toHaveCount(0);
+  await page.locator('[data-note-lesson="54"]').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
+  await expect(page.locator('#notes-concept')).toHaveText('Amplitude and baseline are separate.');
+  expect(await workspace(page)).toEqual(wave);await page.keyboard.press('Escape');
   await ready(page,76);const before=await workspace(page);await page.locator('#ideas-open').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
   expect(await page.locator('[data-note-lesson]').evaluateAll(buttons=>buttons.map(b=>Number(b.dataset.noteLesson)))).toEqual([76,81,79,54,80]);
   await expect(page.locator('[data-note]')).toHaveCount(0);
@@ -63,5 +85,6 @@ test('puzzle Notes offer relevant dependencies while Create keeps the complete b
   await page.locator('#menu-open').click();await page.locator('#nav-create').click();await idle(page);
   await page.locator('#ideas-open').click();await expect(page.locator('[data-note]')).toHaveCount(10);
   await page.locator('[data-note="7"]').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
+  expect(await page.locator('#notes-content .note-recall').count()).toBeGreaterThan(0);
   for(const id of [50,51,52,79,81,53,54,80,55])expect(await page.locator(`[data-reference-lesson="${id}"]`).count()).toBeGreaterThan(0);
 });

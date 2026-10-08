@@ -264,7 +264,8 @@ test('minimal openings hide notes, while later puzzles scope them and Create sho
       if(tab)await tab.click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
       await expect(page.locator('[data-retry-notes]')).toHaveCount(0);
       const references=await page.locator('#notes-content [data-reference-lesson]').evaluateAll(nodes=>nodes.map(el=>Number(el.dataset.referenceLesson)));
-      expect(references.length).toBeGreaterThan(0);
+      expect(references).toContain(Number(await tab.getAttribute('data-note-lesson')));
+      await expect(page.locator('#notes-content .note-recall')).toHaveCount(0);
       for(const reference of references)expect(allowed,`Puzzle ${level} must not reveal concept ${reference}`).toContain(reference);
       await expect(page.locator('#notes-content [data-note-target],#notes-content details')).toHaveCount(0);
       await expect(page.locator('.katex-error')).toHaveCount(0);

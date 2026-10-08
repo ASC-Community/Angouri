@@ -60,7 +60,7 @@ test('fixed slope and area stations teach the arrangement on each side without a
   expect((await readings(page))[0]).toBe('2');
 });
 
-test('Notes opens at the current lesson and reads downward through relevant references',async({page})=>{
+test('Notes reopens at the current lesson after reading a prerequisite',async({page})=>{
   await page.setViewportSize({width:390,height:844});await ready(page,81);await page.locator('#ideas-open').click();
   await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
   await expect(page.locator('[data-note-lesson]').first()).toHaveAttribute('data-note-lesson','81');

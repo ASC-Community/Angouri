@@ -24,6 +24,7 @@ export class ShapeNotes {
   private topics=new Set<number>();
   private referenceSource=0;
   private relevant=new Set<number>();
+  private heading=document.getElementById('notes-heading')!;
   private content=document.getElementById('notes-content')!;
   private index=document.getElementById('notes-index')!;
 
@@ -59,13 +60,18 @@ export class ShapeNotes {
     const prerequisites=learningPath.lessons.find(lesson=>lesson.id===source)?.prerequisites??[];
     this.relevant=new Set([source,...prerequisites]);
     if(source&&!OPTIONAL_PUZZLES.includes(source)) {
-      this.index.innerHTML=`<p class="notes-scope">This lesson and related ideas</p>`+[source,...prerequisites].map(id=>`<button data-note-lesson="${id}" aria-pressed="false"><span class="note-lesson-numbers">${puzzleLabel(id)}</span><span>${escape(LEVELS[id-1].name)}</span></button>`).join('');
+      const button=(id:number)=>`<button data-note-lesson="${id}" aria-controls="notes-heading notes-content" aria-pressed="false"><span class="note-lesson-numbers">${puzzleLabel(id)}</span><span>${escape(LEVELS[id-1].name)}</span></button>`;
+      this.index.classList.add('notes-lessons');
+      this.index.setAttribute('aria-label','Lesson notes');
+      this.index.innerHTML=`<div class="notes-section" role="group" aria-labelledby="notes-current-label"><p id="notes-current-label" class="notes-scope">This lesson</p><div class="notes-buttons">${button(source)}</div></div>`+(prerequisites.length?`<div class="notes-section" role="group" aria-labelledby="notes-related-label"><p id="notes-related-label" class="notes-scope">Related ideas</p><div class="notes-buttons">${prerequisites.map(button).join('')}</div></div>`:'');
       this.index.hidden=false;
       void this.selectLesson(source);
       return;
     }
+    this.index.classList.remove('notes-lessons');
+    this.index.setAttribute('aria-label','Chapter notes');
     this.topics=new Set(CHAPTERS.flatMap((chapter,i)=>this.known.has(chapter.levels[0])?[i]:[]));
-    const choices=CHAPTERS.flatMap((chapter,i)=>this.topics.has(i)?[`<button data-note="${i}" aria-pressed="false"><span class="note-tab-art ${chapter.color}">${chapterArt(i)}</span><span>${chapter.name}</span></button>`]:[]);
+    const choices=CHAPTERS.flatMap((chapter,i)=>this.topics.has(i)?[`<button data-note="${i}" aria-controls="notes-heading notes-content" aria-pressed="false"><span class="note-tab-art ${chapter.color}">${chapterArt(i)}</span><span>${chapter.name}</span></button>`]:[]);
     this.index.innerHTML=choices.join('');
     this.index.hidden=choices.length<2;
     void this.select(MIXED_PUZZLES.includes(source)?9:GEOMETRY_PUZZLES.includes(source)?6:EXTRA_PUZZLES.includes(source)?EXTRA_PUZZLES.indexOf(source)<4?4:5:Math.max(0,chapterIndex(source)));
@@ -83,27 +89,34 @@ export class ShapeNotes {
   private async select(topic:number) {
     if(!this.topics.has(topic))return;
     const version=++this.version;this.topic=topic;
+    const focused=this.source&&!OPTIONAL_PUZZLES.includes(this.source);
+    const referenceSource=focused?this.referenceSource:this.source;
     this.index.querySelectorAll<HTMLElement>('[data-note]').forEach(button=>button.setAttribute('aria-pressed',String(Number(button.dataset.note)===topic)));
+    this.heading.innerHTML=`<p class="note-question">${focused?escape(lesson(referenceSource)):escape(CHAPTERS[topic].name)}</p>`;
+    document.getElementById('ideas-dialog')!.scrollTop=0;
     this.content.setAttribute('aria-busy','true');
     this.content.innerHTML='<p class="notes-loading">Opening the sketches…</p>';
     try {
-      const focused=this.source&&!OPTIONAL_PUZZLES.includes(this.source);
-      const referenceSource=focused?this.referenceSource:this.source;
       const known=focused?knownLessons(referenceSource):this.known;
       const sketches=new LessonSketches(this.kernel,referenceSource,known,this.examples);
-      let html=await renderReference(topic,known,{example:(source,ops)=>sketches.example(source,ops),circleExample:(x,y,radius,goals)=>sketches.circleExample(x,y,radius,goals)});
-      if(focused) {
-        const template=document.createElement('template');template.innerHTML=html;
-        const related=new Set(learningPath.lessons.find(lesson=>lesson.id===referenceSource)?.prerequisites??[]);
-        template.content.querySelectorAll<HTMLElement>('[data-recall-sources]').forEach(section=>{
-          if(!section.dataset.recallSources!.split(',').some(id=>related.has(Number(id))))section.remove();
-        });
-        html=template.innerHTML;
-      }
+      const reference=await renderReference(topic,known,{example:(source,ops)=>sketches.example(source,ops),circleExample:(x,y,radius,goals)=>sketches.circleExample(x,y,radius,goals)});
       if(version!==this.version)return;
-      const prompt=referenceSource?`<aside class="note-question"><strong>${lesson(referenceSource)}</strong></aside>`:'';
+      const template=document.createElement('template');template.innerHTML=reference;
+      if(focused) {
+        // Earlier lessons already have their own navigation entries. A lesson
+        // page contains its relationship once; the complete book keeps recalls.
+        template.content.querySelectorAll('.note-recall').forEach(section=>section.remove());
+        template.content.querySelectorAll<HTMLElement>('.note-reference').forEach(credit=>credit.hidden=true);
+        if(!template.content.querySelector(`[data-reference-lesson="${referenceSource}"]`)) {
+          const marker=document.createElement('span');marker.dataset.referenceLesson=String(referenceSource);marker.hidden=true;
+          template.content.append(marker);
+        }
+      }
+      const title=template.content.querySelector('h3');
+      if(title){title.id='notes-concept';this.heading.append(title);}
+      const html=template.innerHTML;
       const links=['function',...(this.known.has(24)?['flow']:[])].filter(view=>!html.includes(`data-view="${view}"`)).map(view=>viewButton(view as 'function'|'flow')).join(' ');
-      this.content.innerHTML=prompt+html+(links?`<p class="note-actions">${links}</p>`:'');
+      this.content.innerHTML=html+(links?`<p class="note-actions">${links}</p>`:'');
     } catch {
       if(version!==this.version)return;
       this.content.innerHTML='<p>The sketches could not load.</p><button class="button" data-retry-notes>Try again</button>';

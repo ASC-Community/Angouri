@@ -70,13 +70,19 @@
 .ending-progress { margin: 14px 0 22px; font-size: 11px!important; }.ending-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; }
 .ending-credit { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px; margin: 25px 0 0; font-size: 11px!important; }.ending-credit a { display: inline-flex; align-items: center; gap: 6px; color: #486d3d; }.ending-credit img { object-fit: contain; }.ending-credit svg { width: 12px; height: 12px; }
 .notes-index { display: flex; flex-wrap: wrap; gap: 7px; }
-.notes-scope { flex-basis:100%; margin:0 0 3px; font-size:11px; color:#738266; }
+.notes-index.notes-lessons { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,2fr); gap: 16px; padding-bottom: 18px; border-bottom: 1px solid #dde6d0; }
+.notes-scope { margin:0 0 6px; font-size:11px; color:#637754; }
+.notes-buttons { display: flex; flex-wrap: wrap; gap: 7px; }
 .notes-index button { flex: 1 1 112px; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 7px; border: 1px solid #dce4d0; border-radius: 10px; font-size: 11px; }
+.notes-lessons button { justify-content: flex-start; text-align: left; min-height: 38px; line-height: 1.4; }
+.notes-lessons .note-lesson-numbers { flex: none; margin: 0; }
 .notes-index button:hover { background: #f4f7eb; }
 .notes-index [aria-pressed=true] { border-color: #72964f; background: #eff5e4; box-shadow: inset 0 -2px #72964f; }
 .note-tab-art { display: grid; place-items: center; flex: none; width: 33px; height: 33px; border-radius: 7px; color: #637d4c; }.note-tab-art>svg { width: 27px; height: 27px; }
+.notes-heading { margin: 0 0 20px; }
+.notes-heading h3 { font: 26px/1.2 Georgia,serif; margin: 0; letter-spacing: -.5px; color: #344e36; }
 .notes-content { padding-top: 22px; min-height: 270px; }
-.notes-content h3 { font: 26px/1.15 Georgia,serif; margin: 0 0 10px; letter-spacing: -.5px; }
+.notes-content h3 { font: 20px/1.3 Georgia,serif; margin: 0 0 10px; color: #344e36; }
 .notes-content p { font-size: 12px; line-height: 1.7; color: #637754; margin-bottom: 15px; }
 .note-view-button { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; min-height: 28px; border: 1px solid #c9d6ba; border-radius: 8px; color: #355b31; background: #fffef9; box-shadow: 0 2px 2px #536c3010; font-size: 11px; line-height: 1.4; vertical-align: middle; white-space: nowrap; }
 .note-view-button:hover { background: #edf3e2; border-color: #82986a; }
@@ -100,7 +106,7 @@
 .note-connection .note-link { flex-basis: 82px; }.note-link strong { font-size: 11px; font-weight: 500; }.note-link small { font-size: 9px; color: #7f8f6f; }
 .shared-shape { background: #eaf3db; border-color: #a3bd82; }
 .note-takeaway { padding: 12px 14px; border-left: 3px solid #a9c08b; background: #f3f6eb; border-radius: 0 8px 8px 0; }
-.note-question { border-bottom: 1px solid #dde6d0; padding-bottom: 12px; margin: 0 0 18px; }.note-question strong { font-size: 11px; font-weight: 600; color: #698156; }.note-question p { margin: 4px 0 0; color: #466938; }
+.notes-heading .note-question { margin: 0 0 8px; font-size: 11px; line-height: 1.5; font-weight: 600; color: #637754; }
 .note-recall { margin-top: 24px; padding-top: 19px; border-top: 1px solid #dde6d0; }
 .note-recall-heading { display: flex; align-items: baseline; gap: 8px; margin: 0 0 14px; color: #4f703c; font-size: 14px; font-weight: 600; line-height: 1.5; }
 .note-recall-heading .note-lesson-numbers { flex: none; margin: 0; }
@@ -133,7 +139,8 @@
   .puzzle-guidance { gap: 3px 8px; }.ideas-button { min-height: 25px; }
   #level-hint { display: none; }
   .notes-index { flex-wrap: wrap; }.notes-index button { flex: 1 1 42%; justify-content: flex-start; padding: 5px 7px; }
-  .notes-content h3 { font-size: 24px; }.notes-content { padding-top: 18px; }
+  .notes-index.notes-lessons { grid-template-columns: minmax(0,1fr); gap: 12px; }
+  .notes-heading h3 { font-size: 24px; }.notes-content { padding-top: 18px; }
   .note-strip { flex-direction: column; gap: 6px; }
   .note-strip .note-stage { width: 100%; display: grid; grid-template-columns: 1fr 1.2fr; align-items: center; padding: 5px 8px; }
   .note-strip .note-stage figcaption { grid-column: 1; grid-row: 1; }

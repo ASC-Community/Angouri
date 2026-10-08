@@ -34,8 +34,8 @@ h1, h2, h3, p { margin-top: 0; }
 .puzzle-heading>p:last-child { font-size: 12px; color: #728060; margin: 0; line-height: 1.6; }
 .playground { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
 .canvas-side { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; max-width: 1300px; width: 100%; margin: auto; }
-.scene-toolbar { display: flex; align-items: center; justify-content: center; gap: 22px; min-height: 48px; padding: 4px 5px 8px; flex-shrink: 0; }
-.view-tabs { display: inline-flex; align-items: center; padding: 3px; gap: 3px; border: 1px solid #d8e1ca; background: #e9eede; border-radius: 12px; }
+.scene-toolbar { container: view-toolbar / inline-size; display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: center; gap: 6px 22px; min-height: 48px; padding: 4px 5px 8px; flex-shrink: 0; }
+.view-tabs { grid-column: 1 / -1; grid-row: 1; justify-self: center; display: inline-flex; align-items: center; padding: 3px; gap: 3px; border: 1px solid #d8e1ca; background: #e9eede; border-radius: 12px; }
 .view-tabs button { display: flex; align-items: center; gap: 7px; min-height: 34px; padding: 5px 13px; border-radius: 8px; color: #738362; font-size: 12px; border: 1px solid transparent; }
 .view-tabs button:hover { background: #f5f7ee; color: #3b5e37; }
 .view-tabs [aria-selected=true] { background: #fffef9; color: #355b31; border-color: #c9d6ba; box-shadow: 0 2px 2px #536c3010; }
@@ -231,6 +231,7 @@ tr[data-status=miss] .equation-verdict[data-status=waiting] { color: var(--miss-
 
 /* One destination for each occasional task. */
 dialog { border: 1px solid #d7dfc8; border-radius: 20px; background: #fffefa; color: var(--ink); width: min(460px,calc(100% - 32px)); max-height: calc(100dvh - 32px); padding: 25px 28px; box-shadow: 0 15px 100px #23382326; }
+dialog:focus { outline: none; }
 dialog::backdrop { background: #2a3f303d; backdrop-filter: blur(5px); }
 .dialog-top { position: sticky; top: 0; z-index: 3; background: #fffefa; box-shadow: 0 -28px #fffefa, 0 8px #fffefa; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 18px; }.close-dialog { color: #71855a; flex-shrink: 0; }
 dialog h2 { font: 27px/1.15 Georgia,serif; letter-spacing: -.6px; margin: 0; }dialog p, dialog li { font-size: 12px; line-height: 1.8; color: #738164; }

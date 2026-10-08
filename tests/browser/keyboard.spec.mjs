@@ -7,6 +7,23 @@ async function ready(page,path='/#level=3&view=flight') {
 
 async function idle(page) {await page.evaluate(()=>window.angouri.whenIdle());}
 
+test('arrival leaves controls unselected and the first Tab shows keyboard focus',async({page})=>{
+  for(const path of ['/#level=1','/#level=54&view=flight']) {
+    await ready(page,path);
+    expect(await page.evaluate(()=>document.activeElement===document.body)).toBe(true);
+    await expect(page.locator('button:focus-visible,a:focus-visible')).toHaveCount(0);
+  }
+  await page.keyboard.press('Tab');await expect(page.getByRole('link',{name:'Skip to the game'})).toBeFocused();
+  for(const [opener,id,back] of [['ideas-open','ideas-dialog','Back to puzzle'],['menu-open','menu-dialog','Back to game']]) {
+    await page.locator(`#${opener}`).click();const dialog=page.locator(`#${id}`);
+    await expect(dialog).toBeFocused();expect(await dialog.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');
+    await expect(dialog.locator('button:focus-visible')).toHaveCount(0);
+    await page.keyboard.press('Tab');const first=dialog.getByRole('button',{name:back,exact:true});
+    await expect(first).toBeFocused();expect(await first.evaluate(el=>el.matches(':focus-visible')&&getComputedStyle(el).outlineStyle!=='none')).toBe(true);
+    await page.keyboard.press('Escape');await expect(page.locator(`#${opener}`)).toBeFocused();
+  }
+});
+
 test('view tabs follow the focused tab while Tab and Shift+Tab keep native order',async({page})=>{
   await ready(page);
   const flight=page.getByRole('tab',{name:'Flight',exact:true});

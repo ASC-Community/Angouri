@@ -59,6 +59,7 @@ test('Equation keeps node order visible above the kernel simplified result',asyn
 
 test('circle edits keep the default frame and Full curve toggles back without editing',async({page})=>{
   await ready(page,43);
+  await expect(page.locator('#circle-fit')).toBeHidden();
   const marks=()=>page.evaluate(()=>({centre:[...document.querySelectorAll('.circle-centre-mark')].map(el=>[el.getAttribute('cx'),el.getAttribute('cy')]),targets:[...document.querySelectorAll('.ring-outer')].map(el=>[el.getAttribute('cx'),el.getAttribute('cy')])}));
   const initial=await marks(),width=await page.locator('#trajectory').evaluate(el=>el.getBBox().width),state=await page.evaluate(()=>window.angouri.state.circle);
   await page.locator('[data-circle-value="radius"]').fill('6');await page.locator('[data-circle-value="radius"]').press('Enter');await idle(page);
@@ -74,10 +75,34 @@ test('circle edits keep the default frame and Full curve toggles back without ed
   await page.locator('#circle-fit').focus();await page.keyboard.press('Space');
   await expect(page.locator('#circle-fit')).toHaveAttribute('aria-pressed','false');
   expect(await marks()).toEqual(initial);expect(await workspace(page)).toEqual(before);
-  await page.locator('#circle-fit').click();await page.locator('#undo').click();await idle(page);
-  await expect(page.locator('#circle-fit')).toHaveAttribute('aria-pressed','true');
-  await page.locator('#circle-fit').click();expect(await marks()).toEqual(initial);
+  await page.locator('#circle-fit').click();await page.keyboard.press('Control+z');await idle(page);
+  await expect(page.locator('#circle-fit')).toHaveAttribute('aria-pressed','false');
+  await expect(page.locator('#circle-fit')).toBeHidden();expect(await marks()).toEqual(initial);
+  await expect(page.locator('#tab-flight')).toBeFocused();
   expect(await page.evaluate(()=>window.angouri.state.circle)).toEqual(state);
+});
+
+test('Full curve appears only for a different frame and never displaces the view selector',async({page})=>{
+  for(const viewport of [{width:1146,height:850},{width:390,height:844},{width:320,height:568},{width:844,height:390}]) {
+    await page.setViewportSize(viewport);await ready(page,54);
+    const tabs=page.locator('.view-tabs'),fit=page.locator('#circle-fit');
+    const centred=async()=>{
+      const measured=await tabs.evaluate(el=>{
+        const r=el.getBoundingClientRect(),parent=el.parentElement.getBoundingClientRect(),fit=document.querySelector('#circle-fit'),f=fit.getBoundingClientRect();
+        return {offset:Math.abs((r.left+r.right-parent.left-parent.right)/2),centre:(r.left+r.right)/2,
+          overlap:!fit.hidden&&r.left<f.right&&r.right>f.left&&r.top<f.bottom&&r.bottom>f.top,overflow:document.documentElement.scrollWidth-innerWidth};
+      });
+      expect(measured.offset).toBeLessThan(1);expect(measured.overlap).toBe(false);expect(measured.overflow).toBe(0);return measured.centre;
+    };
+    await expect(fit).toBeVisible();const centre=await centred(),before=await workspace(page);
+    await fit.click();await expect(fit).toHaveAttribute('aria-pressed','true');
+    expect(await workspace(page)).toEqual(before);expect(await centred()).toBeCloseTo(centre,1);
+    await page.locator('[data-empty="2"]').click();await add(page,'Q');
+    await expect(fit).toBeHidden();await expect(fit).toHaveAttribute('aria-pressed','false');expect(await centred()).toBeCloseTo(centre,1);
+    await page.locator('#undo').click();await idle(page);await expect(fit).toBeVisible();expect(await centred()).toBeCloseTo(centre,1);
+    await page.locator('#tab-function').click();await expect(fit).toBeHidden();expect(await centred()).toBeCloseTo(centre,1);
+    await page.locator('#tab-flight').click();await expect(fit).toBeVisible();expect(await centred()).toBeCloseTo(centre,1);
+  }
 });
 
 test('the loaded slingshot and cucumber follow every frame of a curve edit',async({page})=>{

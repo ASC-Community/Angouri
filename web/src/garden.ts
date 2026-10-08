@@ -193,9 +193,8 @@ export class Garden {
       this.render();
       this.hitTest=new GardenHitTest(this.root.querySelector<SVGSVGElement>('.garden-paper')!);
       this.observeLabels();
-      // Arrival presents the whole picture. A shape is highlighted only after
-      // deliberate pointer or keyboard navigation into the artwork.
-      this.root.querySelector<HTMLElement>('[data-garden-done]')?.focus({preventScroll:true});
+      // Keep the dialog's neutral arrival focus, or the player's deliberate
+      // selection while loading. Rendering must not focus or highlight a piece.
       if(this.revealSource)this.startReveal(version);
     } catch {
       if(!this.active||version!==this.generation)return;

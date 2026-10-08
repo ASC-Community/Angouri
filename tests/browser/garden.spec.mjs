@@ -29,7 +29,7 @@ test('picture silhouettes link to actual construction without awarding progress'
   await expect(page.locator('#menu-picture-open')).toBeFocused();
   await page.keyboard.press('Escape');
   await page.locator('#picture-open').click();await expect(page.locator('[data-garden-piece]')).toHaveCount(8);
-  await expect(page.locator('[data-garden-done]')).toBeFocused();
+  await expect(page.locator('#garden-dialog')).toBeFocused();
   await expect(page.locator('.garden-piece:focus-visible')).toHaveCount(0);
   await expect(page.locator('[data-garden-piece][data-complete="true"]')).toHaveCount(0);
   await expect(page.locator('.garden-status')).toContainText('0 of 8');

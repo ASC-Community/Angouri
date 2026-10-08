@@ -232,13 +232,13 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
       // Geometry edits keep their frame. Refitting on every radius change made
       // the centre and targets appear to move even though their values did not.
       if(newSource||history==='clear'||!previousResult?.circle&&!previousResult?.relation) {
-        fullCurve=false;fitCircleCamera(state.mode!=='remix');defaultCamera={...camera};
-      } else if(fullCurve)fitCircleCamera();
+        fullCurve=false;camera=fittedCamera(state.mode!=='remix');defaultCamera={...camera};
+      } else if(fullCurve)camera=fittedCamera();
     } else if(hasTargetFrame()) {
       // Later wave/step puzzles need their landmarks to remain legible while
       // an unfinished input may be much taller than the intended output.
-      if(newSource||history==='clear') {fullCurve=false;fitCircleCamera(true);defaultCamera={...camera};}
-      else if(fullCurve)fitCircleCamera();
+      if(newSource||history==='clear') {fullCurve=false;camera=fittedCamera(true);defaultCamera={...camera};}
+      else if(fullCurve)camera=fittedCamera();
     } else if(newSource||history==='clear'||!result.crop) {
       const [baseMin,baseMax]=LEVELS[state.sourceId-1].y;
       const ys=[...result.points.map(p=>p[1]),...result.checkpoints.map(targetHeight)];
@@ -369,7 +369,9 @@ function updatePrimary() {
   const won=throwWon;
   const advancing=won&&state?.mode!=='remix';
   const active=flight.phase==='flying'||flight.phase==='releasing';
-  $<HTMLButtonElement>('circle-fit').disabled=!initialized||pending>0||active;
+  // Keep its focus through a pending edit so render can return it to the view
+  // tab if the acknowledged construction no longer needs this control.
+  $('circle-fit').setAttribute('aria-disabled',String(!initialized||pending>0||active));
   $('rethrow').hidden=!advancing;
   $<HTMLButtonElement>('rethrow').disabled=!initialized||pending>0||active;
   const next=state?.mode==='puzzle'?followingPuzzle(state.sourceId):undefined;
@@ -428,7 +430,11 @@ function renderGame() {
   $<HTMLButtonElement>('hints-open').disabled=false;
   $('hints-open').hidden=state.mode!=='puzzle'||isDiscovery(state);
   $('hints-open').classList.toggle('hint-cue',hintCue);
-  $('circle-fit').hidden=!(result.circle||result.relation||hasTargetFrame())||displayedView()==='function'||!result.circle&&displayedView()==='flow';
+  // Compare the displayed projection, not just the stored bounds: equal-scale
+  // circles can have different bounds yet put every point in the same place.
+  if(fullCurve&&!changesCamera(defaultCamera)){fullCurve=false;camera={...defaultCamera};}
+  const canFit=!!(result.circle||result.relation||hasTargetFrame());
+  $('circle-fit').hidden=!canFit||displayedView()==='function'||!result.circle&&displayedView()==='flow'||!changesCamera(fullCurve?defaultCamera:fittedCamera());
   $('circle-fit').setAttribute('aria-label','Full curve');
   $('circle-fit').setAttribute('aria-pressed',String(fullCurve));
   if(result.circle) {
@@ -451,29 +457,36 @@ function renderGame() {
   $('undo').classList.toggle('retry-cue',flight.phase==='landed'&&!result.solved);
   for(const id of ['share-open','nav-create','favorite-save'])$<HTMLButtonElement>(id).disabled=false;
   updatePrimary();renderScene();
-  restoreFocus(focus);
+  if(!restoreFocus(focus)&&focus?.element.id==='circle-fit')$(`tab-${displayedView()}`).focus({preventScroll:true});
 }
 function setView(next: View) {view=next;preferences();progress();render();}
 function hasTargetFrame() {return !!state&&state.mode==='puzzle'&&state.sourceId>=48&&!state.circle&&!result?.relation;}
-function fitCircleCamera(targetsFirst=false) {
-  if(!result)return;
-  if(result.circle){const b=result.circle.bounds;camera={min:b.minY,max:b.maxY,minX:b.minX,maxX:b.maxX};return;}
+function fittedCamera(targetsFirst=false):Camera {
+  if(!result)return camera;
+  if(result.circle){const b=result.circle.bounds;return {min:b.minY,max:b.maxY,minX:b.minX,maxX:b.maxX};}
   if(result.relation){
     // An unfinished curve can be much taller than the intended shape. Keep the
     // required geometry readable on entry; explicit Fit includes the whole path.
     const goals=result.checkpoints.map(g=>[fraction(g.x),targetHeight(g)] as [number,number]);
     const points=targetsFirst&&goals.length?goals:[...result.relation.playback,...goals],ys=points.map(p=>p[1]);
-    camera={min:Math.min(-1,...ys)-.7,max:Math.max(1,...ys)+.7,minX:-.7,maxX:4.7};
+    return {min:Math.min(-1,...ys)-.7,max:Math.max(1,...ys)+.7,minX:-.7,maxX:4.7};
   } else {
     const ys=[0,...result.checkpoints.map(targetHeight),...(targetsFirst?[]:result.points.map(point=>point[1]))];
     const min=Math.floor(Math.min(...ys)),max=Math.ceil(Math.max(...ys)),padding=Math.max((max-min)*.2,.4);
-    camera={min:min-padding,max:max+padding};
+    return {min:min-padding,max:max+padding};
   }
 }
+function changesCamera(next:Camera) {
+  if(!state)return false;
+  return ([[0,0],[1,1]] as [number,number][]).some(point=>{
+    const before=transform(state!,camera,point),after=transform(state!,next,point);
+    return before.some((coordinate,i)=>Math.abs(coordinate-after[i])>1e-7);
+  });
+}
 $('circle-fit').onclick=()=>{
-  if(!(result?.circle||result?.relation||hasTargetFrame())||pending||['flying','releasing'].includes(flight.phase))return;
+  if($('circle-fit').hidden||!(result?.circle||result?.relation||hasTargetFrame())||pending||['flying','releasing'].includes(flight.phase))return;
   cancelCirclePickup();cropEditor.cancel();fullCurve=!fullCurve;
-  if(fullCurve)fitCircleCamera();else camera={...defaultCamera};
+  camera=fullCurve?fittedCamera():{...defaultCamera};
   render();$('circle-fit').focus({preventScroll:true});
 };
 function animateChange(previousState:State,previousResult:Result, from:Result['points'], rects:Map<string,DOMRect>,fromSlope:number,previousVisual?:SVGGElement) {
@@ -928,7 +941,13 @@ function finishPointer(event?:PointerEvent,cancel=false){
 document.addEventListener('pointerup',event=>finishPointer(event));document.addEventListener('pointercancel',event=>finishPointer(event,true));
 window.addEventListener('blur',()=>finishPointer(undefined,true));
 
-const open=(id:string,returnId='menu-open')=>{cancelCirclePickup();if(pointer)finishPointer(undefined,true);closeDialogs();$(returnId).focus({preventScroll:true});$<HTMLDialogElement>(id).showModal();};
+const open=(id:string,returnId='menu-open')=>{
+  cancelCirclePickup();if(pointer)finishPointer(undefined,true);closeDialogs();$(returnId).focus({preventScroll:true});
+  const dialog=$<HTMLDialogElement>(id);dialog.showModal();
+  // Opening a page is not keyboard navigation. Keep focus inside its modal
+  // without selecting a control; Tab then reaches the first action normally.
+  if(!dialog.querySelector('[autofocus]'))dialog.focus({preventScroll:true});
+};
 document.querySelectorAll<HTMLDialogElement>('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();const e=event as MouseEvent;if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}}));
 for(const [button,dialog] of [['help-open','help-dialog'],['menu-open','menu-dialog'],['settings-open','settings-dialog']])$(button).onclick=()=>open(dialog);
 $('puzzles-open').onclick=()=>{renderLevels();open('puzzles-dialog');};
