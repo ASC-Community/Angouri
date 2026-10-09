@@ -12,6 +12,22 @@ async function add(page,op,slot) {
 const readings=page=>page.evaluate(()=>window.angouri.result.checkpoints.map(point=>point.actual));
 const snapshot=page=>page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}));
 
+test('block explanations keep a centered icon column beside independently wrapping text',async({page},testInfo)=>{
+  for(const [id,ops] of [[1,'H'],[2,'A'],[3,'HA'],[82,'H']]) {
+    await ready(page,id);for(const op of ops)await add(page,op);
+    for(const width of [320,1146]) {
+      await page.setViewportSize({width,height:850});
+      const layout=await page.locator('#feedback').evaluate(el=>{
+        const icons=el.querySelector('.discovery-operations'),copy=el.lastElementChild,a=icons.getBoundingClientRect(),b=copy.getBoundingClientRect();
+        const range=document.createRange();range.selectNodeContents(copy);
+        return {center:Math.abs(a.y+a.height/2-b.y-b.height/2),overlap:a.right>b.left,minTextLeft:Math.min(...[...range.getClientRects()].map(rect=>rect.left)),textLeft:b.left,overflow:el.scrollWidth-el.clientWidth};
+      });
+      expect(layout.center).toBeLessThan(1);expect(layout.overlap).toBe(false);expect(layout.minTextLeft).toBeGreaterThanOrEqual(layout.textLeft-.1);expect(layout.overflow).toBeLessThanOrEqual(1);
+      if(id===82)await page.screenshot({path:testInfo.outputPath(`bamboo-guidance-${width}.png`)});
+    }
+  }
+});
+
 test('actual lift arrangements show their block order through selection, moves and history',async({page})=>{
   await ready(page,3);await expect(page.locator('#hints-open')).toBeHidden();await expect(page.locator('#ideas-open')).toBeVisible();
   await add(page,'H');await add(page,'A');
@@ -91,15 +107,15 @@ test('Notes reopens at the current lesson after reading a prerequisite',async({p
   await page.setViewportSize({width:390,height:844});await ready(page,81);await page.locator('#ideas-open').click();
   await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
   await expect(page.locator('[data-note-lesson]').first()).toHaveAttribute('data-note-lesson','81');
-  await expect(page.locator('[data-note-lesson="81"]')).toHaveAttribute('aria-pressed','true');
+  await expect(page.locator('[data-note-lesson="81"]')).toHaveAttribute('aria-selected','true');
   await page.locator('[data-note-lesson="79"]').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
   await page.locator('#notes-reading').evaluate(dialog=>dialog.scrollTop=dialog.scrollHeight);
   expect(await page.locator('#notes-reading').evaluate(dialog=>dialog.scrollTop)).toBeGreaterThan(0);
   await page.keyboard.press('Escape');await page.locator('#ideas-open').click();
   await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
-  await expect(page.locator('[data-note-lesson="81"]')).toHaveAttribute('aria-pressed','true');
+  await expect(page.locator('[data-note-lesson="81"]')).toHaveAttribute('aria-selected','true');
   expect(await page.locator('#notes-reading').evaluate(dialog=>dialog.scrollTop)).toBe(0);
-  await expect(page.locator('[data-note-lesson][aria-pressed=true]')).toContainText('8.5');
+  await expect(page.locator('[data-note-lesson][aria-selected=true]')).toContainText('8.5');
 });
 
 test('equivalent orders say what stays the same and threshold orders describe their own input',async({page})=>{

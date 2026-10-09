@@ -8,7 +8,16 @@ const idle=page=>page.evaluate(()=>window.angouri.whenIdle());
 const state=page=>page.evaluate(()=>window.angouri.state);
 const order=async page=>(await state(page)).nodes.map(node=>node.op).join('');
 async function add(page,op,slot) {if(slot!==undefined)await page.locator(`[data-empty="${slot}"]`).click();await page.locator(`[data-op="${op}"]`).click();await idle(page);}
-async function drag(page,from,to) {const a=await from.boundingBox(),b=await to.boundingBox();await page.mouse.move(a.x+a.width/2,a.y+a.height/2);await page.mouse.down();await page.mouse.move(b.x+b.width/2,b.y+b.height/2,{steps:8});await page.mouse.up();await idle(page);}
+async function drag(page,from,to) {
+  const a=await from.boundingBox(),rail=await page.locator('.pipeline').boundingBox();
+  await page.mouse.move(a.x+a.width/2,a.y+a.height/2);await page.mouse.down();
+  for(let i=0;i<32;i++) {
+    const b=await to.boundingBox(),x=b.x+b.width/2;
+    if(x>=rail.x+28&&x<=rail.x+rail.width-28)break;
+    await page.mouse.move(x<rail.x?rail.x+8:rail.x+rail.width-8,rail.y+rail.height/2+(i%2),{steps:2});
+  }
+  const b=await to.boundingBox();await page.mouse.move(b.x+b.width/2,b.y+b.height/2,{steps:8});await page.mouse.up();await idle(page);
+}
 
 test('a fixed station keeps its place through cross-station tap, keyboard, return, undo and reload',async({page})=>{
   await ready(page,32);

@@ -86,6 +86,7 @@ export class CropEditor {
     });
     root.addEventListener('keydown',event=>{
       if(!(event.target as HTMLElement).matches('[data-crop-range],[data-crop-exact]'))return;
+      if(event.key==='Escape'&&(event.target as HTMLElement).matches('[data-crop-range]')&&!this.held)return;
       event.stopPropagation();
       if(event.key==='Escape'){event.preventDefault();this.cancel();const context=this.context();if(context)this.restore(context.result);}
       if(event.key==='Enter'&&(event.target as HTMLElement).matches('[data-crop-exact]')){event.preventDefault();(event.target as HTMLInputElement).dispatchEvent(new Event('change',{bubbles:true}));}

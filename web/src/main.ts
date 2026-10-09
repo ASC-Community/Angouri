@@ -117,11 +117,16 @@ function writeLibrary(next:Seed[],deleted=deletedSeeds) {
 }
 const kernel = new Kernel((message)=> { notice={text:message,kind:'error'}; showNotice(); });
 const shapeNotes = new ShapeNotes(kernel);
-const garden = new Garden($('garden-content'),kernel,{reduced:()=>reduced,onFinish:()=>$('garden-back').click(),onBuild:(id:number)=>goToPuzzle(id)});
+const garden = new Garden($('garden-content'),kernel,{reduced:()=>reduced,onFinish:()=>$('garden-back').click(),onBuild:(id:number)=>goToPuzzle(id),onRevealComplete:()=>{
+  pictureCollecting=false;updatePrimary();
+  if(gardenDoneFocus&&$<HTMLDialogElement>('garden-dialog').open&&document.hasFocus())$('garden-content').querySelector<HTMLButtonElement>('[data-garden-done]')?.focus({preventScroll:true});
+  gardenDoneFocus=false;
+}});
 const circleCommit=(circle:Circle)=>serial(async()=>accept(await kernel.run(state,{type:'circle',...circle})),true);
 const cancelCirclePickup=installCircleHandles($('scene'),()=>state?.circle&&result?.circle&&pending===0&&!['flying','releasing'].includes(flight.phase)?{state,result,camera}:undefined,circleCommit,async(snapshot,circle)=>{const reply=await kernel.run(snapshot,{type:'circle',...circle});return reply.status==='ok'?reply.result:undefined;});
 let cropPlayback:{flight:Flight;won:boolean}|undefined;
 let pictureCelebrated=false;
+let pictureCollecting=false,gardenDoneFocus=false,gardenReturnSource:number|undefined;
 const cropEditor=new CropEditor($('construction'),()=>state&&result&&pending===0&&!['flying','releasing'].includes(flight.phase)?{state,result}:undefined,
   (snapshot,crop)=>kernel.run(snapshot,{type:'crop',...crop}),
   preview=>{
@@ -183,9 +188,10 @@ function progress() { if(state) write(SAVE,{schema:1,type:'save',state,slots:rai
 let feedbackContent:string|undefined;
 function showNotice() {
   $('feedback').className=`feedback ${notice.kind}`;
+  const text=insertionIndex!==undefined&&notice.kind!=='error'?'Choose a block.':notice.text;
   const finding=state&&result&&notice.kind!=='error'?discoveryObservation(state,result,discoveryStage):'';
   $('feedback').classList.toggle('discovery-feedback',!!finding);
-  const content=finding||`${notice.kind==='error'?'':icon('hand',16)}<span>${escape(notice.text)}</span>`;
+  const content=finding||`${notice.kind==='error'?'':icon('hand',16)}<span>${escape(text)}</span>`;
   if(content!==feedbackContent){$('feedback').innerHTML=content;feedbackContent=content;}
   const hints=!!state&&state.mode==='puzzle'&&!introActive()&&!isDiscovery(state)&&!throwWon;
   $('hints-open').hidden=!hints;
@@ -193,7 +199,7 @@ function showNotice() {
   $('recipe-guidance').style.visibility=reserveGuidance?'hidden':'';
   $('recipe-guidance').inert=reserveGuidance;
   $('recipe-guidance').setAttribute('aria-hidden',String(reserveGuidance));
-  $('feedback').hidden=!(finding||notice.text)||(throwWon&&!reserveGuidance&&notice.kind!=='error')||(hints&&notice.text==='Tap or drag a block.'&&notice.kind!=='error');
+  $('feedback').hidden=!(finding||text)||(throwWon&&!reserveGuidance&&notice.kind!=='error')||(hints&&text==='Tap or drag a block.'&&notice.kind!=='error');
   $('recipe-guidance').hidden=$('feedback').hidden&&!hints;
 }
 function error(message: string) { notice={text:message,kind:'error'}; showNotice(); }
@@ -260,7 +266,7 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
   }
   else if(history==='push'&&state&&(changed||layoutChanged)) {undo.push({state:clone(state),slots:[...railSlots]}); if(undo.length>100)undo.shift(); redo=[];}
   const newSource=!state||state.sourceId!==reply.state.sourceId||state.mode!==reply.state.mode;
-  if(newSource||history==='clear') {hintOrders.clear();hintOffered=false;hintCue=false;hintBlockSet='';bestTargetHits=-1;unsuccessfulRevisions=0;pictureCelebrated=false;}
+  if(newSource||history==='clear') {hintOrders.clear();hintOffered=false;hintCue=false;hintBlockSet='';bestTargetHits=-1;unsuccessfulRevisions=0;pictureCelebrated=false;pictureCollecting=false;}
   if(firstArrival)finishArrivalFocus();
   state=reply.state;result=reply.result;railSlots=nextSlots;initialized=true;
   const added=state.nodes.find(node=>!previousState?.nodes.some(before=>before.id===node.id));
@@ -355,10 +361,11 @@ function cue(op: Op) {
 function palette() {
   if(state?.circle){$('palette').innerHTML='';$('palette').dataset.count='0';delete $('palette').dataset.choices;return;}
   const choosing=choiceActive();
+  const replacing=!choosing&&!drag&&state?.nodes.some(node=>node.id===selectedStage);
   const creating=state?.mode==='remix',inventory=creating?{H:1,A:1,N:1,Q:1,D:1,I:1,S:1,F:1,C:1}:state?.inventory || {H:1,A:1};
   const available=(Object.keys(OPS) as Op[]).filter(op=>(inventory[op]||0)>0);
   $('palette').setAttribute('role','group');
-  $('palette').setAttribute('aria-label',choosing?'Choose a block':'Add a block to your recipe');
+  $('palette').setAttribute('aria-label',choosing?'Choose a block':replacing?'Replace the selected block or return it':'Add a block to your recipe');
   $('palette').dataset.count=String(Object.values(inventory).filter(n=>n>0).length);
   // Reserve the whole pile, including a return above condensed or reusable stock.
   $('palette').style.setProperty('--stack-room',String(choosing?0:creating?3:Math.max(0,Math.min(3,Math.max(0,...Object.values(inventory))-1))));
@@ -377,14 +384,15 @@ function palette() {
     const n=choosing?1:inventory[op]!;
     const used=creating||choosing?0:state?.nodes.filter(node=>node.op===op).length || 0;
     const returning=state?.nodes.find(node=>node.id===(drag?.id||selectedStage)&&node.op===op);
-    const availability=choosing?'ready':used>=n?'used':!creating&&(state?.nodes.length||0)>=(state?.limit||1)?'full':'ready';
+    const availability=choosing?'ready':used>=n?'used':!creating&&!replacing&&(state?.nodes.length||0)>=(state?.limit||1)?'full':'ready';
     const disabled=!initialized||availability!=='ready'&&!returning;
-    const title=choosing?OPS[op].description:returning?'Return the selected block to this stack':availability==='used'?'All copies are in your recipe':availability==='full'?'Recipe full — return a block or Undo':`${OPS[op].description} Tap to add, or drag to a recipe slot.`;
+    const title=choosing?OPS[op].description:returning?'Return the selected block to this stack':availability==='used'?'All copies are in your recipe':availability==='full'?'Recipe full — select a block to replace, return a block or Undo':replacing?'Replace the selected block. Its old copy returns to its stack.':`${OPS[op].description} Tap to add, or drag to a recipe slot.`;
     const remaining=n-used,visibleLayers=creating?3:Math.min(remaining,3);
     const layers=visibleLayers+(returning?1:0),capacity=creating?3:Math.max(0,Math.min(n-1,3)),condensed=!creating&&n>3;
-    return `<div class="ingredient-stack ${OPS[op].color} ${creating?'reusable-stack':''} ${condensed?'condensed-stack':''} ${creating||remaining>3?'has-more-stock':''}" style="--stack-capacity:${capacity};--stack-depth:${Math.max(0,layers-1)};--return-layer:${returning?1:0}"><span class="stock-deck" aria-hidden="true">${Array.from({length:Math.max(0,layers-1)},(_,i)=>`<i style="--layer:${i+1}"></i>`).join('')}</span><button class="ingredient ${OPS[op].color} ${returning?'return-ready':''}" data-op="${op}" data-shortcut="${shortcutIndex+1}" ${returning?`data-return="${returning.id}"`:''} data-availability="${availability}" data-stock="${creating?'reusable':remaining}" draggable="false" ${disabled?'disabled':''} ${choosing?`aria-pressed="${state?.nodes[0]?.op===op}"`:''} aria-label="${choosing?'Choose '+OPS[op].name:returning?'Return selected '+OPS[op].name+', '+(creating?'reusable stack':`${remaining} available below`):'Place '+OPS[op].name+' block, '+(creating?'reusable':`${remaining} available`)}" ${!choosing&&!returning?'aria-describedby="deck-keyboard-help"':''} aria-keyshortcuts="${[!choosing&&!returning?'ArrowUp Space':'Space',characterShortcuts?String(shortcutIndex+1):''].filter(Boolean).join(' ')}" data-block-name="${OPS[op].name}" data-block-help="${escape(title)}"><span class="ingredient-surface"><span class="piece-grip">${icon(returning?'return':disabled?availability==='used'?'check':'lock':'grip',16)}</span><span class="ingredient-face"><span class="op-formula">${operationTex(op)}</span></span>${cue(op)}<kbd class="button-hotkey" data-character aria-hidden="true">${shortcutIndex+1}</kbd></span></button>${creating||remaining>3?`<span class="${creating?'reusable-mark':'stock-total'}" aria-hidden="true">${tex(creating?'\\infty':String(remaining))}</span>`:''}</div>`;
+    return `<div class="ingredient-stack ${OPS[op].color} ${creating?'reusable-stack':''} ${condensed?'condensed-stack':''} ${creating||remaining>3?'has-more-stock':''}" style="--stack-capacity:${capacity};--stack-depth:${Math.max(0,layers-1)};--return-layer:${returning?1:0}"><span class="stock-deck" aria-hidden="true">${Array.from({length:Math.max(0,layers-1)},(_,i)=>`<i style="--layer:${i+1}"></i>`).join('')}</span><button class="ingredient ${OPS[op].color} ${returning?'return-ready':''}" data-op="${op}" data-shortcut="${shortcutIndex+1}" ${returning?`data-return="${returning.id}"`:''} data-availability="${availability}" data-stock="${creating?'reusable':remaining}" draggable="false" ${disabled?'disabled':''} ${choosing?`aria-pressed="${state?.nodes[0]?.op===op}"`:''} aria-label="${choosing?'Choose '+OPS[op].name:returning?'Return selected '+OPS[op].name+', '+(creating?'reusable stack':`${remaining} available below`):(replacing?'Replace selected block with ':'Place ')+OPS[op].name+' block, '+(creating?'reusable':`${remaining} available`)}" ${!choosing&&!returning?`aria-describedby="${replacing?'replacement':'deck'}-keyboard-help"`:''} aria-keyshortcuts="${['Space',characterShortcuts&&!returning?String(shortcutIndex+1):''].filter(Boolean).join(' ')}" data-block-name="${OPS[op].name}" data-block-help="${escape(title)}"><span class="ingredient-surface"><span class="piece-grip">${icon(returning?'return':disabled?availability==='used'?'check':'lock':'grip',16)}</span><span class="ingredient-face"><span class="op-formula">${operationTex(op)}</span></span>${cue(op)}<kbd class="button-hotkey" data-character aria-hidden="true" ${returning?'hidden':''}>${shortcutIndex+1}</kbd></span></button>${creating||remaining>3?`<span class="${creating?'reusable-mark':'stock-total'}" aria-hidden="true">${tex(creating?'\\infty':String(remaining))}</span>`:''}</div>`;
   }).join('');
 }
+function emptySlotFace() {return `<span class="empty-face"><span class="piece-grip">${icon('grip',12)}</span>${icon('plus',18)}</span>`;}
 function recipe() {
   if(!state||!result)return;
   if(state.circle){$('construction').innerHTML=circleRecipe(state,result);return;}
@@ -393,9 +401,9 @@ function recipe() {
   $('construction').classList.toggle('has-selection',!!selectedStage||insertionIndex!==undefined);
   const cells=railSlots.map((id,index)=>{
     if(id===state!.station?.id)return '';
-    if(!id)return `<button class="empty-slot insert-slot ${insertionIndex===index?'selected':''}" data-cell="${index}" data-empty="${index}" data-insert="${index}" draggable="false" aria-label="${selectedStage?'Move selected block to':'Empty'} slot ${index+1}" aria-pressed="${insertionIndex===index}" aria-describedby="empty-keyboard-help" aria-keyshortcuts="Space ArrowLeft ArrowRight${adjacentSlot(railSlots,state!,index,-1)!==index?' Backspace':''}" title="Choose a block for this slot, or drag the empty slot to reposition it"><span class="empty-face"><span class="piece-grip">${icon('grip',12)}</span>${icon('plus',18)}</span></button>`;
+    if(!id)return `<button class="empty-slot insert-slot ${insertionIndex===index?'selected':''}" data-cell="${index}" data-empty="${index}" data-insert="${index}" draggable="false" aria-label="${selectedStage?'Move selected block to':'Empty'} slot ${index+1}" aria-pressed="${insertionIndex===index}" aria-describedby="empty-keyboard-help" aria-keyshortcuts="Space ArrowLeft ArrowRight${adjacentSlot(railSlots,state!,index,-1)!==index?' Backspace':''}" title="Choose a block for this slot, or drag the empty slot to reposition it">${emptySlotFace()}</button>`;
     const node=state!.nodes.find(n=>n.id===id)!,receiving=selectedStage&&selectedStage!==id||insertionIndex!==undefined;
-    return `<div class="recipe-part ${OPS[node.op].color} ${selectedStage===node.id?'inspected':''} ${receiving?'receiving-cell':''}" data-cell="${index}" data-part="${node.id}" draggable="false"><button class="part-body" data-stage="${node.id}" aria-label="${receiving?'Move selection to slot '+(index+1):OPS[node.op].name+', slot '+(index+1)}" aria-pressed="${selectedStage===node.id}" aria-describedby="block-keyboard-help" aria-keyshortcuts="Space ArrowLeft ArrowRight ArrowDown Backspace" title="${receiving?'Move selection here':OPS[node.op].name+' · drag to move, drag off the recipe to return'}"><span class="recipe-face"><span class="piece-grip">${icon('grip',14)}</span><span class="part-formula">${operationTex(node.op)}</span></span></button></div>`;
+    return `<div class="recipe-part ${OPS[node.op].color} ${selectedStage===node.id?'inspected':''} ${receiving?'receiving-cell':''}" data-cell="${index}" data-part="${node.id}" draggable="false"><button class="part-body" data-stage="${node.id}" aria-label="${receiving?'Move selection to slot '+(index+1):OPS[node.op].name+', slot '+(index+1)}" aria-pressed="${selectedStage===node.id}" aria-describedby="block-keyboard-help" aria-keyshortcuts="Space ArrowLeft ArrowRight ArrowDown Backspace Delete" title="${receiving?'Move selection here':OPS[node.op].name+' · drag to move, drag off the recipe to return'}"><span class="recipe-face"><span class="piece-grip">${icon('grip',14)}</span><span class="part-formula">${operationTex(node.op)}</span></span></button></div>`;
   });
   const source=state.mode==='remix'?`<button id="source-choose" class="source-choice" aria-label="Change starting curve" aria-haspopup="dialog" aria-controls="curves-dialog" title="Change starting curve">${tex((result.relation?'h^2 = ':'h = ')+result.stages[0].latex)}<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4 3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>`:tex((result.relation?'h^2 = ':'h = ')+result.stages[0].latex);
   const station=state.station;
@@ -451,7 +459,7 @@ function renderScene() {
 }
 function updatePrimary() {
   const won=throwWon;
-  const advancing=won&&state?.mode!=='remix';
+  const advancing=won&&!pictureCollecting&&state?.mode!=='remix';
   const active=flight.phase==='flying'||flight.phase==='releasing';
   // Keep its focus through a pending edit so render can return it to the view
   // tab if the acknowledged construction no longer needs this control.
@@ -460,7 +468,7 @@ function updatePrimary() {
   $<HTMLButtonElement>('rethrow').disabled=!initialized||pending>0||active;
   const next=state?.mode==='puzzle'?followingPuzzle(state.sourceId):undefined;
   const label=advancing?(state?.mode==='puzzle'?next?isMastery(next)?next===PUZZLE_ORDER.at(-1)?'Final mastery':'Mastery challenge':chapterIndex(next)!==chapterIndex(state.sourceId)?'Next chapter':isCapstone(next)?'Chapter challenge':'Next puzzle':OPTIONAL_PUZZLES.includes(state.sourceId)?'More puzzles':'Finish':'Create'):active?'In flight':flight.phase==='landed'?'Throw again':'Throw';
-  $<HTMLButtonElement>('launch').disabled=!initialized||pending>0||active&&!advancing||!!result&&!flightPoints(result).length;
+  $<HTMLButtonElement>('launch').disabled=!initialized||pending>0||pictureCollecting||active&&!advancing||!!result&&!flightPoints(result).length;
   $('launch').title=result?.relation&&!result.relation.playback.length?'No real heights yet. Make the right side reach zero or above.':'';
   $('launch').innerHTML=(advancing?`<span>${label}</span>${icon('arrow',21)}`:`${icon('throw',21)}<span>${label}</span>`)+`<kbd class="button-hotkey"${advancing?' data-hotkey="activate"':''} aria-hidden="true">${advancing?'Space':'Enter'}</kbd>`;
   $('launch').setAttribute('aria-keyshortcuts',advancing?'Space':'Enter');
@@ -550,7 +558,15 @@ function render(focusCell?:number) {
   if(focusCell!==undefined)focusSlot(focusCell);
   else if(!restoreFocus(focus)&&focus?.element.id==='circle-fit')$(`tab-${displayedView()}`).focus({preventScroll:true});
 }
-function setView(next: View) {view=next;preferences();progress();render();}
+function setView(next: View) {
+  if(next===view)return;
+  const focused=document.activeElement;
+  const focusView=$('scene').contains(focused)||!!focused?.closest('.view-tabs');
+  view=next;preferences();progress();render();
+  // A view's reader or slider disappears when switching views. Keep keyboard
+  // navigation at the new view, while recipe/stack focus stays in the editor.
+  if(focusView)$(`tab-${next}`).focus({preventScroll:true});
+}
 function hasTargetFrame() {return !!state&&state.mode==='puzzle'&&state.sourceId>=48&&!state.circle&&!result?.relation;}
 function fittedCamera(targetsFirst=false):Camera {
   if(!result)return camera;
@@ -580,7 +596,7 @@ $('circle-fit').onclick=()=>{
   camera=fullCurve?fittedCamera():{...defaultCamera};
   render();$('circle-fit').focus({preventScroll:true});
 };
-function slideCell(cell:HTMLElement,before:DOMRect,keepFocusAtDestination=false) {
+function slideCell(cell:HTMLElement,before:DOMRect,keepFocusAtDestination=false,fromEmptySlot=false) {
   if(reduced)return;
   const face=cell.querySelector<HTMLElement>('.recipe-face,.empty-face')!,after=face.getBoundingClientRect();
   if(Math.abs(before.left-after.left)<=2&&Math.abs(before.top-after.top)<=2)return;
@@ -588,7 +604,17 @@ function slideCell(cell:HTMLElement,before:DOMRect,keepFocusAtDestination=false)
   // while the painted face arrives. Its button, outline and keycaps never
   // travel back to the source just to participate in that animation.
   const target=keepFocusAtDestination?face:cell;
-  target.animate([{transform:`translate(${before.left-after.left}px,${before.top-after.top}px)`},{transform:'translate(0,0)'}],{id:'recipe-move',duration:220,easing:'ease-out'});
+  let underlay:HTMLElement|undefined;
+  if(fromEmptySlot) {
+    // This slot was empty before the edit. Keep its face in the final layout
+    // beneath the travelling block, with no extra control or scroll extent.
+    underlay=document.createElement('span');underlay.className='insert-slot slot-underlay';underlay.setAttribute('aria-hidden','true');
+    underlay.innerHTML=emptySlotFace();
+    Object.assign(underlay.style,{left:`${cell.offsetLeft}px`,top:`${cell.offsetTop}px`,width:`${cell.offsetWidth}px`,height:`${cell.offsetHeight}px`});
+    cell.before(underlay);
+  }
+  const animation=target.animate([{transform:`translate(${before.left-after.left}px,${before.top-after.top}px)`},{transform:'translate(0,0)'}],{id:'recipe-move',duration:220,easing:'ease-out'});
+  if(underlay)void animation.finished.then(()=>underlay.remove(),()=>underlay.remove());
 }
 function fadeEmpty(empty:HTMLElement|null|undefined) {
   if(!reduced&&empty&&empty!==document.activeElement)empty.animate([{opacity:0},{opacity:1}],{id:'recipe-vacancy',duration:220,easing:'ease-out'});
@@ -596,19 +622,20 @@ function fadeEmpty(empty:HTMLElement|null|undefined) {
 function animateChange(previousState:State,previousResult:Result, from:Result['points'], rects:Map<string,DOMRect>,previousSlots:RailSlots,fromSlope:number,previousVisual?:SVGGElement,move?:CellMove,emptyRect?:DOMRect,completeSelection=false) {
   if(reduced||!state||!result)return;
   if(state.circle||previousState.circle)return;
+  const remaining=new Set(state.nodes.map(node=>node.id));
   document.querySelectorAll<HTMLElement>('.recipe-part').forEach(el=>{
     const before=rects.get(el.dataset.part!);
     if(!previousState.nodes.some(n=>n.id===el.dataset.part))el.classList.add('just-placed');
     else if(before) {
       // Continue from the actual painted position if interrupted. Focus, not
       // animation order or DOM order, determines which crossing block is above.
-      slideCell(el,before,completeSelection&&Number(el.dataset.cell)===move?.to);
+      slideCell(el,before,completeSelection&&Number(el.dataset.cell)===move?.to,previousSlots[Number(el.dataset.cell)]===null);
     }
   });
   for(const empty of document.querySelectorAll<HTMLElement>('.empty-slot')) {
     const cell=Number(empty.dataset.cell);
     if(emptyRect&&cell===move?.to)slideCell(empty,emptyRect,completeSelection);
-    else if(previousSlots[cell]||emptyRect&&cell===move?.from)fadeEmpty(empty);
+    else if(previousSlots[cell]&&!remaining.has(previousSlots[cell]!)||emptyRect&&cell===move?.from)fadeEmpty(empty);
   }
   if(displayedView()!=='flight'||!previousVisual)return;
   if(!previousVisual.dataset.fromFade&&previousVisual.querySelector('.curve-change-trajectory')?.getAttribute('d')===$('trajectory')?.getAttribute('d'))return;
@@ -648,6 +675,7 @@ function updateTargets() {
   });
   if(!throwWon&&result.solved&&result.checkpoints.length>0&&hits===result.checkpoints.length) {
     throwWon=true;
+    if(state.mode==='puzzle'&&isPicture(state.sourceId)&&!pictureCelebrated)pictureCollecting=true;
     if(state.mode==='puzzle'){completed.add(state.sourceId);progress();renderLevels();}
     updatePrimary();$('success').classList.toggle('just-solved',!reduced);
     $('move-announcement').textContent='Every target hit.';
@@ -702,8 +730,8 @@ document.addEventListener('focusin',event=>{
   if(event.target!==flightActionFocus&&event.target!==document.body)flightActionFocus=undefined;
   if(event.target!==quickThrowFocus&&event.target!==document.body)quickThrowFocus=undefined;
 });
-document.addEventListener('pointerdown',()=>{flightActionFocus=undefined;quickThrowFocus=undefined;});
-document.addEventListener('keydown',event=>{if(event.key==='Tab'){flightActionFocus=undefined;quickThrowFocus=undefined;}});
+document.addEventListener('pointerdown',()=>{flightActionFocus=undefined;quickThrowFocus=undefined;gardenDoneFocus=false;});
+document.addEventListener('keydown',event=>{if(event.key==='Tab'){flightActionFocus=undefined;quickThrowFocus=undefined;gardenDoneFocus=false;}});
 function finishFlight() {
   const quickOrigin=quickThrowFocus;quickThrowFocus=undefined;
   flight={phase:'landed',position:1};animatePosition();
@@ -711,13 +739,16 @@ function finishFlight() {
   updatePrimary();$('undo').classList.toggle('retry-cue',!!state?.nodes.length&&!result?.solved);
   $('success').classList.toggle('just-solved',!!result?.solved&&!reduced);
   $('move-announcement').textContent=state?.mode==='remix'?'Throw complete.':result?.solved?'Every target hit. Puzzle solved.':`${result?.checkpoints.filter(c=>c.hit).length} of ${result?.checkpoints.length} targets hit. ${choiceActive()?'Pick another block':'Adjust your recipe'} and throw again.`;
-  if(state?.mode==='puzzle'&&isPicture(state.sourceId)&&result?.solved&&!pictureCelebrated){pictureCelebrated=true;showGarden('launch',state.sourceId);}
+  if(state?.mode==='puzzle'&&isPicture(state.sourceId)&&result?.solved&&!pictureCelebrated){
+    const focusDone=!!quickOrigin||!!flightActionFocus&&document.documentElement.dataset.focusModality==='keyboard';
+    pictureCelebrated=true;showGarden('launch',state.sourceId,undefined,focusDone);
+  }
   const action=flightActionFocus;flightActionFocus=undefined;
   if(action&&document.activeElement===document.body&&!action.disabled&&!action.hidden&&!document.querySelector('dialog[open]'))action.focus({preventScroll:true});
   if(quickOrigin&&throwWon&&state?.mode!=='remix'&&document.hasFocus()&&!document.querySelector('dialog[open]')&&(document.activeElement===quickOrigin||document.activeElement===document.body))$('launch').focus({preventScroll:true});
 }
 function launch() {
-  if(!initialized||pending)return;
+  if(!initialized||pending||pictureCollecting)return;
   if(choiceActive()&&!state!.nodes.length)return;
   if(throwWon&&state?.mode!=='remix') {
     const next=followingPuzzle(state!.sourceId);
@@ -834,7 +865,32 @@ function moveCell(from:number,to:number,completeSelection=false) {
   const index=slots.slice(0,to).filter(Boolean).length;
   return serial(async()=>accept(await kernel.run(state,{type:'move',id,index}),'push',slots,undefined,true,id,undefined,completeSelection,move));
 }
-function insertIntoSlot(op:Op,index=insertionIndex??railSlots.indexOf(null),advance=false) {
+function nextInsertionSlot(focusedCell?:number) {
+  if(!state)return -1;
+  if(insertionIndex!==undefined)return insertionIndex;
+  const stationId=state.station?.id;
+  const last=state.nodes.filter(node=>node.id!==stationId).at(-1)?.id;
+  const from=focusedCell??(last?railSlots.indexOf(last):-1);
+  if(from<0)return railSlots.indexOf(null);
+  // An empty focused slot is an insertion position too, so removing a block
+  // can be followed immediately by typing its replacement without selecting it.
+  if(railSlots[from]===null)return from;
+  const next=adjacentSlot(railSlots,state,from,1);
+  // Insert immediately after the cursor. When the only hole is on the left,
+  // shifting toward it moves the cursor left too, so its old slot receives
+  // the new block. Never restart at the first earlier hole.
+  return railSlots.slice(from+1).includes(null)?next:railSlots.slice(0,from).includes(null)?from:-1;
+}
+function replaceSelected(op:Op) {
+  const previous=state?.nodes.find(node=>node.id===selectedStage);
+  if(!state||!previous||previous.id===state.station?.id||previous.op===op)return;
+  const id=crypto.randomUUID(),slots=railSlots.map(slot=>slot===previous.id?id:slot);
+  return {id,work:serial(async()=>{
+    const nodes=state!.nodes.map(node=>node.id===previous.id?{id,op}:node);
+    return accept(await kernel.run({...state!,nodes},{type:'evaluate'}),'push',slots,undefined,true,id,undefined,true);
+  }).then(accepted=>{if(accepted)focusPart(id);return accepted;})};
+}
+function insertIntoSlot(op:Op,index=nextInsertionSlot(),advance=false) {
   if(!state||index<0||index>=railSlots.length)return;
   // Insert at the indicated slot, shifting only as far as a free slot. Prefer
   // the right; a hole to the left still lets the new block land where dropped.
@@ -862,8 +918,16 @@ function removePart(id:string,focus:'stack'|'slot'|'previous'='stack') {
   const destination=focus==='previous'?adjacentSlot(railSlots,state!,cell,-1):cell;
   return perform({type:'remove',id},'push',railSlots.map(slot=>slot===id?null:slot)).then(accepted=>{
     if(!accepted)return;
-    if(focus!=='stack')focusSlot(destination);else focusRecipeControl(document.querySelector<HTMLElement>(`[data-op="${op}"]`));
+    if(focus!=='stack')focusSlot(Math.min(destination,railSlots.length-1));else focusRecipeControl(document.querySelector<HTMLElement>(`[data-op="${op}"]`));
     $('move-announcement').textContent=`${op?OPS[op].name:'Block'} returned to its stack.`;
+  });
+}
+function resetRecipe() {
+  return perform({type:'reset'}).then(accepted=>{
+    if(!accepted||state?.circle)return;
+    // Restart establishes a new insertion position, including when a fixed
+    // station precedes the first editable slot. Pointer focus stays unoutlined.
+    focusRecipeControl(choiceActive()?document.querySelector<HTMLElement>('#palette [data-op]:not(:disabled)'):document.querySelector<HTMLElement>('#construction [data-empty]'));
   });
 }
 // Manual inspection never changes the recipe or history. Playback temporarily
@@ -934,6 +998,7 @@ document.addEventListener('click',event=>{
       void serial(async()=>accept(await kernel.run({...state!,nodes},{type:'evaluate'}),'push',[nodes[0]?.id??null])).then(()=>document.querySelector<HTMLElement>(`[data-op="${op}"]`)?.focus({preventScroll:true}));
       return;
     }
+    if(selectedStage){void replaceSelected(d.op as Op)?.work;return;}
     void insertIntoSlot(d.op as Op)?.work.then(()=>{
       // render() preserves the current logical stack, or a deliberate focus
       // change during evaluation. Only a completely filled rail needs this
@@ -944,7 +1009,7 @@ document.addEventListener('click',event=>{
   if(d.insert!==undefined){
     if(state!.nodes.some(n=>n.id===selectedStage)){const id=selectedStage;void moveCell(railSlots.indexOf(id),Number(d.insert),true)?.then(()=>focusPart(id));}
     else if(insertionIndex!==undefined){const to=Number(d.insert);if(insertionIndex!==to)void moveCell(insertionIndex,to,true)?.then(()=>focusEmpty(to));else{insertionIndex=undefined;render();}}
-    else if(state!.mode==='remix'||state!.nodes.length<state!.limit){insertionIndex=Number(d.insert);notice={text:'Choose a block.',kind:''};render();focusEmpty(Number(d.insert));}
+    else if(state!.mode==='remix'||state!.nodes.length<state!.limit){insertionIndex=Number(d.insert);if(notice.kind==='error')notice={text:'',kind:''};render();focusEmpty(Number(d.insert));}
   }
   if(d.stage){
     if(selectedStage&&selectedStage!==d.stage){const id=selectedStage;void moveCell(railSlots.indexOf(id),railSlots.indexOf(d.stage),true)?.then(()=>focusPart(id));}
@@ -954,13 +1019,13 @@ document.addEventListener('click',event=>{
 });
 $('undo').onclick=()=>void historyMove(true);
 $('redo').onclick=()=>void historyMove(false);
-$('reset').onclick=()=>void perform({type:'reset'});
+$('reset').onclick=()=>void resetRecipe();
 $('launch').onclick=launch;
 $('rethrow').onclick=()=>throwCucumber(true);
 $('nav-create').onclick=()=>{if(initialized&&state?.mode!=='remix')changeWorkspace(()=>perform({type:'remix'},'clear',railSlots).then(ok=>{if(ok)$('level-title').focus({preventScroll:true});}),'Create',true);};
 document.addEventListener('keydown',event=>{
   const target=event.target as HTMLElement;
-  if(event.defaultPrevented||event.isComposing||event.altKey||event.ctrlKey&&event.metaKey||target.matches('input,textarea,select')||target.isContentEditable||document.querySelector('dialog[open]'))return;
+  if(event.defaultPrevented||event.isComposing||event.altKey||event.ctrlKey&&event.metaKey||target.matches('input:not([type=range]):not([type=checkbox]):not([type=radio]),textarea,select')||target.isContentEditable||document.querySelector('dialog[open]'))return;
   const inPlay=target===document.body||!!target.closest('.game-shell');
   if(event.key==='Escape'&&!event.ctrlKey&&!event.metaKey&&!event.shiftKey) {
     if(pointer){event.preventDefault();finishPointer(undefined,true);}
@@ -974,7 +1039,7 @@ document.addEventListener('keydown',event=>{
   }
   if(event.shiftKey&&!event.altKey&&['Delete','Backspace'].includes(event.key)&&inPlay) {
     event.preventDefault();
-    if(!event.repeat&&!pointer&&!$<HTMLButtonElement>('reset').disabled)void perform({type:'reset'});
+    if(!event.repeat&&!pointer&&!$<HTMLButtonElement>('reset').disabled)void resetRecipe();
     return;
   }
   if(event.key==='Enter'&&!event.altKey&&!event.shiftKey&&inPlay&&!target.closest('a[href]')) {
@@ -987,22 +1052,28 @@ document.addEventListener('keydown',event=>{
     if(!event.repeat&&!button.disabled&&button.getClientRects().length){event.preventDefault();(event.key.toLowerCase()==='h'?openHints:openNotes)(rememberFocus());}
     return;
   }
+  if(characterShortcuts&&inPlay&&!event.shiftKey&&event.key.toLowerCase()==='m') {
+    if(!event.repeat){event.preventDefault();$('menu-open').click();}
+    return;
+  }
   if(characterShortcuts&&inPlay&&!event.shiftKey&&['z','x','c'].includes(event.key.toLowerCase())) {
     const next=views[['z','x','c'].indexOf(event.key.toLowerCase())],button=$<HTMLButtonElement>(`tab-${next}`);
     if(initialized&&!event.repeat&&!button.disabled&&button.getClientRects().length){
-      event.preventDefault();const onView=target.matches('[role=tab]');setView(next);if(onView)button.focus({preventScroll:true});
+      event.preventDefault();setView(next);
     }
     return;
   }
   if(characterShortcuts&&inPlay&&!event.shiftKey&&/^[1-9]$/.test(event.key)) {
-    // Keep the palette's authored order, including depleted stacks. A number
-    // invokes that visible control; it never changes to the next available kind.
+    // Keep the palette's authored order, including depleted stacks. Numbers
+    // place or replace that kind; a selected block's return is a separate action.
     const button=$('palette').querySelectorAll<HTMLButtonElement>('[data-op]')[Number(event.key)-1];
     if(initialized&&!pending&&!event.repeat&&button&&!button.disabled&&button.getClientRects().length) {
       event.preventDefault();
-      if(choiceActive()||button.dataset.return)button.click();
+      if(choiceActive())button.click();
+      else if(selectedStage)void replaceSelected(button.dataset.op as Op)?.work;
       else {
-        const advance=insertionIndex!==undefined,placed=insertIntoSlot(button.dataset.op as Op,undefined,advance);
+        const cell=target.closest<HTMLElement>('#construction [data-cell]')?.dataset.cell;
+        const advance=insertionIndex!==undefined,placed=insertIntoSlot(button.dataset.op as Op,nextInsertionSlot(cell===undefined?undefined:Number(cell)),advance);
         if(placed&&!advance)void placed.work.then(accepted=>{if(accepted)focusPart(placed.id);});
       }
     }
@@ -1011,19 +1082,14 @@ document.addEventListener('keydown',event=>{
   if(characterShortcuts&&inPlay&&event.key==='?'){event.preventDefault();if(!event.repeat)open('help-dialog');return;}
   if(event.shiftKey)return;
   if(navigateTablist(event,views.map(view=>$(`tab-${view}`)),tab=>setView(tab.dataset.view as View)))return;
-  if(target.matches('.ingredient:not(:disabled):not([data-return])')&&!choiceActive()&&!pending&&event.key==='ArrowUp') {
-    event.preventDefault();
-    const placed=insertIntoSlot(target.dataset.op as Op);
-    if(placed)void placed.work.then(accepted=>{if(accepted)focusPart(placed.id);});
-  }
   if(target.matches('.part-body')&&state&&!pending) {
     const id=target.dataset.stage!,index=railSlots.indexOf(id);
     if(event.key==='ArrowLeft'||event.key==='ArrowRight') {
       event.preventDefault();const to=adjacentSlot(railSlots,state,index,event.key==='ArrowLeft'?-1:1);
-      if(to!==index){selectedStage=id;void moveCell(index,to)?.then(()=>focusPart(id));}
+      if(to!==index)void moveCell(index,to)?.then(()=>focusPart(id));
     }
     if(event.key==='ArrowDown'||event.key==='Delete'||event.key==='Backspace') {
-      event.preventDefault();void removePart(id,event.key==='ArrowDown'?'stack':event.key==='Backspace'?'previous':'slot');
+      event.preventDefault();void removePart(id,event.key==='Backspace'?'previous':'slot');
     }
   }
   if(target.matches('.empty-slot')&&!pending&&event.key==='Backspace') {
@@ -1054,7 +1120,10 @@ function clearDropHints() {document.querySelectorAll('.drop-target,.suggested-sl
 function suggestSlot(event:Event) {
   if(pointer?.active)return;
   clearDropHints();
-  if((event.target as Element).closest('[data-op]:not(:disabled):not([data-return])'))document.querySelector(`[data-insert="${insertionIndex??railSlots.indexOf(null)}"]`)?.classList.add('suggested-slot');
+  if((event.target as Element).closest('[data-op]:not(:disabled):not([data-return])')) {
+    const index=selectedStage?railSlots.indexOf(selectedStage):nextInsertionSlot();
+    document.querySelector(`#construction [data-cell="${index}"]`)?.classList.add('suggested-slot');
+  }
 }
 $('palette').addEventListener('pointerover',suggestSlot);$('palette').addEventListener('focusin',suggestSlot);
 $('palette').addEventListener('pointerleave',()=>{if(!pointer?.active)clearDropHints();});$('palette').addEventListener('focusout',()=>{if(!pointer?.active)clearDropHints();});
@@ -1206,18 +1275,25 @@ $('hints-content').onclick=event=>{
 };
 $('menu-version').onclick=()=>open('releases-dialog','menu-version');
 $('ending-create').onclick=()=>$('nav-create').click();
-function showGarden(returnId:string,revealSource?:number,parent?:string) {
+function showGarden(returnId:string,revealSource?:number,parent?:string,focusDone=false) {
   const origin=revealSource&&!reduced?gardenOrigin($('scene').querySelector<SVGPathElement>('#flight-trail,.flow-machine:last-child .flow-curve')):undefined;
   const back=$<HTMLButtonElement>('garden-back');
   back.type=parent?'button':'submit';
   back.setAttribute('aria-label',parent?'Back to puzzle list':'Back to game');back.title=parent?'Back to puzzle list':'Back to game';
   if(parent){back.dataset.back=returnId;back.dataset.backDialog=parent;}
   else {delete back.dataset.back;delete back.dataset.backDialog;}
-  open('garden-dialog',parent?'menu-open':returnId);void garden.open(completed,revealSource,origin);
+  open('garden-dialog',parent?'menu-open':returnId);
+  gardenDoneFocus=focusDone;gardenReturnSource=revealSource;
+  void garden.open(completed,revealSource,origin);
 }
 $('ending-garden').onclick=()=>showGarden('ending-garden');
 $('picture-open').onclick=()=>showGarden('picture-open');
-$('garden-dialog').addEventListener('close',()=>{if(!$<HTMLDialogElement>('garden-dialog').open)garden.close();});
+$('garden-dialog').addEventListener('close',()=>{
+  if($<HTMLDialogElement>('garden-dialog').open)return;
+  const source=gardenReturnSource;gardenReturnSource=undefined;gardenDoneFocus=false;
+  garden.close();pictureCollecting=false;updatePrimary();
+  if(source!==undefined&&state?.sourceId===source&&throwWon&&!pending&&!document.querySelector('dialog[open]'))$('launch').focus({preventScroll:true});
+});
 $('ending-revisit').onclick=()=>{renderLevels();open('puzzles-dialog');};
 $('reset-progress-open').onclick=()=>{$('reset-progress-error').hidden=true;open('reset-progress-dialog');};
 $('reset-progress-confirm').onclick=async()=>{
@@ -1251,12 +1327,12 @@ $<HTMLInputElement>('motion-toggle').onchange=()=>{reduced=$<HTMLInputElement>('
 function reflectCharacterShortcuts() {
   document.documentElement.dataset.characterShortcuts=String(characterShortcuts);
   $<HTMLInputElement>('character-shortcuts').checked=!characterShortcuts;
-  for(const [id,key] of [['hints-open','H'],['ideas-open','N'],['help-open','?'],['tab-flight','Z'],['tab-function','X'],['tab-flow','C']]) {
+  for(const [id,key] of [['hints-open','H'],['ideas-open','N'],['menu-open','M'],['help-open','?'],['tab-flight','Z'],['tab-function','X'],['tab-flow','C']]) {
     if(characterShortcuts)$(id).setAttribute('aria-keyshortcuts',key);else $(id).removeAttribute('aria-keyshortcuts');
   }
   for(const button of $('palette').querySelectorAll<HTMLButtonElement>('[data-op]')) {
-    const base=!choiceActive()&&!button.dataset.return?'ArrowUp Space':'Space';
-    button.setAttribute('aria-keyshortcuts',[base,characterShortcuts?button.dataset.shortcut:''].filter(Boolean).join(' '));
+    const base='Space';
+    button.setAttribute('aria-keyshortcuts',[base,characterShortcuts&&!button.dataset.return?button.dataset.shortcut:''].filter(Boolean).join(' '));
   }
 }
 reflectCharacterShortcuts();

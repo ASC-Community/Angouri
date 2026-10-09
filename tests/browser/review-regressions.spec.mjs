@@ -11,11 +11,19 @@ async function place(page,op) {await page.locator(`[data-op="${op}"]`).click();a
 test('compact Flow exposes a complete area relationship and preserves inspection after edits',async({page})=>{
   for(const viewport of [{width:320,height:568},{width:844,height:390}]) {
     await page.setViewportSize(viewport);await ready(page,37,'flow');await place(page,'A');
-    const sizes=await page.locator('.flow-line').evaluate(line=>({height:line.clientHeight,
-      cards:[...line.querySelectorAll('.flow-machine')].map(card=>card.getBoundingClientRect().height),
-      pageWidth:document.documentElement.scrollWidth,viewport:innerWidth}));
-    expect(sizes.height).toBeGreaterThanOrEqual(Math.max(...sizes.cards));
-    expect(sizes.pageWidth).toBeLessThanOrEqual(sizes.viewport);
+    const sizes=await page.locator('.flow-line').evaluate(line=>({height:line.clientHeight,scrollHeight:line.scrollHeight,
+      pageWidth:document.documentElement.scrollWidth,pageHeight:document.documentElement.scrollHeight,viewport:[innerWidth,innerHeight]}));
+    expect(sizes.scrollHeight).toBeGreaterThan(sizes.height);
+    expect(sizes.pageWidth).toBeLessThanOrEqual(sizes.viewport[0]);
+    expect(sizes.pageHeight).toBeLessThanOrEqual(sizes.viewport[1]);
+    const reach=await page.locator('.flow-line').evaluate(line=>{
+      const first=line.querySelector('.flow-machine'),last=line.querySelector('.flow-machine:last-child'),frame=line.getBoundingClientRect();
+      const firstTop=first.getBoundingClientRect().top;line.scrollTop=line.scrollHeight;
+      return {firstTop,frameTop:frame.top,lastBottom:last.getBoundingClientRect().bottom,frameBottom:frame.bottom,scrollTop:line.scrollTop};
+    });
+    expect(reach.firstTop).toBeGreaterThanOrEqual(reach.frameTop);
+    expect(reach.lastBottom).toBeLessThanOrEqual(reach.frameBottom+1);
+    expect(reach.scrollTop).toBeGreaterThan(0);
     await page.locator('#flow-position').fill('4');await page.locator('#flow-position').dispatchEvent('input');
     await page.locator('.flow-line').evaluate(line=>{line.scrollTop=80;line.scrollLeft=80;});
     const scroll=await page.locator('.flow-line').evaluate(line=>[line.scrollLeft,line.scrollTop]);

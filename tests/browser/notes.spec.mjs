@@ -20,8 +20,8 @@ test('an explicit 4.5 hint sketch compares fourth and eighth powers with exact a
   const zero=await visiblePanel(box).locator('[data-zero-line]').getAttribute('d');
   let curve='';
   for(const [label,value] of [['Fitted bowl','\\frac{1}{4}'],['Square once','\\frac{1}{16}'],['Square again','\\frac{1}{256}']]) {
-    const button=box.getByRole('button',{name:label,exact:true});await button.focus();await page.keyboard.press('Enter');
-    await expect(button).toBeFocused();await expect(button).toHaveAttribute('aria-pressed','true');
+    const button=box.getByRole('tab',{name:label,exact:true});await button.focus();await page.keyboard.press('Enter');
+    await expect(button).toBeFocused();await expect(button).toHaveAttribute('aria-selected','true');
     await expect(visiblePanel(box).locator('.note-reading annotation')).toHaveText(['\\left.h\\right|_{x=0}=1',`\\left.h\\right|_{x=1}=${value}`]);
     expect(await visiblePanel(box).locator('[data-zero-line]').getAttribute('d')).toBe(zero);
     const next=await visiblePanel(box).locator('.note-curve').getAttribute('d');expect(next).not.toBe(curve);curve=next;
@@ -45,7 +45,7 @@ test('optional geometry hints compare missing relationships without completing t
   await open(page,45);await expect(page.locator('#hint-sketch>.note-circle-diagram .note-leg-x')).toHaveCount(1);await expect(page.locator('#hint-sketch>.note-circle-diagram .note-leg-h')).toHaveCount(1);
   await expect(page.locator('.note-distance-example annotation')).toHaveText('(\\frac{3}{4})^2+(1)^2=\\frac{25}{16}=r^2');
   await open(page,46);const pairs=page.getByRole('region',{name:'One pair narrows it down. Two pairs locate it.'});const before=await construction(page);
-  await expect(visiblePanel(pairs).locator('[data-note-pair]')).toHaveCount(1);await pairs.getByRole('button',{name:'Two pairs'}).click();await expect(visiblePanel(pairs).locator('[data-note-pair]')).toHaveCount(2);expect(await construction(page)).toEqual(before);
+  await expect(visiblePanel(pairs).locator('[data-note-pair]')).toHaveCount(1);await pairs.getByRole('tab',{name:'Two pairs'}).click();await expect(visiblePanel(pairs).locator('[data-note-pair]')).toHaveCount(2);expect(await construction(page)).toEqual(before);
   await open(page,47);await expect(page.locator('#hint-sketch h3').first()).toHaveText('Find the second line.');
   const sketch=page.locator('#hint-sketch>.note-circle-diagram');await expect(sketch.locator('[data-note-pair]')).toHaveCount(1);await expect(sketch.locator('.note-required')).toHaveCount(3);await expect(sketch.locator('.note-curve,.note-radius')).toHaveCount(0);
 });
@@ -67,7 +67,7 @@ test('hint sketch math labels stay on their zero lines through narrow reflow and
     await open(page,id);
     for(const viewport of [{width:1440,height:900},{width:320,height:568},{width:844,height:390}]) {
       await page.setViewportSize(viewport);
-      if(id!==71){const button=page.getByRole('button',{name:id===31?'Square again':'Two pairs',exact:true});await button.click();}
+      if(id!==71){const button=page.getByRole('tab',{name:id===31?'Square again':'Two pairs',exact:true});await button.click();}
       await expect(page.locator('#hint-sketch foreignObject')).toHaveCount(0);
       const offsets=await page.locator('.note-plot-frame:visible,.note-circle-diagram:visible').evaluateAll(frames=>frames.map(frame=>{
         const svg=frame.querySelector('svg'),axis=svg.querySelector('.note-zero-line'),m=svg.getScreenCTM(),point=axis.getPointAtLength(0),label=frame.querySelector('.note-zero .katex-html,.circle-note-zero .katex-html').getBoundingClientRect();

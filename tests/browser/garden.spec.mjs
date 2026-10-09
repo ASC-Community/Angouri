@@ -43,6 +43,51 @@ test('picture silhouettes link to actual construction without awarding progress'
   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([]);
 });
 
+test('garden Tab order follows labels across the top and bottom without changing paint order',async({page})=>{
+  for(const size of [{width:1146,height:850},{width:320,height:568}]) {
+    await page.setViewportSize(size);await ready(page);const before=await snapshot(page);
+    await page.locator('#picture-open').focus();await page.keyboard.press('Space');await expect(page.locator('[data-garden-piece]')).toHaveCount(8);
+    const paint=await page.locator('[data-garden-piece]').evaluateAll(es=>es.map(el=>Number(el.dataset.gardenPiece)));
+    expect(paint).toEqual([74,76,82,72,75,73,83,77]);
+    const order=['#garden-back',...[74,77,83,73,75,76,72,82].map(id=>`[data-garden-piece="${id}"]`),'[data-garden-done]'];
+    await expect(page.locator(order[0])).toBeFocused();
+    for(const selector of [...order.slice(1),order[0]]){await page.keyboard.press('Tab');await expect(page.locator(selector)).toBeFocused();}
+    for(const selector of [...order].reverse()){await page.keyboard.press('Shift+Tab');await expect(page.locator(selector)).toBeFocused();}
+    expect(await page.locator('[data-garden-piece]').evaluateAll(es=>es.map(el=>Number(el.dataset.gardenPiece)))).toEqual(paint);
+    expect(await snapshot(page)).toEqual(before);await page.keyboard.press('Escape');
+  }
+});
+
+test('a keyboard picture completion waits for collection then focuses Done before Next',async({page})=>{
+  await page.emulateMedia({reducedMotion:'no-preference'});await ready(page,82);await page.locator('[data-op="H"]').click();await idle(page);
+  await page.keyboard.press('Enter');await expect(page.locator('#garden-dialog')).toBeVisible();
+  await expect(page.locator('[data-garden-done]')).toBeDisabled();await expect(page.locator('#launch')).toHaveAttribute('data-action','throw');await expect(page.locator('#launch')).toBeDisabled();
+  await expect(page.locator('[data-garden-done]')).toBeEnabled();await expect(page.locator('[data-garden-done]')).toBeFocused();await expect(page.locator('.garden-collection')).toHaveCount(0);
+  await expect(page.locator('#launch')).toHaveAttribute('data-action','continue');await page.keyboard.press('Space');await expect(page.locator('#garden-dialog')).toBeHidden();await expect(page.locator('#launch')).toBeFocused();
+  await page.keyboard.press('Space');await idle(page);expect(await page.evaluate(()=>window.angouri.state.sourceId)).toBe(72);
+});
+
+test('garden completion honors deliberate focus navigation and reduced motion',async({page})=>{
+  await page.emulateMedia({reducedMotion:'no-preference'});await ready(page,82);await page.locator('[data-op="H"]').click();await idle(page);await page.keyboard.press('Enter');
+  await expect(page.locator('[data-garden-piece]')).toHaveCount(8);await page.keyboard.press('Tab');const moon=page.locator('[data-garden-piece="74"]');await expect(moon).toBeFocused();
+  await expect(page.locator('[data-garden-done]')).toBeEnabled();await expect(moon).toBeFocused();await page.keyboard.press('Escape');await expect(page.locator('#launch')).toBeFocused();
+  await page.emulateMedia({reducedMotion:'reduce'});await page.goto('/about/');await page.evaluate(()=>localStorage.clear());await ready(page,82);await page.locator('[data-op="H"]').click();await idle(page);await page.keyboard.press('Enter');
+  await expect(page.locator('[data-garden-done]')).toBeEnabled();await expect(page.locator('[data-garden-done]')).toBeFocused();await expect(page.locator('.garden-collection')).toHaveCount(0);
+});
+
+test('the cucumber completion waits for its final artwork crossfade before enabling Done',async({page})=>{
+  await page.emulateMedia({reducedMotion:'no-preference'});await ready(page,77);
+  for(const op of 'HQQQNAHH'){await page.locator(`[data-op="${op}"]`).click();await idle(page);}
+  await page.keyboard.press('Enter');await expect(page.locator('#garden-dialog')).toBeVisible();
+  await expect(page.locator('[data-garden-done]')).toBeDisabled();
+  await expect(page.locator('.garden-shell')).toHaveClass(/show-canonical/);
+  await expect(page.locator('[data-garden-done]')).toBeDisabled();await expect(page.locator('#launch')).toBeDisabled();
+  await expect(page.locator('[data-garden-done]')).toBeEnabled();await expect(page.locator('[data-garden-done]')).toBeFocused();
+  await expect(page.locator('.garden-canonical')).toHaveCSS('opacity','1');await expect(page.locator('.garden-canonical')).toHaveCSS('filter','none');
+  await expect(page.locator('.garden-cucumber-morph')).toHaveCSS('opacity','0');await expect(page.locator('.garden-collection')).toHaveCount(0);
+  await expect(page.locator('#launch')).toHaveAttribute('data-action','continue');
+});
+
 test('earned curves reveal the cucumber, preserve the recipe, and fit compact layouts',async({page})=>{
   test.setTimeout(180000);await ready(page,77);
   await page.evaluate(()=>{const key='angouri:vine:v1:progress',save=JSON.parse(localStorage.getItem(key));save.completed=[82,72,73,74,75,83,76];localStorage.setItem(key,JSON.stringify(save));});

@@ -15,15 +15,21 @@
   outline-offset: 3px;
 }
 
-:root[data-focus-modality=keyboard] .comparison-sized tbody:focus,
-:root[data-focus-modality=keyboard] .final-equation:focus,
-:root[data-focus-modality=keyboard] .flow-line:focus,
 :root[data-focus-modality=keyboard] .flow-goals:focus,
 :root[data-focus-modality=keyboard] .dialog-reading:focus,
 :root[data-focus-modality=keyboard] .notes-reading:focus {
   outline: 2px solid #426940;
   outline-offset: -2px;
 }
+
+/* Reader borders belong to stationary containers, above their scrolling
+   contents. Flow follows the view's bottom corners and meets its fixed header. */
+:root[data-focus-modality=keyboard] :is(.flow-line,.final-equation,.comparison-sized tbody):focus { outline: none; }
+:root[data-focus-modality=keyboard] :where(.flow-chain-frame:has(>.flow-line:focus),.equation-frame:has(>.final-equation:focus),.comparison-sized:has(>tbody:focus))::after {
+  content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  border: 2px solid #426940; border-radius: inherit;
+}
+:root[data-focus-modality=keyboard] .comparison-sized:has(>tbody:focus)::after { top: var(--comparison-header-height); border-radius: 8px; }
 
 /* Chapter cards clip their rounded contents. Keep the complete ring within
    the selected heading or puzzle row instead of clipping it to one edge. */
@@ -73,21 +79,21 @@ dialog :is(button,a,input,select,textarea,[tabindex]) { scroll-margin: 8px; }
 .keyboard-focus-cue svg { display: block; width: 100%; height: 100%; stroke: currentColor; stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; }
 .keyboard-arrows .keyboard-knob-ring { display: none; }
 .keyboard-arrows:not([data-directions=x]):not([data-directions=xy]):not([data-directions=xdown]) .keyboard-horizontal,
-.keyboard-arrows:not([data-directions=y]):not([data-directions=xy]):not([data-directions=up]) .keyboard-up,
+.keyboard-arrows:not([data-directions=y]):not([data-directions=xy]) .keyboard-up,
 .keyboard-arrows:not([data-directions=y]):not([data-directions=xy]):not([data-directions=xdown]) .keyboard-down { display: none; }
-.keyboard-arrows[data-directions=up] .keyboard-up { transform: translateY(10px); }
 .keyboard-arrows.is-knob .keyboard-direction-key { width: 100%; height: 100%; border: 0; background: transparent; }
 .keyboard-arrows.is-knob .keyboard-knob-ring { display: initial; stroke-width: 2.5; }
 .keyboard-arrows.is-knob .keyboard-horizontal { filter: drop-shadow(0 0 1px #fffef8); }
 
 /* Global play shortcuts stay beside their actions, without resizing controls.
    Inputs retain native editing shortcuts; modal dialogs suspend play keys. */
-.launch-button,.rethrow-button,.history-button,#hints-open,#ideas-open,.view-tabs button,[data-back-shortcut] { position: relative; }
+.launch-button,.rethrow-button,.history-button,.menu-button,#hints-open,#ideas-open,.view-tabs button,[data-back-shortcut] { position: relative; }
 .button-hotkey { display: none; position: absolute; z-index: 2; top: -9px; right: -5px; pointer-events: none; }
 .button-hotkey.is-clipped { visibility: hidden; }
 .button-hotkey[data-hotkey=activate] { right: auto; left: -5px; }
-:root[data-focus-modality=keyboard]:not(:has(dialog[open],input:focus,textarea:focus,select:focus)) .game-shell button:not(:disabled) .button-hotkey { display: block; }
+:root[data-focus-modality=keyboard]:not(:has(dialog[open],input:not([type=range]):not([type=checkbox]):not([type=radio]):focus,textarea:focus,select:focus)) .game-shell button:not(:disabled) .button-hotkey { display: block; }
 :root[data-focus-modality=keyboard] dialog[open]:not(:has(input:not([type=checkbox]):not([type=radio]):not([type=range]):focus,textarea:focus,select:focus)) [data-back-shortcut]:not(:disabled)>.button-hotkey { display: block; }
+:root[data-focus-modality=pointer] .keyboard-focus-cue,
 :root .launch-button[data-action=continue]:not(:focus)>.button-hotkey,
 :root[data-shortcut-labels=hidden] .button-hotkey,
 :root[data-character-shortcuts=false] .button-hotkey[data-character],

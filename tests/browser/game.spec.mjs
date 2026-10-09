@@ -172,7 +172,7 @@ test('shape notes connect earlier lessons without changing a recipe, history, vi
   await page.locator('[data-note-lesson="10"]').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
   await page.locator('[data-note-lesson="4"]').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
   expect(await page.locator('#notes-content').innerHTML()).toBe(original);
-  await expect(page.locator('[data-note-lesson="4"]')).toHaveAttribute('aria-pressed','true');await expect(page.locator('.katex-error')).toHaveCount(0);
+  await expect(page.locator('[data-note-lesson="4"]')).toHaveAttribute('aria-selected','true');await expect(page.locator('.katex-error')).toHaveCount(0);
   await page.getByRole('button',{name:'Back to puzzle',exact:true}).click();await expect(page.locator('#ideas-open')).toBeFocused();
   expect(await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history,view:window.angouri.view,scroll:document.querySelector('.flow-line').scrollTop,save:localStorage.getItem('angouri:vine:v1:progress')}))).toEqual(before);
   await page.locator('#ideas-open').click();await page.keyboard.press('Escape');await expect(page.locator('#ideas-open')).toBeFocused();

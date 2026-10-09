@@ -20,8 +20,8 @@ test('reflection Notes connect the chosen operation, both curves and a purposefu
   await expect(panel.locator('.note-observation')).toContainText('bottom becomes a peak');
   const reflected=await panel.locator('.note-expression:not(.previous) annotation').textContent();
   const camera=await panel.locator('[data-zero-line]').getAttribute('d');
-  await comparison.getByRole('button',{name:'Then Add one'}).focus();await page.keyboard.press('Enter');
-  await expect(comparison.getByRole('button',{name:'Then Add one'})).toBeFocused();
+  await comparison.getByRole('tab',{name:'Then Add one'}).focus();await page.keyboard.press('Enter');
+  await expect(comparison.getByRole('tab',{name:'Then Add one'})).toBeFocused();
   await expect(panel.locator('.note-expression.previous annotation')).toHaveText(reflected);
   await expect(panel.locator('.note-observation')).toContainText('Every height rises by one');
   expect(await panel.locator('[data-zero-line]').getAttribute('d')).toBe(camera);
@@ -71,7 +71,7 @@ test('a single missed shoulder is repaired without moving the five matching land
   await page.locator('#ideas-open').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
   const comparison=page.getByRole('region',{name:'Same endpoints and peak. Different shoulders.'});
   await expect(comparison.locator('[data-note-panel="0"] .note-reading annotation')).toHaveText('\\left.h\\right|_{x=1}=\\frac{1}{2}');
-  await comparison.getByRole('button',{name:'Squared again',exact:true}).click();
+  await comparison.getByRole('tab',{name:'Squared again',exact:true}).click();
   await expect(comparison.locator('[data-note-panel="1"] .note-reading annotation')).toHaveText('\\left.h\\right|_{x=1}=\\frac{1}{4}');
   await expect(page.locator('[data-reference-lesson="55"]')).toHaveCount(0);
 });
@@ -92,7 +92,7 @@ test('puzzle Notes offer relevant dependencies while Create keeps the complete b
     expect(bounds).toEqual({navigationFirst:true,explanationNext:true,overflow:0,clipped:[]});
   }
   const folding=page.locator('[data-note-lesson="53"]');await folding.focus();await page.keyboard.press('Enter');await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
-  await expect(folding).toBeFocused();await expect(folding).toHaveAttribute('aria-pressed','true');
+  await expect(folding).toBeFocused();await expect(folding).toHaveAttribute('aria-selected','true');
   await expect(page.locator('#notes-concept')).toHaveText('Squaring folds signed lobes.');
   await expect(page.locator('#notes-content')).toContainText('negative lobes upward');
   await expect(page.locator('#notes-content .note-recall')).toHaveCount(0);

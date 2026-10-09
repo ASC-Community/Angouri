@@ -149,14 +149,15 @@ export class Garden {
   private collection?:SVGSVGElement;
   private collectionPaths:Point[][]=[];
   private origin?:GardenOrigin;
+  private revealReady=false;
 
   constructor(
     private root:HTMLElement,
     private kernel:Kernel,
-    private options:{reduced:()=>boolean;onFinish:()=>void;onBuild?:(sourceId:number)=>void}
+    private options:{reduced:()=>boolean;onFinish:()=>void;onBuild?:(sourceId:number)=>void;onRevealComplete?:()=>void}
   ) {
     root.addEventListener('click',this.click);
-    root.addEventListener('keydown',this.keydown);
+    (root.closest('dialog')??root).addEventListener('keydown',this.keydown);
     root.addEventListener('pointermove',this.point);
     root.addEventListener('pointerleave',this.clearPoint);
     root.addEventListener('pointercancel',this.clearPoint);
@@ -165,6 +166,7 @@ export class Garden {
   async open(completed:Set<number>=new Set(),revealSource?:number,origin?:GardenOrigin) {
     this.close();
     this.active=true;
+    this.revealReady=false;
     const version=this.generation;
     this.completed=new Set([...completed].filter(id=>SOURCE_IDS.includes(id as SourceId)));
     this.revealSource=SOURCE_IDS.includes(revealSource as SourceId)&&this.completed.has(revealSource!)?revealSource as SourceId:undefined;
@@ -318,7 +320,7 @@ export class Garden {
           </svg>
         </div>
       </div>
-      <footer class="garden-footer"><p class="garden-status" role="status" aria-live="polite">${status}</p><button class="button primary garden-done" data-garden-done>Done</button></footer>
+      <footer class="garden-footer"><p class="garden-status" role="status" aria-live="polite">${status}</p><button class="button primary garden-done" data-garden-done ${canReveal?'disabled':''}>Done</button></footer>
     </section>`;
     this.alignCanonicalBody();
     this.root.closest<HTMLDialogElement>('dialog')?.scrollTo({top:0});
@@ -442,6 +444,7 @@ export class Garden {
         shell.classList.add('is-morphing','morph-complete','show-canonical');
       }
       this.revealMessage();
+      this.completeReveal();
       return;
     }
     const paper=this.root.querySelector<SVGSVGElement>('.garden-paper')!,overlay=this.collection!;
@@ -484,7 +487,7 @@ export class Garden {
         if(this.revealSource===77)this.morphCucumber(shell,version);else this.revealMessage();
       }
       if(elapsed<1700)this.frame=requestAnimationFrame(animate);
-      else {this.frame=undefined;this.endCollection();this.hitTest?.refresh();}
+      else {this.frame=undefined;this.endCollection();this.hitTest?.refresh();this.completeReveal();}
     };
     this.frame=requestAnimationFrame(animate);
   }
@@ -522,13 +525,26 @@ export class Garden {
     this.revealTimer=window.setTimeout(()=>{
       if(!this.active||version!==this.generation)return;
       morph.setAttribute('d',to);animation.endElement();animation.remove();this.morphAnimation=undefined;this.revealTimer=undefined;
-      shell.classList.add('morph-complete','show-canonical');this.revealMessage();
+      shell.classList.add('morph-complete','show-canonical');this.revealMessage();this.completeReveal();
     },510);
   }
 
   private revealMessage() {
     const piece=PIECES.find(piece=>piece.sourceId===this.revealSource);
     this.say(this.completed.size===PIECES.length?'All eight curves gather into your finished garden.':`${piece?.name??'Your curve'} is in place. ${this.completed.size} of ${PIECES.length} picture curves built.`);
+  }
+
+  private completeReveal() {
+    if(!this.active||this.revealReady||this.collection||this.revealTimer!==undefined)return;
+    const animations=this.root.getAnimations({subtree:true}).filter(animation=>animation.playState==='running'||animation.pending);
+    if(animations.length) {
+      const version=this.generation;
+      void Promise.allSettled(animations.map(animation=>animation.finished)).then(()=>{if(this.active&&version===this.generation)this.completeReveal();});
+      return;
+    }
+    this.revealReady=true;
+    const done=this.root.querySelector<HTMLButtonElement>('[data-garden-done]');if(done)done.disabled=false;
+    this.options.onRevealComplete?.();
   }
 
   private say(message:string) {
@@ -568,6 +584,18 @@ export class Garden {
   };
 
   private keydown=(event:KeyboardEvent)=>{
+    if(event.defaultPrevented||event.altKey||event.ctrlKey||event.metaKey)return;
+    if(event.key==='Tab'&&this.active) {
+      // Tab follows the two label rows, independently of SVG paint order.
+      // Reordering the artwork would bring water details above the bank.
+      const pieces=[...PIECES].sort((a,b)=>a.labelAt[1]-b.labelAt[1]||a.labelAt[0]-b.labelAt[0]);
+      const controls=[this.root.closest('dialog')?.querySelector<HTMLElement>('#garden-back'),
+        ...pieces.map(piece=>this.root.querySelector<SVGGElement>(`[data-garden-piece="${piece.sourceId}"]`)),
+        this.root.querySelector<HTMLElement>('[data-garden-done]')].filter((control):control is HTMLElement|SVGGElement=>!!control&&!control.matches(':disabled'));
+      const at=controls.indexOf(event.target as HTMLElement|SVGGElement);
+      if(at>=0){event.preventDefault();controls[(at+(event.shiftKey?controls.length-1:1))%controls.length].focus({preventScroll:true});}
+      return;
+    }
     if(event.repeat||event.key!=='Enter'&&event.key!==' ')return;
     const source=(event.target as Element).closest<SVGGElement>('[data-garden-build]');
     if(!source||!this.root.contains(source))return;

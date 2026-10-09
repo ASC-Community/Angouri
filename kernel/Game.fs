@@ -774,8 +774,13 @@ module Game =
             |> Seq.sortBy (fun branch -> branch.Expression.ToString())
             |> Seq.toList
         | _ -> invalidInput "preview" "The squared-height relation could not be solved explicitly for h.")
+    type private SignedRelationRoot = {
+        Expression: Entity
+        Factor: Entity
+        Radicand: Entity
+    }
     let private relationBranchCacheLimit = 256
-    let private relationBranchCache = Dictionary<string,RelationBranch list*Entity option>()
+    let private relationBranchCache = Dictionary<string,RelationBranch list*SignedRelationRoot option>()
     let private relationBranchCacheOrder = Queue<string>()
     let private relationBranchCacheGate = System.Object()
     let private cachedRelationSolution key create =
@@ -799,7 +804,7 @@ module Game =
     type private RelationSolvedSegment = {
         Segment: Piecewise.Segment
         Branches: RelationBranch list
-        SignedTraversalRoot: Entity option
+        SignedTraversalRoot: SignedRelationRoot option
     }
     type private RelationSolvedLine = {
         HeightLatex: string
@@ -1088,38 +1093,56 @@ module Game =
                     [(-b-root)/(2.*a);(-b+root)/(2.*a)]
 
     let private tryExactSignedSquareRoot (expression: Entity) =
+        let one = rational "1"
         let two = rational "2"
         let half = rational "1/2"
-        let rec root (current: Entity) =
+        // Extract square factors while keeping every remaining factor under one
+        // radical. Splitting sqrt(-x*(x-4)) into separate radicals would lose its
+        // real interior, whereas (x-2)*sqrt(-x*(x-4)/4) crosses zero smoothly.
+        let rec split (current: Entity) =
             match current with
             | :? Entity.Powf as power ->
                 match Piecewise.tryRationalEntity power.Exponent with
                 | Some exponent when exponent.Denominator = BigInteger.One &&
-                                         exponent.Numerator.Sign >= 0 &&
-                                         exponent.Numerator.IsEven ->
+                                         exponent.Numerator >= BigInteger(2) ->
                     let rootExponent = Piecewise.ofBigInteger (exponent.Numerator/BigInteger(2)) |> Piecewise.toEntity
-                    Some (power.Base.Pow(rootExponent).InnerSimplified)
-                | _ -> None
+                    power.Base.Pow(rootExponent).InnerSimplified,
+                        (if exponent.Numerator.IsEven then one else power.Base),true
+                | _ -> one,current,false
             | :? Entity.Mulf as product ->
-                match root product.Multiplier,root product.Multiplicand with
-                | Some left,Some right -> Some ((left*right).InnerSimplified)
-                | _ -> None
+                let left,leftRadicand,leftExtracted = split product.Multiplier
+                let right,rightRadicand,rightExtracted = split product.Multiplicand
+                (left*right).InnerSimplified,(leftRadicand*rightRadicand).InnerSimplified,leftExtracted||rightExtracted
             | :? Entity.Divf as quotient ->
-                match root quotient.Dividend,root quotient.Divisor with
-                | Some numerator,Some denominator -> Some ((numerator/denominator).InnerSimplified)
-                | _ -> None
+                let numerator,numeratorRadicand,numeratorExtracted = split quotient.Dividend
+                let denominator,denominatorRadicand,denominatorExtracted = split quotient.Divisor
+                (numerator/denominator).InnerSimplified,(numeratorRadicand/denominatorRadicand).InnerSimplified,numeratorExtracted||denominatorExtracted
             | _ ->
                 match Piecewise.tryRationalEntity current with
-                | Some value when value.Numerator.Sign = 0 -> Some (rational "0")
-                | Some value when value.Numerator.Sign > 0 -> Some (current.Pow(half).InnerSimplified)
-                | _ -> None
-        root expression
-        |> Option.bind (fun candidate ->
-            let candidate = candidate.InnerSimplified
-            // The structural proof above only admits products and quotients of
-            // positive constants and even powers. Keep AngouriMath as the final
-            // exact authority before using the signed representative in Flight.
-            if exactEqual (candidate.Pow(two).InnerSimplified) expression then Some candidate else None)
+                | Some value when value.Numerator.Sign >= 0 -> current.Pow(half).InnerSimplified,one,true
+                | _ -> one,current,false
+        let initialFactor,initialRadicand,initialExtracted = split expression
+        let factor,radicand,extracted =
+            if initialRadicand.Vars |> Seq.exists (fun variable -> variable=x) then
+                // Simplify may prefer a short nested expression to its factored
+                // polynomial. Ask the bounded exact polynomial factoriser for
+                // the remaining factors; null means it cannot settle this input.
+                // Cache this alongside the solver so drawing frames never do CAS.
+                let factored = MathS.Polynomials.Factor(initialRadicand,x)
+                if isNull factored then initialFactor,initialRadicand,initialExtracted
+                else
+                    let extraFactor,remainder,extraExtracted = split factored
+                    (initialFactor*extraFactor).InnerSimplified,remainder,initialExtracted||extraExtracted
+            else initialFactor,initialRadicand,initialExtracted
+        if not extracted then None
+        else
+            let candidate = (factor*radicand.Pow(half)).InnerSimplified
+            // AngouriMath verifies the exact identity. The original right side
+            // still owns the real domain, including isolated zeros where the
+            // square factor vanishes but the remaining radicand is negative.
+            if exactEqual (candidate.Pow(two).InnerSimplified) expression then
+                Some { Expression=candidate; Factor=factor; Radicand=radicand }
+            else None
 
     let private samePoint (leftX,leftY) (rightX,rightY) =
         abs (leftX-rightX) < 0.0000001 && abs (leftY-rightY) < 0.0000001
@@ -1247,7 +1270,7 @@ module Game =
                 match solved.SignedTraversalRoot with
                 | None -> solved.Branches |> List.map (fun branch -> branch.Family,branch.Expression)
                 | Some root ->
-                    [root;(-root).InnerSimplified]
+                    [root.Expression;(-root.Expression).InnerSimplified]
                     |> List.distinctBy (fun expression -> expression.ToString())
                     |> List.sortBy (fun expression -> expression.ToString())
                     |> List.mapi (fun family expression -> family,expression)
@@ -1276,7 +1299,7 @@ module Game =
                         // tryQuadratic proves the coefficients and discriminant
                         // symbolically. Irrational roots are converted to doubles
                         // only to anchor the drawn curve, never for validation.
-                        rationalQuadraticRoots { segment with Expression=root }
+                        rationalQuadraticRoots { segment with Expression=root.Factor }
                     | _ -> []
                 let baseCandidates =
                     startValue :: endValue :: exactRoots @ exactTraversalRoots @
@@ -1377,14 +1400,17 @@ module Game =
                 let mutable segmentIndex = 1
                 [0..intervals]
                 |> List.map (fun index ->
-                    let target = total * float index / float intervals
-                    while segmentIndex < cumulative.Length-1 && cumulative[segmentIndex] < target do
-                        segmentIndex <- segmentIndex+1
-                    let leftDistance,rightDistance = cumulative[segmentIndex-1],cumulative[segmentIndex]
-                    let ratio = if rightDistance=leftDistance then 0. else (target-leftDistance)/(rightDistance-leftDistance)
-                    let leftX,leftY = pointArray[segmentIndex-1]
-                    let rightX,rightY = pointArray[segmentIndex]
-                    leftX+(rightX-leftX)*ratio,leftY+(rightY-leftY)*ratio)
+                    if index=0 then pointArray[0]
+                    elif index=intervals then pointArray[pointArray.Length-1]
+                    else
+                        let target = total * float index / float intervals
+                        while segmentIndex < cumulative.Length-1 && cumulative[segmentIndex] < target do
+                            segmentIndex <- segmentIndex+1
+                        let leftDistance,rightDistance = cumulative[segmentIndex-1],cumulative[segmentIndex]
+                        let ratio = if rightDistance=leftDistance then 0. else (target-leftDistance)/(rightDistance-leftDistance)
+                        let leftX,leftY = pointArray[segmentIndex-1]
+                        let rightX,rightY = pointArray[segmentIndex]
+                        leftX+(rightX-leftX)*ratio,leftY+(rightY-leftY)*ratio)
 
     let private resampleRoute curves =
         let curveData =
@@ -1427,8 +1453,8 @@ module Game =
 
     let private relationCurveData sampleXs checkpointXs preferredTarget polynomialDegree solution =
         let rawPaths = relationRawPaths sampleXs checkpointXs polynomialDegree solution
-        // Keep the solver's height solutions distinct, including through zeros.
-        // Joining arbitrary graph edges would silently switch between solutions.
+        // Preserve each proved traversal family through interior zeros. Only
+        // deliberate outer-tip joins below can connect the opposite families.
         let families =
             rawPaths |> List.groupBy fst |> List.sortBy fst
             |> List.map (fun (_,paths) ->
@@ -1437,13 +1463,25 @@ module Game =
                 |> List.map (fun path -> if fst (List.head path.Points)>fst (List.last path.Points) then reversePath path else path)
                 |> List.sortBy (fun path -> fst (List.head path.Points)))
             |> List.distinctBy (fun paths -> paths |> List.map (fun path -> path.Points))
+        let signedRoots =
+            solution.Segments |> List.choose (fun solved ->
+                solved.SignedTraversalRoot |> Option.map (fun root ->
+                    let factor,_ = Piecewise.compileNumeric x root.Factor
+                    let radicand,_ = Piecewise.compileNumeric x root.Radicand
+                    Piecewise.toFloat solved.Segment.Start,Piecewise.toFloat solved.Segment.End,factor,radicand))
+        let isRadicalTip (px,py) =
+            abs py<0.000000001 &&
+            signedRoots |> List.exists (fun (low,high,factor,radicand) ->
+                px>=low-0.000000001 && px<=high+0.000000001 &&
+                let factorValue,radicandValue = factor px,radicand px
+                Double.IsFinite(factorValue) && Double.IsFinite(radicandValue) &&
+                abs factorValue>0.000000001 && abs radicandValue<0.000000001)
         let hasNoInteriorIntersection path =
             path.Points.Length>2 &&
             (path.Points |> List.skip 1 |> List.take (path.Points.Length-2) |> List.forall (fun (_,height) -> abs height>0.000000001)) &&
             // A signed traversal representative can cross zero between two
-            // display samples. Treat that proven analytic crossing as an
-            // interior intersection too, so the two curves are never folded
-            // into a loop or endpoint join.
+            // display samples. At a clipped square-factor zero, keep those
+            // analytic curves separate rather than making them double back.
             (path.Points |> List.pairwise |> List.forall (fun ((_,left),(_,right)) -> left*right>=0.))
         let tryJoinAtOneEndpoint first second =
             let endpoints path = [true,List.head path.Points,path.StartClosed; false,List.last path.Points,path.EndClosed]
@@ -1452,9 +1490,10 @@ module Game =
                 |> List.collect (fun (firstStarts,firstPoint,firstClosed) ->
                     endpoints second
                     |> List.choose (fun (secondStarts,secondPoint,secondClosed) ->
-                        if firstClosed && secondClosed && samePoint firstPoint secondPoint then Some (firstStarts,secondStarts) else None))
+                        if firstClosed && secondClosed && samePoint firstPoint secondPoint then Some (firstStarts,secondStarts,firstPoint) else None))
             match shared with
-            | [firstStarts,secondStarts] when hasNoInteriorIntersection first && hasNoInteriorIntersection second ->
+            | [firstStarts,secondStarts,tip] when
+                    (hasNoInteriorIntersection first && hasNoInteriorIntersection second) || isRadicalTip tip ->
                 // Orient both paths from one outer endpoint, through their only
                 // shared endpoint, to the other outer endpoint.
                 let before = if firstStarts then reversePath first else first
@@ -1475,12 +1514,16 @@ module Game =
                 |> Option.map (List.rev >> List.map List.singleton)
         let flights =
             match families with
-            | [ [first]; [second] ] when first.Points.Length>2 && second.Points.Length>2 &&
+            | [ [first]; [second] ] when not solution.HasRounding &&
+                    first.Points.Length>2 && second.Points.Length>2 &&
+                    first.StartClosed && first.EndClosed && second.StartClosed && second.EndClosed &&
                     samePoint (List.head first.Points) (List.head second.Points) &&
                     samePoint (List.last first.Points) (List.last second.Points) &&
-                    hasNoInteriorIntersection first && hasNoInteriorIntersection second ->
-                // Circles, ovals and leaf-shaped loops can combine their two
-                // branches without retracing or passing an internal junction.
+                    ((hasNoInteriorIntersection first && hasNoInteriorIntersection second) ||
+                     (isRadicalTip (List.head first.Points) && isRadicalTip (List.last first.Points))) ->
+                // Natural radical tips join the signed branches into one whole
+                // loop, including a figure-eight that passes straight through
+                // its middle on each visit. Clipped crossing curves stay open.
                 let joined=joinPoints first.Points (List.rev second.Points)
                 let openLoop=joined |> List.take (joined.Length-1)
                 let offset=
@@ -1797,6 +1840,12 @@ module Game =
                 let equal = Piecewise.tryCompareConstants left right = Some 0
                 exactEqualityCache[key] <- equal
                 equal
+        let equalWithUnexpandedProof proof actual expected =
+            if actual = expected then true
+            elif Piecewise.trySeparateConstants (proof()) expected |> Option.isSome then false
+            else cachedExactEqual actual expected
+        let unexpandedValue point =
+            (Piecewise.segmentAt point outputFinal).Expression.Substitute(x,Piecewise.toEntity point)
         let proveSineLandmark inputRange input expected =
             match inputRange,Piecewise.tryRationalEntity expected with
             | Some (low,high),Some target when target = Piecewise.negate Piecewise.one || target = Piecewise.zero || target = Piecewise.one ->
@@ -1854,8 +1903,8 @@ module Game =
                                 match sineInputs with
                                 | Some (inputs,inputRange) ->
                                     proveSineLandmark inputRange inputs[index] expected
-                                    |> Option.defaultWith (fun () -> cachedExactEqual actual expected)
-                                | None -> cachedExactEqual actual expected
+                                    |> Option.defaultWith (fun () -> equalWithUnexpandedProof (fun () -> unexpandedValue point) actual expected)
+                                | None -> equalWithUnexpandedProof (fun () -> unexpandedValue point) actual expected
                         let y = if relation then authoredTargetNumber else actualNumber
                         obj [ "x",str goal.X; "target",str goal.Y; "actual",str (actual.ToString())
                               "targetNumber",flt authoredTargetNumber; "targetLatex",str authoredTargetLatex
@@ -1996,7 +2045,8 @@ module Game =
                 "targetLatex",str (exactLatex targetGap)
                 "targetNumber",flt (exactNumber targetGap)
                 "actual",str (actualGap.ToString()); "actualLatex",str (exactLatex actualGap)
-                "hit",boolean (cachedExactEqual actualGap targetGap)
+                "hit",boolean (equalWithUnexpandedProof (fun () ->
+                    unexpandedValue (Piecewise.parseRational toGoal.X) - unexpandedValue (Piecewise.parseRational fromGoal.X)) actualGap targetGap)
                 "stages",arr (stageValues |> List.map (fun values ->
                     let fromValue,toValue,stageGap = gap values
                     obj [ "from",str (fromValue.ToString()); "to",str (toValue.ToString()); "gap",str (stageGap.ToString())

@@ -41,8 +41,25 @@ export function relationSketch(result:Result,label:string,options:{before?:Resul
   const solutions=solvedHeights(relation);
   return `<figure class="note-relation"><figcaption>${escape(label)}</figcaption>${notePlot(`${label} ${formulas.join(' ')}`,zero,paths)}<div class="note-formula">${tex(relation.equationLatex)}</div>${solutions?`<div class="note-solutions">${solutions}</div>`:relation.solvedLatex?`<div class="note-formula">${tex(relation.solvedLatex)}</div>`:''}</figure>`;
 }
+let comparisonId=0;
+const comparisonTabs=(title:string,choices:{label:string}[])=>`<div class="note-choices" role="tablist" aria-label="${escape(title)}">${choices.map((choice,i)=>`<button type="button" role="tab" tabindex="${i?-1:0}" data-note-choice="${i}" aria-selected="${i===0}">${escape(choice.label)}</button>`).join('')}</div>`;
+const comparisonPanel=(i:number)=>`role="tabpanel" data-note-panel="${i}" ${i?'hidden':''}`;
+export function connectComparisonPanels(root:ParentNode) {
+  // Full references can repeat the same rendered recall. Assign identities
+  // after composition, so each copy labels its own panels in Notes and Hints.
+  for(const comparison of root.querySelectorAll<HTMLElement>('[data-note-comparison]')) {
+    const id=`note-comparison-${++comparisonId}`;
+    for(const tab of comparison.querySelectorAll<HTMLElement>(':scope > .note-choices [data-note-choice]')) {
+      const key=tab.dataset.noteChoice;
+      const panel=[...comparison.querySelectorAll<HTMLElement>('[data-note-panel]')].find(panel=>panel.dataset.notePanel===key&&panel.closest('[data-note-comparison]')===comparison);
+      if(!panel)continue;
+      tab.id=`${id}-tab-${key}`;panel.id=`${id}-panel-${key}`;
+      tab.setAttribute('aria-controls',panel.id);panel.setAttribute('aria-labelledby',tab.id);
+    }
+  }
+}
 export function diagramChoices(title:string,choices:{label:string;html:string}[]) {
-  return `<section class="note-comparison" data-note-comparison aria-label="${escape(title)}"><strong>${escape(title)}</strong><div class="note-choices" role="group" aria-label="${escape(title)}">${choices.map((choice,i)=>`<button type="button" data-note-choice="${i}" aria-pressed="${i===0}">${escape(choice.label)}</button>`).join('')}</div><div aria-live="polite" aria-atomic="true">${choices.map((choice,i)=>`<div data-note-panel="${i}" ${i?'hidden':''}>${choice.html}</div>`).join('')}</div></section>`;
+  return `<section class="note-comparison" data-note-comparison aria-label="${escape(title)}"><strong>${escape(title)}</strong>${comparisonTabs(title,choices)}<div aria-live="polite" aria-atomic="true">${choices.map((choice,i)=>`<div ${comparisonPanel(i)}>${choice.html}</div>`).join('')}</div></section>`;
 }
 
 export function circleSketch(circles:Result[],options:{centre?:boolean;spoke?:boolean;triangle?:boolean;diameter?:boolean;targets?:[number,number][];pairs?:number[][];bounds?:number[]}={}) {
@@ -75,8 +92,8 @@ export function compare(title:string,choices:NoteChoice[],readings:{index:number
   const xy=([x,h]:[number,number])=>[17+(x-start)/(end-start)*142,99-(h-min)/(max-min)*84];
   const zero=xy([start,0])[1];
   return `<section class="note-comparison" data-note-comparison aria-label="${escape(title)}"><strong>${escape(title)}</strong>
-    <div class="note-choices" role="group" aria-label="${escape(title)}">${choices.map((choice,i)=>`<button type="button" data-note-choice="${i}" aria-pressed="${i===0}">${escape(choice.label)}</button>`).join('')}</div>
-    <div class="note-comparison-panels" aria-live="polite" aria-atomic="true">${choices.map((choice,i)=>`<figure data-note-panel="${i}" ${i?'hidden':''}>
+    ${comparisonTabs(title,choices)}
+    <div class="note-comparison-panels" aria-live="polite" aria-atomic="true">${choices.map((choice,i)=>`<figure ${comparisonPanel(i)}>
       ${notePlot(choice.label+': '+choice.stage.expression,zero,`${choice.before?drawStage(choice.before,xy,'note-previous'):''}${drawStage(choice.stage,xy,'note-curve')}${segmentedStage(choice.stage)?'':choice.stage.points.filter((_,j)=>j===0||j===Math.floor(choice.stage.points.length/2)||j===choice.stage.points.length-1).map(point=>{const [x,y]=xy(point);return `<circle cx="${x}" cy="${y}" r="2.8" class="note-point"/>`;}).join('')}`)}
       <figcaption>${choice.before?`<div class="note-expression previous"><span class="note-expression-label"><i aria-hidden="true"></i>${escape(legend[0])}</span><div class="note-formula">${tex(choice.before.latex)}</div></div>`:''}<div class="note-expression"><span class="note-expression-label"><i aria-hidden="true"></i>${escape(choice.before?legend[1]:choice.label)}</span><div class="note-formula">${tex(choice.stage.latex)}</div></div>${readings.map(({index,x})=>`<div class="note-reading">${tex(`${heightAtFormula(x)}=${rationalTex(choice.stage.values[index])}`)}</div>`).join('')}${choice.description?`<p class="note-observation">${choice.description}</p>`:''}</figcaption>
     </figure>`).join('')}</div></section>`;

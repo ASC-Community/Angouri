@@ -2,7 +2,7 @@
 export function installBlockTooltip(root:HTMLElement) {
   const tip=document.createElement('div');tip.id='block-tooltip';tip.className='block-tooltip';
   tip.setAttribute('role','tooltip');tip.hidden=true;document.body.append(tip);
-  let owner:HTMLButtonElement|undefined,dismissed:HTMLButtonElement|undefined,keyboardFocus=false;
+  let owner:HTMLButtonElement|undefined,dismissed:HTMLButtonElement|undefined;
   const hide=()=>{
     if(owner) {
       const remaining=owner.getAttribute('aria-describedby')?.split(' ').filter(id=>id!==tip.id).join(' ');
@@ -29,15 +29,19 @@ export function installBlockTooltip(root:HTMLElement) {
   });
   root.addEventListener('pointerout',event=>{
     const button=block(event.target);if(button&&button!==block(event.relatedTarget)){
-      if(!button.matches(':focus-visible'))hide();dismissed=undefined;
+      if(document.documentElement.dataset.focusModality!=='keyboard'||document.activeElement!==button)hide();dismissed=undefined;
     }
   });
-  root.addEventListener('focusin',event=>{const button=block(event.target);if(button&&(keyboardFocus||button.matches(':focus-visible')))show(button);});
+  root.addEventListener('focusin',event=>{const button=block(event.target);if(button&&document.documentElement.dataset.focusModality==='keyboard')show(button);});
   root.addEventListener('focusout',()=>{hide();dismissed=undefined;});
   document.addEventListener('focusin',event=>{if(!root.contains(event.target as Node))hide();});
-  root.addEventListener('pointerdown',()=>{keyboardFocus=false;dismissed=owner;hide();});
-  document.addEventListener('pointerdown',()=>{keyboardFocus=false;},true);
-  document.addEventListener('keydown',event=>{keyboardFocus=true;if(event.key==='Escape'){dismissed=owner;hide();}else if(!root.contains(document.activeElement))hide();});
+  root.addEventListener('pointerdown',()=>{dismissed=owner;hide();});
+  document.addEventListener('pointerdown',event=>{if(owner!==block(event.target))hide();},true);
+  document.addEventListener('keydown',event=>{
+    if(event.key==='Escape'){dismissed=owner;hide();return;}
+    const focused=block(document.activeElement);
+    if(focused&&document.documentElement.dataset.focusModality==='keyboard')show(focused);else hide();
+  });
   window.addEventListener('resize',hide);window.addEventListener('scroll',hide,true);
   new MutationObserver(()=>{if(owner&&!owner.isConnected)hide();}).observe(root,{childList:true});
 }

@@ -8,9 +8,22 @@ async function ready(page,id=25) {
 }
 const settled=page=>page.waitForFunction(()=>[...document.querySelectorAll('.recipe-part,.empty-slot')].every(el=>el.getAnimations({subtree:true}).every(a=>a.playState==='finished')));
 const cue=page=>page.locator('.keyboard-arrows:visible');
+// Set up an editing target after ordinary stack activation. Number-entry tests
+// separately verify the automatic focus handoff without this explicit focus.
+async function placeFocusedStack(page) {
+  await page.keyboard.press('Space');await idle(page);
+  await page.locator('.part-body').last().focus();
+}
 
-test('Delete clears the focused slot while Down returns focus to the stack',async({page})=>{
-  await ready(page);await page.locator('#palette [data-op="A"]').focus();await page.keyboard.press('ArrowUp');await idle(page);
+test('Up does not place from the deck and Down or Delete retains local focus for number entry',async({page})=>{
+  await ready(page);const deck=page.locator('#palette [data-op="A"]');await deck.focus();
+  const original=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}));
+  await page.keyboard.press('ArrowUp');await idle(page);
+  expect(await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}))).toEqual(original);
+  await expect(deck).toBeFocused();await expect(deck).not.toHaveAttribute('aria-keyshortcuts',/ArrowUp/);await expect(cue(page)).toHaveCount(0);
+  await page.keyboard.press('2');await idle(page);await expect(page.locator('.part-body')).toBeFocused();
+  await expect(page.locator('.part-body')).toHaveAttribute('aria-keyshortcuts',/ArrowDown/);
+  await expect(cue(page)).toHaveAttribute('data-directions','xdown');await expect(cue(page).locator('.keyboard-down')).toBeVisible();
   await page.keyboard.press('ArrowRight');await idle(page);
   const id=await page.evaluate(()=>window.angouri.state.nodes[0].id);
   await page.keyboard.press('Delete');await idle(page);
@@ -19,7 +32,12 @@ test('Delete clears the focused slot while Down returns focus to the stack',asyn
   await page.keyboard.press('Backspace');await idle(page);await expect(page.locator('[data-empty="0"]')).toBeFocused();
   await page.keyboard.press('Control+z');await idle(page);await expect(page.locator('[data-empty="0"]')).toBeFocused();
   await page.locator(`[data-stage="${id}"]`).focus();await page.keyboard.press('ArrowDown');await idle(page);
-  await expect(page.locator('#palette [data-op="A"]')).toBeFocused();expect(await page.evaluate(()=>window.angouri.state.nodes)).toEqual([]);
+  await expect(page.locator('[data-empty="1"]')).toBeFocused();await expect(page.locator('[data-empty="1"]')).toHaveAttribute('aria-pressed','false');
+  expect(await page.evaluate(()=>window.angouri.state.nodes)).toEqual([]);
+  await page.keyboard.press('1');await idle(page);await expect(page.locator('[data-cell="1"] .part-body')).toBeFocused();
+  await page.keyboard.press('2');await idle(page);await expect(page.locator('[data-cell="2"] .part-body')).toBeFocused();
+  expect(await page.evaluate(()=>window.angouri.slots[0])).toBeNull();
+  expect(await page.evaluate(()=>window.angouri.state.nodes.map(n=>n.op))).toEqual(['H','A']);
 });
 
 test('Backspace clears backward through blocks and holes, stops at the first slot and preserves Undo',async({page})=>{
@@ -49,7 +67,7 @@ test('Backspace clears backward through blocks and holes, stops at the first slo
 
 test('Backspace crosses a fixed station without selecting it, while forward Delete keeps its slot',async({page})=>{
   await ready(page,54);const original=await page.evaluate(()=>window.angouri.state);
-  await page.locator('#palette [data-op="H"]').focus();await page.keyboard.press('ArrowUp');await idle(page);
+  await page.locator('#palette [data-op="H"]').focus();await placeFocusedStack(page);
   await page.keyboard.press('ArrowRight');await idle(page);
   const id=await page.evaluate(()=>window.angouri.state.nodes.find(node=>node.op==='H').id);
   await page.keyboard.press('Backspace');await idle(page);await expect(page.locator('[data-empty="0"]')).toBeFocused();
@@ -64,13 +82,14 @@ test('Backspace crosses a fixed station without selecting it, while forward Dele
 
 test('Shift Delete restarts only the current recipe, remains undoable and leaves text editing alone',async({page})=>{
   await ready(page);
-  for(const op of ['A','H']){await page.locator(`#palette [data-op="${op}"]`).focus();await page.keyboard.press('ArrowUp');await idle(page);}
+  for(const op of ['A','H']){await page.locator(`#palette [data-op="${op}"]`).focus();await placeFocusedStack(page);}
   const before=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}));
   for(const key of ['Shift+Delete','Shift+Backspace']) {
     await expect(page.locator('#reset .button-hotkey')).toBeVisible();await expect(page.locator('#reset .button-hotkey')).toHaveText('⇧+⌫');
     await expect(page.locator('#reset')).toHaveAttribute('title','Restart puzzle (⇧+⌫)');
     await page.keyboard.press(key);await idle(page);
     expect(await page.evaluate(()=>window.angouri.state.nodes)).toEqual([]);await expect(page.locator('#reset .button-hotkey')).toBeHidden();
+    await expect(page.locator('[data-empty="0"]')).toBeFocused();
     expect(await page.evaluate(()=>window.angouri.history.undo)).toBe(before.history.undo+1);
     await page.keyboard.press('Control+z');await idle(page);
     expect(await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots}))).toEqual({state:before.state,slots:before.slots});
@@ -79,9 +98,11 @@ test('Shift Delete restarts only the current recipe, remains undoable and leaves
   await page.locator('#seed-name').fill('typing hn');await page.keyboard.press('Shift+Delete');await idle(page);
   expect(await page.evaluate(()=>window.angouri.state)).toEqual(before.state);
   await expect(page.locator('#library-dialog')).toBeVisible();
+  await ready(page,1);await page.keyboard.press('2');await idle(page);await page.keyboard.press('Shift+Backspace');await idle(page);
+  await expect(page.locator('#palette [data-op="H"]')).toBeFocused();expect(await page.evaluate(()=>window.angouri.state.nodes)).toEqual([]);
 });
 
-test('H and N open available references directly without revealing spoilers or editing the recipe',async({page})=>{
+test('H and N open available references and M opens Menu without editing the recipe',async({page})=>{
   await ready(page);
   await page.locator('#palette [data-op="A"]').focus();await page.keyboard.press('Space');await idle(page);
   const before=await page.evaluate(()=>({state:window.angouri.state,history:window.angouri.history}));
@@ -94,6 +115,9 @@ test('H and N open available references directly without revealing spoilers or e
   await page.keyboard.press('Escape');await expect(page.locator('#palette [data-op="A"]')).toBeFocused();
   expect(await page.evaluate(()=>({state:window.angouri.state,history:window.angouri.history}))).toEqual(before);
   await ready(page,1);await page.keyboard.press('h');await page.keyboard.press('n');await expect(page.locator('dialog[open]')).toHaveCount(0);
+  await expect(page.locator('#menu-open .button-hotkey')).toBeVisible();await expect(page.locator('#menu-open')).toHaveAttribute('aria-keyshortcuts','M');
+  await page.keyboard.press('m');await expect(page.locator('#menu-dialog .dialog-top button')).toBeFocused();
+  await page.keyboard.press('Backspace');await expect(page.locator('#menu-open')).toBeFocused();
   await ready(page,3);await page.keyboard.press('h');await expect(page.locator('dialog[open]')).toHaveCount(0);await page.keyboard.press('n');await expect(page.locator('#ideas-dialog')).toBeVisible();
 });
 
@@ -145,12 +169,12 @@ test('quick-key opt-out preserves defaults, Tab navigation and modified shortcut
   const before=await buttons();
   await page.locator('#menu-open').click();await page.locator('#settings-open').click();await expect(page.locator('#character-shortcuts')).not.toBeChecked();await expect(page.locator('#motion-toggle')).not.toBeChecked();await page.locator('#character-shortcuts').check();await page.keyboard.press('Escape');
   expect(await buttons()).toEqual(before);
-  await page.keyboard.press('h');await page.keyboard.press('n');await page.keyboard.press('?');await page.keyboard.press('x');await expect(page.locator('dialog[open]')).toHaveCount(0);await expect(page.locator('#tab-flight')).toHaveAttribute('aria-selected','true');
-  await page.keyboard.press('1');await idle(page);expect(await page.evaluate(()=>window.angouri.state.nodes)).toEqual([]);await expect(page.locator('[data-character]:visible')).toHaveCount(0);await expect(page.locator('#ideas-open')).not.toHaveAttribute('aria-keyshortcuts');
+  await page.keyboard.press('h');await page.keyboard.press('n');await page.keyboard.press('m');await page.keyboard.press('?');await page.keyboard.press('x');await expect(page.locator('dialog[open]')).toHaveCount(0);await expect(page.locator('#tab-flight')).toHaveAttribute('aria-selected','true');
+  await page.keyboard.press('1');await idle(page);expect(await page.evaluate(()=>window.angouri.state.nodes)).toEqual([]);await expect(page.locator('[data-character]:visible')).toHaveCount(0);await expect(page.locator('#ideas-open')).not.toHaveAttribute('aria-keyshortcuts');await expect(page.locator('#menu-open')).not.toHaveAttribute('aria-keyshortcuts');
   await page.locator('#ideas-open').focus();await page.keyboard.press('Space');await expect(page.locator('#ideas-dialog')).toBeVisible();await page.keyboard.press('Escape');
   await page.locator('#tab-function').click();await page.reload();await page.waitForFunction(()=>window.angouri?.state&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
   await page.keyboard.press('n');await expect(page.locator('dialog[open]')).toHaveCount(0);
-  await page.locator('#palette [data-op="A"]').focus();await page.keyboard.press('ArrowUp');await idle(page);await page.keyboard.press('Shift+Delete');await idle(page);
+  await page.locator('#palette [data-op="A"]').focus();await placeFocusedStack(page);await page.keyboard.press('Shift+Delete');await idle(page);
   expect(await page.evaluate(()=>window.angouri.state.nodes)).toEqual([]);await page.keyboard.press('Control+z');await idle(page);expect(await page.evaluate(()=>window.angouri.state.nodes.map(n=>n.op))).toEqual(['A']);
   await page.locator('#menu-open').click();await page.locator('#settings-open').click();await page.locator('#character-shortcuts').uncheck();await page.keyboard.press('Escape');
   await page.keyboard.press('n');await expect(page.locator('#ideas-dialog')).toBeVisible();
@@ -158,7 +182,7 @@ test('quick-key opt-out preserves defaults, Tab navigation and modified shortcut
 
 test('Z X C switch views directly while preserving the focused editor and recipe',async({page})=>{
   await ready(page);
-  await page.locator('#palette [data-op="A"]').focus();await page.keyboard.press('ArrowUp');await idle(page);
+  await page.locator('#palette [data-op="A"]').focus();await placeFocusedStack(page);
   const block=page.locator('.part-body'),before=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}));
   for(const [key,view] of [['c','flow'],['x','function'],['z','flight']]) {
     await page.keyboard.press(key);await expect(page.locator(`#tab-${view}`)).toHaveAttribute('aria-selected','true');await expect(block).toBeFocused();
@@ -170,7 +194,34 @@ test('Z X C switch views directly while preserving the focused editor and recipe
   await ready(page,1);await page.keyboard.press('x');await expect(page.locator('#flight-svg')).toBeVisible();await expect(page.locator('.view-tabs')).toBeHidden();
 });
 
-test('number shortcuts follow stable palette positions, chosen slots and return controls',async({page})=>{
+test('view shortcuts work from Flow sliders and Equation readers with visible focus and a retained probe',async({page})=>{
+  await ready(page,25);await page.setViewportSize({width:844,height:390});
+  await page.keyboard.press('2');await idle(page);await page.keyboard.press('c');
+  const slider=page.locator('#flow-position');await slider.focus();await page.keyboard.press('ArrowRight');
+  const position=await slider.inputValue(),before=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}));
+  for(const key of ['c','z','x']) {
+    await slider.focus();await page.keyboard.press(key);
+    if(key==='c'){await expect(slider).toBeFocused();await expect(slider).toHaveValue(position);}
+    else {
+      await expect(page.locator(`#tab-${key==='z'?'flight':'function'}`)).toBeFocused();
+      await page.keyboard.press('c');await expect(page.locator('#tab-flow')).toBeFocused();await expect(slider).toHaveValue(position);
+    }
+  }
+  await slider.focus();await expect(page.locator('#tab-flight .button-hotkey')).toBeVisible();await expect(page.locator('#tab-function .button-hotkey')).toBeVisible();
+  // An edit that replaces the scene also retains the logical slider for Undo.
+  await page.keyboard.press('Control+z');await idle(page);await expect(slider).toBeFocused();
+  await page.keyboard.press('Control+Shift+z');await idle(page);await expect(slider).toBeFocused();await expect(slider).toHaveValue(position);
+  for(const key of ['z','c']) {
+    await page.keyboard.press('x');const reader=page.locator('.value-table tbody');await expect(reader).toHaveAttribute('tabindex','0');
+    await reader.focus();await page.keyboard.press(key);await expect(page.locator(`#tab-${key==='z'?'flight':'flow'}`)).toBeFocused();
+  }
+  expect(await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}))).toEqual(before);
+  // Exact-value fields are for typing, even outside dialogs.
+  await ready(page,43);const exact=page.locator('[data-circle-value]').first();await exact.focus();await page.keyboard.press('x');
+  await expect(exact).toBeFocused();await expect(page.locator('#tab-flight')).toHaveAttribute('aria-selected','true');
+});
+
+test('number shortcuts follow stable palette positions and chosen slots while return stays a separate action',async({page})=>{
   await ready(page,3);
   const ops=await page.locator('#palette [data-op]').evaluateAll(es=>es.map(e=>e.dataset.op));
   await page.keyboard.press('1');await idle(page);await expect(page.locator('.part-body')).toBeFocused();
@@ -185,7 +236,13 @@ test('number shortcuts follow stable palette positions, chosen slots and return 
   const id=await page.evaluate(()=>window.angouri.state.nodes[0].id);await expect(page.locator('[data-empty="3"]')).toBeFocused();await expect(page.locator('[data-empty="3"]')).toHaveAttribute('aria-pressed','true');expect(await page.evaluate(()=>window.angouri.slots.indexOf(window.angouri.state.nodes[0].id))).toBe(2);
   await page.keyboard.press('Escape');await page.locator(`[data-stage="${id}"]`).focus();
   await page.keyboard.press('Space');await expect(page.locator('#palette [data-op="A"]')).toHaveAttribute('data-return',id);
-  await page.keyboard.press('2');await idle(page);expect(await page.evaluate(()=>window.angouri.state.nodes)).toEqual([]);await expect(page.locator('#palette [data-op="A"]')).toBeFocused();
+  const selected=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}));
+  await expect(page.locator('#palette [data-op="A"] .button-hotkey')).toBeHidden();
+  await expect(page.locator('#palette [data-op="A"]')).toHaveAttribute('aria-keyshortcuts','Space');
+  await page.keyboard.press('2');await idle(page);
+  expect(await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}))).toEqual(selected);
+  await expect(page.locator(`[data-stage="${id}"]`)).toBeFocused();await expect(page.locator(`[data-stage="${id}"]`)).toHaveAttribute('aria-pressed','true');
+  await page.keyboard.press('Delete');await idle(page);expect(await page.evaluate(()=>window.angouri.state.nodes)).toEqual([]);await expect(page.locator('[data-empty="2"]')).toBeFocused();
   await page.keyboard.press('Control+z');await idle(page);expect(await page.evaluate(()=>window.angouri.slots.indexOf(window.angouri.state.nodes[0].id))).toBe(2);
 
   await ready(page,3);await page.locator('#menu-open').click();await page.locator('#nav-create').click();await idle(page);
@@ -193,6 +250,119 @@ test('number shortcuts follow stable palette positions, chosen slots and return 
   for(let index=0;index<all.length;index++){await page.keyboard.press(String(index+1));await idle(page);await expect(page.locator('.part-body').last()).toBeFocused();}
   expect(await page.evaluate(()=>window.angouri.state.nodes.map(n=>n.op))).toEqual(all);
   await ready(page,1);await page.keyboard.press('1');await idle(page);await expect(page.locator('#palette [data-op="H"]')).toBeFocused();expect(await page.evaluate(()=>window.angouri.state.nodes.map(n=>n.op))).toEqual(['H']);
+});
+
+test('numbers insert after focus, replace only explicit selections and preserve holes in one Undo step',async({page})=>{
+  await ready(page);await page.keyboard.press('2');await idle(page);
+  const add=await page.evaluate(()=>window.angouri.state.nodes[0].id);
+  await page.keyboard.press('ArrowRight');await idle(page);
+  await expect(page.locator(`[data-stage="${add}"]`)).toHaveAttribute('aria-pressed','false');
+  await page.keyboard.press('1');await idle(page);
+  const half=await page.evaluate(()=>window.angouri.state.nodes.at(-1).id);
+  expect(await page.evaluate(()=>window.angouri.slots.slice(0,3))).toEqual([null,add,half]);
+  await page.locator(`[data-stage="${add}"]`).focus();await page.keyboard.press('2');await idle(page);
+  const added=await page.evaluate(()=>window.angouri.state.nodes[1].id);
+  expect(await page.evaluate(()=>window.angouri.slots.slice(0,4))).toEqual([null,add,added,half]);
+  await expect(page.locator(`[data-stage="${added}"]`)).toBeFocused();
+  const before=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}));
+  const stock=await page.locator('#palette [data-op="A"]').getAttribute('data-stock');
+  await page.keyboard.press('Space');await page.keyboard.press('1');await idle(page);
+  const replacement=await page.evaluate(()=>window.angouri.state.nodes[1]);expect(replacement.op).toBe('H');expect(replacement.id).not.toBe(added);
+  expect(await page.evaluate(()=>window.angouri.slots)).toEqual(before.slots.map(id=>id===added?replacement.id:id));
+  expect(await page.evaluate(()=>window.angouri.history.undo)).toBe(before.history.undo+1);
+  await expect(page.locator(`[data-stage="${replacement.id}"]`)).toBeFocused();await expect(page.locator(`[data-stage="${replacement.id}"]`)).toHaveAttribute('aria-pressed','false');
+  await expect(page.locator('#palette [data-op="A"]')).toHaveAttribute('data-stock',String(Number(stock)+1));
+  await page.keyboard.press('Control+z');await idle(page);
+  expect(await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots}))).toEqual({state:before.state,slots:before.slots});
+  await expect(page.locator(`[data-stage="${added}"]`)).toBeFocused();
+  await page.keyboard.press('Control+Shift+z');await idle(page);
+  await expect(page.locator(`[data-stage="${replacement.id}"]`)).toBeFocused();
+  await page.keyboard.press('2');await idle(page);
+  expect(await page.evaluate(()=>window.angouri.state.nodes.map(n=>n.op))).toEqual(['A','H','A','H']);
+  expect(await page.evaluate(()=>window.angouri.slots[0])).toBeNull();
+  await page.locator(`[data-stage="${add}"]`).focus();await page.locator('#palette [data-op="H"]').hover();
+  await expect(page.locator('[data-empty="5"]')).toHaveClass(/suggested-slot/);await expect(page.locator('[data-empty="0"]')).not.toHaveClass(/suggested-slot/);
+  await page.locator('#palette [data-op="H"]').click();await idle(page);
+  expect(await page.evaluate(()=>window.angouri.state.nodes.map(n=>n.op))).toEqual(['A','H','A','H','H']);
+  expect(await page.evaluate(()=>window.angouri.slots[0])).toBeNull();
+});
+
+test('ordinary entry continues forward when only earlier holes remain and Restart establishes the front',async({page})=>{
+  await ready(page);
+  const capacity=await page.evaluate(()=>window.angouri.state.limit);
+  for(let i=0;i<capacity-1;i++){
+    const key=await page.locator('#palette [data-op]:not(:disabled)').last().getAttribute('data-shortcut');
+    await page.keyboard.press(key);await idle(page);
+  }
+  const initialOps=await page.evaluate(()=>window.angouri.state.nodes.map(n=>n.op));
+  await page.keyboard.press('ArrowRight');await idle(page);
+  const last=await page.evaluate(()=>window.angouri.state.nodes.at(-1).id);
+  await page.locator('.part-body').first().focus();await page.keyboard.press('Delete');await idle(page);
+  await page.locator(`[data-stage="${last}"]`).focus();await page.keyboard.press('1');await idle(page);
+  const half=await page.evaluate(()=>window.angouri.state.nodes.at(-1).id);
+  expect(await page.evaluate(()=>window.angouri.slots[0])).toBeNull();
+  expect(await page.evaluate(()=>window.angouri.slots.slice(-2))).toEqual([last,half]);
+  await expect(page.locator(`[data-stage="${half}"]`)).toBeFocused();
+  await page.locator('#palette [data-op="H"]').hover();await expect(page.locator(`[data-cell="${capacity-1}"]`)).toHaveClass(/suggested-slot/);
+  await expect(page.locator('[data-empty="0"]')).not.toHaveClass(/suggested-slot/);
+  await page.locator('#palette [data-op="H"]').click();await idle(page);
+  expect(await page.evaluate(()=>window.angouri.state.nodes.map(n=>n.op))).toEqual([...initialOps.slice(1),'H','H']);
+  expect(await page.evaluate(()=>window.angouri.slots.includes(null))).toBe(false);
+  await page.locator('#reset').click();await idle(page);await expect(page.locator('[data-empty="0"]')).toBeFocused();
+  await expect(page.locator('html')).toHaveAttribute('data-focus-modality','pointer');
+  await page.keyboard.press('1');await idle(page);await expect(page.locator('[data-cell="0"] .part-body')).toBeFocused();
+  expect(await page.evaluate(()=>window.angouri.state.nodes.map(n=>n.op))).toEqual(['H']);
+});
+
+test('full recipes accept replacement from spare stock and unavailable numbers preserve selection',async({page})=>{
+  await ready(page);
+  const capacity=await page.evaluate(()=>window.angouri.state.limit);
+  for(let i=0;i<capacity;i++){
+    const key=await page.locator('#palette [data-op]:not(:disabled)').last().getAttribute('data-shortcut');
+    await page.keyboard.press(key);await idle(page);
+  }
+  await expect(page.locator('#palette [data-op="H"]')).toBeDisabled();
+  await page.locator('.part-body').first().focus();
+  await page.keyboard.press('Space');await expect(page.locator('#palette [data-op="H"]')).toBeEnabled();
+  const before=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}));
+  await page.keyboard.press('1');await idle(page);
+  expect(await page.evaluate(()=>window.angouri.state.nodes.map(n=>n.op))).toEqual(before.state.nodes.map((n,i)=>i===0?'H':n.op));
+  expect(await page.evaluate(()=>window.angouri.history.undo)).toBe(before.history.undo+1);
+  await page.keyboard.press('Control+z');await idle(page);
+  expect(await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots}))).toEqual({state:before.state,slots:before.slots});
+
+  await ready(page,3);await page.keyboard.press('1');await idle(page);await page.keyboard.press('2');await idle(page);await page.keyboard.press('Space');
+  const full=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}));
+  await expect(page.locator('#palette [data-op="H"]')).toBeDisabled();await page.keyboard.press('1');await idle(page);
+  expect(await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}))).toEqual(full);
+  await expect(page.locator('.part-body').last()).toHaveAttribute('aria-pressed','true');
+});
+
+test('replacement and Restart respect fixed stations and pointer and Space agree',async({page})=>{
+  for(const id of [53,54]) {
+    await ready(page,id);const original=await page.evaluate(()=>window.angouri.state);
+    await page.keyboard.press('1');await idle(page);
+    const slot=await page.evaluate(()=>Number(document.activeElement.closest('[data-cell]').dataset.cell));
+    for(const action of ['click','Space']) {
+      const before=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}));
+      await page.keyboard.press('Space');
+      const other=page.locator('#palette [data-op]:not([data-return]):not(:disabled)').first();
+      const op=await other.getAttribute('data-op');
+      await expect(other).toHaveAttribute('aria-describedby','replacement-keyboard-help');
+      if(action==='click')await other.click();else {await other.focus();await page.keyboard.press(action);}
+      await idle(page);const replacement=await page.evaluate(slot=>window.angouri.slots[slot],slot);
+      await expect(page.locator(`[data-stage="${replacement}"]`)).toBeFocused();
+      expect(await page.evaluate(id=>window.angouri.state.nodes.find(n=>n.id===id).op,replacement)).toBe(op);
+      expect(await page.evaluate(()=>window.angouri.slots)).toEqual(before.slots.map((id,i)=>i===slot?replacement:id));
+      expect(await page.evaluate(()=>window.angouri.history.undo)).toBe(before.history.undo+1);
+      expect(await page.evaluate(()=>window.angouri.slots[window.angouri.state.station.before])).toBe(original.station.id);
+    }
+    await page.keyboard.press('Shift+Backspace');await idle(page);
+    await expect(page.locator(`[data-empty="${slot}"]`)).toBeFocused();
+    expect(await page.evaluate(()=>window.angouri.state)).toEqual(original);
+    await page.keyboard.press('1');await idle(page);
+    await expect(page.locator(`[data-cell="${slot}"] .part-body`)).toBeFocused();
+  }
 });
 
 test('number placement advances a selected hole, skips filled cells, wraps and stops at a full recipe',async({page})=>{
@@ -228,18 +398,20 @@ test('selected number placement skips a fixed station and advances into new Crea
   for(let index=0;index<3;index++) {
     await page.keyboard.press('3');await idle(page);
     await expect(page.locator(`[data-empty="${index+1}"]`)).toBeFocused();await expect(page.locator(`[data-empty="${index+1}"]`)).toHaveAttribute('aria-pressed','true');
+    await expect(page.locator('#feedback')).toHaveText('Choose a block.');
     expect(await page.evaluate(()=>window.angouri.history.undo)).toBe(index+1);
   }
+  await page.keyboard.press('Space');await expect(page.locator('#feedback')).not.toContainText('Choose a block.');
 });
 
 test('play controls do not intercept assistive modifier combinations or composition',async({page})=>{
   for(const id of [25,43]) {
     await ready(page,id);
-    if(id===25){await page.locator('#palette [data-op="A"]').focus();await page.keyboard.press('ArrowUp');await idle(page);}
+    if(id===25){await page.locator('#palette [data-op="A"]').focus();await placeFocusedStack(page);}
     else await page.locator('[data-circle-handle]').first().focus();
     const before=await page.evaluate(()=>({state:window.angouri.state,history:window.angouri.history}));
     const prevented=await page.evaluate(()=>{
-      const events=[{key:'z',ctrlKey:true,altKey:true},{key:'ArrowRight',ctrlKey:true,altKey:true},{key:'ArrowLeft',altKey:true},{key:'ArrowDown',metaKey:true},{key:'Delete',ctrlKey:true,shiftKey:true},{key:'Enter',altKey:true},{key:'h',altKey:true},{key:'n',isComposing:true}];
+      const events=[{key:'z',ctrlKey:true,altKey:true},{key:'ArrowRight',ctrlKey:true,altKey:true},{key:'ArrowLeft',altKey:true},{key:'ArrowDown',metaKey:true},{key:'Delete',ctrlKey:true,shiftKey:true},{key:'Enter',altKey:true},{key:'h',altKey:true},{key:'n',isComposing:true},{key:'m',metaKey:true},{key:'m',altKey:true},{key:'m',isComposing:true}];
       return events.map(options=>{const event=new KeyboardEvent('keydown',{...options,bubbles:true,cancelable:true});document.activeElement.dispatchEvent(event);return event.defaultPrevented;});
     });
     expect(prevented).toEqual(Array(prevented.length).fill(false));await idle(page);
@@ -289,10 +461,10 @@ for(const platform of ['MacIntel','Win32'])test(`compact keycaps retain assigned
     await page.setViewportSize(size);await ready(page);
     await expect(page.locator('.keyboard-focus-cue:visible,.button-hotkey:visible')).toHaveCount(0);
     const add=page.locator('#palette [data-op="A"]');await add.focus();await page.keyboard.press('Shift');
-    await expect(cue(page).locator('kbd:visible')).toHaveText(['Space']);
-    await expect(cue(page)).toHaveAttribute('data-directions','up');
+    await expect(page.locator('.keyboard-focus-cue:visible kbd:visible')).toHaveText(['Space']);
+    await expect(cue(page)).toHaveCount(0);
     await expect(page.locator('#undo .button-hotkey')).toBeHidden();await expect(page.locator('#redo .button-hotkey')).toBeHidden();
-    await page.keyboard.press('ArrowUp');await idle(page);
+    await placeFocusedStack(page);
     const block=page.locator('.part-body');await expect(block).toBeFocused();
     await expect(cue(page).locator('kbd:visible')).toHaveText(['Space','⌫']);
     await expect(cue(page)).toHaveAttribute('data-directions','xdown');
@@ -354,12 +526,19 @@ for(const platform of ['MacIntel','Win32'])test(`compact keycaps retain assigned
 
 test('Space selects and deselects an empty slot in place, then follows it through swaps',async({page})=>{
   await ready(page,4);
+  const guidance=()=>page.locator('#feedback').evaluate(el=>({text:el.textContent,hidden:el.hidden}));
+  const normal=await guidance();
   const second=page.locator('[data-empty="1"]');await second.focus();
   for(const pressed of ['true','false','true']) {
     await page.keyboard.press('Space');await expect(second).toBeFocused();await expect(second).toHaveAttribute('aria-pressed',pressed);
+    if(pressed==='true'){await expect(page.locator('#feedback')).toBeVisible();await expect(page.locator('#feedback')).toHaveText('Choose a block.');}
+    else expect(await guidance()).toEqual(normal);
   }
+  await page.keyboard.press('Escape');await expect(second).toHaveAttribute('aria-pressed','false');expect(await guidance()).toEqual(normal);
+  await page.keyboard.press('Space');await page.locator('.recipe-heading h2').click();await expect(second).toHaveAttribute('aria-pressed','false');expect(await guidance()).toEqual(normal);
+  await second.focus();await page.keyboard.press('Space');
   expect(await page.evaluate(()=>window.angouri.history)).toEqual({undo:0,redo:0});
-  await page.locator('#palette [data-op="H"]').focus();await page.keyboard.press('ArrowUp');await idle(page);
+  await page.locator('#palette [data-op="H"]').focus();await placeFocusedStack(page);
   const half=await page.evaluate(()=>window.angouri.state.nodes[0].id);
   expect(await page.evaluate(()=>window.angouri.slots)).toEqual([null,half,null,null,null]);
   const first=page.locator('[data-empty="0"]');await first.focus();await page.keyboard.press('Space');
@@ -367,6 +546,7 @@ test('Space selects and deselects an empty slot in place, then follows it throug
   await page.keyboard.press('Tab');await expect(page.locator(`[data-stage="${half}"]`)).toBeFocused();
   await page.keyboard.press('Space');await idle(page);
   await expect(second).toBeFocused();await expect(second).toHaveAttribute('aria-pressed','false');
+  await expect(page.locator('#feedback')).not.toContainText('Choose a block.');
   expect(await page.evaluate(()=>window.angouri.slots)).toEqual([half,null,null,null,null]);
   expect(await page.evaluate(()=>window.angouri.history)).toEqual({undo:2,redo:0});
   await page.keyboard.press('Space');await expect(second).toHaveAttribute('aria-pressed','true');
@@ -375,7 +555,7 @@ test('Space selects and deselects an empty slot in place, then follows it throug
   await page.keyboard.press('ArrowRight');await idle(page);
   await expect(page.locator('[data-empty="2"]')).toBeFocused();await expect(page.locator('[data-empty="2"]')).toHaveAttribute('aria-pressed','true');
   expect(await page.evaluate(()=>window.angouri.history)).toEqual({undo:2,redo:0});
-  await page.locator('#palette [data-op="A"]').focus();await page.keyboard.press('ArrowUp');await idle(page);
+  await page.locator('#palette [data-op="A"]').focus();await placeFocusedStack(page);
   const add=await page.evaluate(()=>window.angouri.state.nodes.at(-1).id);
   await expect(page.locator(`[data-stage="${add}"]`)).toBeFocused();
   expect(await page.evaluate(()=>window.angouri.slots)).toEqual([half,null,add,null,null]);
@@ -385,49 +565,55 @@ test('Space selects and deselects an empty slot in place, then follows it throug
 
 test('directional placement crosses a fixed station without moving it and return remains undoable',async({page})=>{
   await ready(page,54);const original=await page.evaluate(()=>window.angouri.state);
-  await page.locator('#palette [data-op="H"]').focus();await page.keyboard.press('ArrowUp');await idle(page);
+  await page.locator('#palette [data-op="H"]').focus();await placeFocusedStack(page);
   const id=await page.evaluate(()=>window.angouri.state.nodes.find(n=>n.op==='H').id);
   await expect(page.locator(`[data-stage="${id}"]`)).toBeFocused();
   await page.keyboard.press('ArrowRight');await idle(page);
   expect(await page.evaluate(()=>window.angouri.slots.slice(0,3))).toEqual([null,original.station.id,id]);
   await expect(page.locator(`[data-stage="${id}"]`)).toBeFocused();
-  await page.keyboard.press('ArrowDown');await idle(page);await expect(page.locator('#palette [data-op="H"]')).toBeFocused();
+  await page.keyboard.press('Delete');await idle(page);await expect(page.locator('[data-empty="2"]')).toBeFocused();
   expect(await page.evaluate(()=>window.angouri.state)).toEqual(original);
   await page.keyboard.press('Control+z');await idle(page);
   expect(await page.evaluate(()=>window.angouri.slots.slice(0,3))).toEqual([null,original.station.id,id]);
 });
 
-test('Space repeats the current stack while Up follows a placed block and Down returns it',async({page})=>{
+test('Space repeats the current stack while number entry follows the block and deletion keeps editing local',async({page})=>{
   await ready(page,3);await page.locator('#menu-open').click();await page.locator('#nav-create').click();await idle(page);
   const negate=page.locator('#palette [data-op="N"]');await negate.focus();
   for(const key of ['Space','Space']) {
     await page.keyboard.press(key);await idle(page);await expect(negate).toBeFocused();
-    await expect(cue(page)).toHaveAttribute('data-directions','up');
+    await expect(cue(page)).toHaveCount(0);
   }
   const earlier=await page.evaluate(()=>window.angouri.state.nodes);
   expect(earlier.map(n=>n.op)).toEqual(['N','N']);
-  await page.keyboard.press('ArrowUp');await idle(page);
+  await page.keyboard.press('3');await idle(page);
   const added=await page.evaluate(()=>window.angouri.state.nodes.at(-1).id);
   await expect(page.locator(`[data-stage="${added}"]`)).toBeFocused();
   await expect(cue(page)).toHaveAttribute('data-directions','xdown');
   const beforeReturn=await page.evaluate(()=>window.angouri.slots);
-  await page.keyboard.press('ArrowDown');await idle(page);await expect(negate).toBeFocused();
+  await page.keyboard.press('ArrowDown');await idle(page);await expect(page.locator('[data-empty="2"]')).toBeFocused();
   expect(await page.evaluate(()=>window.angouri.state.nodes)).toEqual(earlier);
   await page.keyboard.press('Control+z');await idle(page);
   expect(await page.evaluate(()=>window.angouri.slots)).toEqual(beforeReturn);
   await page.keyboard.press('Control+Shift+z');await idle(page);
   expect(await page.evaluate(()=>window.angouri.state.nodes)).toEqual(earlier);
+  // Create has one spare slot. If removal collapses its old last slot, keep
+  // the nearest insertion position instead of losing focus to the deck/body.
+  await page.locator('.part-body').last().focus();await page.keyboard.press('ArrowRight');await idle(page);
+  await page.keyboard.press('ArrowDown');await idle(page);await expect(page.locator('[data-empty="1"]')).toBeFocused();
+  await page.keyboard.press('3');await idle(page);await expect(page.locator('[data-cell="1"] .part-body')).toBeFocused();
+  expect(await page.evaluate(()=>window.angouri.state.nodes.map(n=>n.op))).toEqual(['N','N']);
 
   await ready(page);const add=page.locator('#palette [data-op="A"]');await add.focus();
   for(const key of ['Space','Space']){await page.keyboard.press(key);await idle(page);await expect(add).toBeFocused();}
-  await page.keyboard.press('ArrowUp');await idle(page);await expect(page.locator('.part-body').last()).toBeFocused();
-  await page.keyboard.press('ArrowDown');await idle(page);await expect(add).toBeFocused();
+  await page.keyboard.press('2');await idle(page);await expect(page.locator('.part-body').last()).toBeFocused();
+  await page.keyboard.press('Delete');await idle(page);await expect(page.locator('[data-empty="2"]')).toBeFocused();
   expect(await page.evaluate(()=>window.angouri.state.nodes.map(n=>n.op))).toEqual(['A','A']);
 
   await ready(page,3);await page.locator('#palette [data-op="H"]').focus();
   await page.keyboard.press('Space');await idle(page);await expect(page.locator('#palette [data-op="A"]')).toBeFocused();
   await page.keyboard.press('Space');await idle(page);await expect(page.locator('#launch')).toBeFocused();
-  // Minimal choice puzzles have no recipe destination for Up to enter.
+  // Up has no placement action in minimal choice puzzles either.
   await ready(page,2);await page.keyboard.press('Tab');await expect(cue(page)).toHaveCount(0);
   await page.keyboard.press('ArrowUp');expect(await page.evaluate(()=>window.angouri.state.nodes)).toEqual([]);
 });
@@ -468,6 +654,51 @@ async function checkFrames(page,stationary=false) {
   if(stationary)expect(focusTravel,'Space keeps focus at the receiving slot throughout the slide').toBeLessThan(1.1);
   else expect(focusTravel).toBeGreaterThan(10);
 }
+
+test('a block moving into a hole leaves stationary empty faces underneath without extra controls or scrolling',async({page},testInfo)=>{
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  for(const [level,width,height] of [[25,1146,850],[54,320,568]]) {
+    await page.setViewportSize({width,height});await ready(page,level);
+    await page.keyboard.press('1');await idle(page);await settled(page);
+    const before=await page.evaluate(()=>({slots:window.angouri.slots,history:window.angouri.history,cells:document.querySelectorAll('#construction [data-cell]').length,extents:[...document.querySelectorAll('.pipeline,.rail-slots')].map(el=>[el.scrollWidth,el.scrollHeight])}));
+    await page.evaluate(()=>{
+      window.pausedRecipeMoves=[];
+      const animate=Element.prototype.animate;
+      Element.prototype.animate=function(frames,options){
+        const animation=animate.call(this,frames,options);
+        if(options?.id==='recipe-move'){animation.pause();animation.currentTime=0;window.pausedRecipeMoves.push(animation);}
+        return animation;
+      };
+    });
+    await page.keyboard.press('ArrowRight');await idle(page);
+    await expect(page.locator('.slot-underlay')).toHaveCount(1);await expect(page.locator('.slot-underlay')).toHaveAttribute('aria-hidden','true');
+    const frames=[];
+    for(const time of [0,110,220]) {
+      await page.evaluate(time=>window.pausedRecipeMoves.forEach(animation=>{animation.currentTime=time;}),time);
+      frames.push(await page.evaluate(()=>{
+        const moving=document.activeElement,face=moving.querySelector('.recipe-face'),vacant=document.querySelector('[data-empty="0"]'),underlay=document.querySelector('.slot-underlay');
+        return {piece:face.getBoundingClientRect().toJSON(),hole:underlay.getBoundingClientRect().toJSON(),vacancyOpacity:getComputedStyle(vacant).opacity,vacancyAnimations:vacant.getAnimations({subtree:true}).length,extraControls:underlay.matches('button,[tabindex]')||!!underlay.querySelector('button,[tabindex]')};
+      }));
+      if(time===110)await page.screenshot({path:testInfo.outputPath(`block-above-holes-${level}-${width}.png`)});
+    }
+    expect(frames.every(frame=>frame.vacancyOpacity==='1'&&frame.vacancyAnimations===0&&!frame.extraControls)).toBe(true);
+    expect(Math.max(...frames.map(frame=>frame.hole.x))-Math.min(...frames.map(frame=>frame.hole.x))).toBeLessThan(1.1);
+    expect(frames[2].piece.x-frames[0].piece.x).toBeGreaterThan(50);
+    expect(frames[1].piece.x).toBeGreaterThan(frames[0].piece.x);expect(frames[1].piece.x).toBeLessThan(frames[2].piece.x);
+    expect(Math.abs(frames[2].piece.x-frames[2].hole.x)).toBeLessThan(1.1);
+    expect(Math.abs(frames[2].piece.width-frames[2].hole.width)).toBeLessThan(1.1);
+    expect(await page.locator('#construction [data-cell]').count()).toBe(before.cells);
+    const extents=await page.locator('.pipeline,.rail-slots').evaluateAll(es=>es.map(el=>[el.scrollWidth,el.scrollHeight]));
+    for(let i=0;i<extents.length;i++)for(let axis=0;axis<2;axis++)expect(Math.abs(extents[i][axis]-before.extents[i][axis])).toBeLessThanOrEqual(1);
+    expect(await page.evaluate(()=>[scrollX,scrollY])).toEqual([0,0]);
+    expect(await page.evaluate(()=>window.angouri.history.undo)).toBe(before.history.undo+1);
+    await page.evaluate(()=>{window.pausedRecipeMoves.forEach(animation=>animation.finish());return Promise.all(window.pausedRecipeMoves.map(animation=>animation.finished));});
+    await expect(page.locator('.slot-underlay')).toHaveCount(0);
+    await page.keyboard.press('ArrowLeft');await idle(page);await expect(page.locator('.slot-underlay')).toHaveCount(1);
+    await page.evaluate(()=>window.pausedRecipeMoves.forEach(animation=>animation.cancel()));await expect(page.locator('.slot-underlay')).toHaveCount(0);
+    expect(await page.evaluate(()=>window.angouri.slots)).toEqual(before.slots);
+  }
+});
 
 test('arrows carry focus while Space swaps keep focus at the receiving slot throughout the animation',async({page},testInfo)=>{
   await page.emulateMedia({reducedMotion:'no-preference'});
@@ -553,7 +784,7 @@ test('offscreen arrow moves reveal the final block and keep its ring inside the 
   await page.emulateMedia({reducedMotion:'no-preference'});
   for(const size of [{width:320,height:568},{width:844,height:390}]) {
     await page.setViewportSize(size);await ready(page);await page.locator('#palette [data-op="A"]').focus();
-    await page.keyboard.press('ArrowUp');await idle(page);await settled(page);
+    await placeFocusedStack(page);await settled(page);
     const id=await page.evaluate(()=>window.angouri.state.nodes[0].id),part=page.locator(`[data-stage="${id}"]`);
     for(let index=1;index<6;index++) {
       await page.keyboard.press('ArrowRight');await idle(page);await settled(page);
@@ -567,7 +798,7 @@ test('offscreen arrow moves reveal the final block and keep its ring inside the 
       expect(await page.evaluate(()=>[scrollX,scrollY])).toEqual([0,0]);
     }
     const before=await page.evaluate(()=>window.angouri.slots);
-    await page.keyboard.press('ArrowDown');await idle(page);await expect(page.locator('#palette [data-op="A"]')).toBeFocused();
+    await page.keyboard.press('Delete');await idle(page);await expect(page.locator('[data-empty="5"]')).toBeFocused();
     await page.keyboard.press('Control+z');await idle(page);expect(await page.evaluate(()=>window.angouri.slots)).toEqual(before);
     await page.locator('[data-empty="4"]').focus();await page.keyboard.press('ArrowRight');await idle(page);await settled(page);
     await expect(page.locator('[data-empty="5"]')).toBeFocused();

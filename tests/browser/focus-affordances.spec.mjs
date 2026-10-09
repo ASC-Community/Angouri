@@ -9,6 +9,26 @@ async function ready(page,id=3,view='flight') {
 const idle=page=>page.evaluate(()=>window.angouri.whenIdle());
 const paint=page=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
 
+async function paintedReaderRing(page,reader,path) {
+  const hide=await page.addStyleTag({content:'.keyboard-focus-cue{visibility:hidden!important}'});
+  const rect=await reader.boundingBox(),clip={x:Math.floor(rect.x),y:Math.floor(rect.y),width:Math.ceil(rect.x+rect.width)-Math.floor(rect.x),height:Math.ceil(rect.y+rect.height)-Math.floor(rect.y)};
+  const png=await page.screenshot({clip,path});await hide.evaluate(el=>el.remove());
+  const coverage=await page.evaluate(async data=>{
+    const image=new Image();image.src=`data:image/png;base64,${data}`;await image.decode();
+    const canvas=document.createElement('canvas');canvas.width=image.width;canvas.height=image.height;const context=canvas.getContext('2d');context.drawImage(image,0,0);
+    const pixels=context.getImageData(0,0,image.width,image.height).data;
+    const green=(x,y)=>[66,105,64].every((c,i)=>Math.abs(pixels[(y*image.width+x)*4+i]-c)<25);
+    return ['left','right','top','bottom'].map(edge=>{
+      const vertical=edge==='left'||edge==='right',length=vertical?image.height:image.width;let found=0,total=0;
+      for(let at=12;at<length-12;at++) {
+        total++;if([0,1,2,3].some(d=>green(vertical?(edge==='left'?d:image.width-1-d):at,vertical?at:(edge==='top'?d:image.height-1-d))))found++;
+      }
+      return total?found/total:1;
+    });
+  },png.toString('base64'));
+  coverage.forEach((fraction,i)=>expect(fraction,`uncovered ${['left','right','top','bottom'][i]} reader edge`).toBeGreaterThan(.96));
+}
+
 async function ring(page,control,label,{pixels=false,outerEdge=false,testInfo}={}) {
   await control.focus();
   if(!await page.evaluate(()=>document.documentElement.dataset.focusModality==='keyboard'&&document.documentElement.dataset.shortcutLabels!=='hidden'))await page.keyboard.press('Shift');
@@ -82,7 +102,7 @@ test('rounded block faces, scratch cards, notes and menu controls retain all fou
     const sketch=page.locator('#hint-sketch-toggle');if(await sketch.count())await ring(page,sketch,`sketch-${size.width}`,{pixels:true,testInfo});
     await page.keyboard.press('Escape');await page.locator('#ideas-open').click();
     await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
-    for(const button of await page.locator('#notes-index button').all())await ring(page,button,`notes-${size.width}`);
+    for(const button of await page.locator('#notes-index button').all()){await button.click();await ring(page,button,`notes-${size.width}`);}
     for(const button of await page.locator('#notes-reading button').all())await ring(page,button,`notes-link-${size.width}`);
     await page.keyboard.press('Escape');
     for(const destination of [undefined,'library-open','puzzles-open','settings-open','help-open','menu-version','share-open']) {
@@ -112,7 +132,7 @@ test('rounded block faces, scratch cards, notes and menu controls retain all fou
 test('slider focus surrounds the current knob and arrows describe existing directional actions',async({page},testInfo)=>{
   for(const size of sizes) {
     await page.setViewportSize(size);await ready(page,3,'flow');
-    await page.keyboard.press('Tab');await expect(page.locator('#tab-flow')).toBeFocused();
+    await page.locator('#tab-flow').focus();await page.keyboard.press('Shift');await expect(page.locator('#tab-flow')).toBeFocused();
     await expect(page.locator('.keyboard-arrows:visible')).toHaveAttribute('data-directions','x');
     await page.keyboard.press('Tab');const slider=page.locator('#flow-position');await expect(slider).toBeFocused();
     await expect(page.locator('.keyboard-arrows.is-knob:visible')).toHaveCount(1);
@@ -149,9 +169,48 @@ test('reading panes are keyboard scrollable only while overflowing and Flight us
   await page.setViewportSize({width:320,height:400});await paint(page);
   const chain=page.locator('.flow-line');await expect(chain).toHaveAttribute('tabindex','0');
   await chain.focus();await page.keyboard.press('ArrowDown');await expect.poll(()=>chain.evaluate(el=>el.scrollTop)).toBeGreaterThan(0);
-  await ready(page,54);await page.keyboard.press('Tab');await expect(page.locator('#tab-flight')).toBeFocused();
+  await ready(page,54);await page.locator('#tab-flight').focus();
   await page.keyboard.press('PageDown');await expect.poll(()=>page.locator('#scene').evaluate(el=>el.scrollTop)).toBeGreaterThan(0);
   expect(await page.evaluate(()=>document.documentElement.scrollHeight>innerHeight)).toBe(false);
+});
+
+test('the Flow chain focus ring follows the rounded frame at every scroll position',async({page},testInfo)=>{
+  await ready(page,25,'flow');
+  for(const op of ['A','H','A','H']){await page.locator(`#palette [data-op="${op}"]`).click();await idle(page);}
+  for(const size of sizes) {
+    await page.setViewportSize(size);const chain=page.locator('.flow-line');await expect(chain).toHaveAttribute('tabindex','0');
+    await chain.focus();await page.keyboard.press('Home');await paint(page);
+    const radii=await chain.evaluate(el=>({panel:parseFloat(getComputedStyle(el.parentElement).borderBottomLeftRadius),left:parseFloat(getComputedStyle(el).borderBottomLeftRadius),right:parseFloat(getComputedStyle(el).borderBottomRightRadius)}));
+    expect(radii.left).toBe(radii.panel);expect(radii.right).toBe(radii.panel);expect(radii.left).toBeGreaterThan(8);
+    for(const end of [false,true]) {
+      if(end){await chain.evaluate(el=>{el.scrollLeft=el.scrollWidth;el.scrollTop=el.scrollHeight;});await paint(page);}
+      await expect(chain).toBeFocused();
+      const frame=await chain.evaluate(el=>{const css=getComputedStyle(el.parentElement,'::after'),rect=el.parentElement.getBoundingClientRect();return {border:css.borderTopWidth,color:css.borderTopColor,top:css.top,bottom:css.bottom,rect:{x:rect.x,y:rect.y,width:rect.width,height:rect.height}};});
+      expect(frame.border).toBe('2px');expect(frame.color).toBe('rgb(66, 105, 64)');expect(frame.top).toBe('0px');expect(frame.bottom).toBe('0px');
+      if(!end)await chain.evaluate((el,rect)=>el.dataset.frame=JSON.stringify(rect),frame.rect);
+      else expect(frame.rect).toEqual(await chain.evaluate(el=>JSON.parse(el.dataset.frame)));
+      await page.locator('#scene').screenshot({path:testInfo.outputPath(`flow-ring-${size.width}-${end?'end':'start'}.png`)});
+      await paintedReaderRing(page,chain,testInfo.outputPath(`flow-ring-edges-${size.width}-${end?'end':'start'}.png`));
+    }
+  }
+});
+
+test('Equation reader borders stay above row separators and formulas while scrolling',async({page},testInfo)=>{
+  await ready(page,25,'function');for(const op of ['A','H','A','H','A']){await page.locator(`#palette [data-op="${op}"]`).click();await idle(page);}
+  const checked=new Set();
+  for(const size of [sizes[1],sizes[2]]) {
+    await page.setViewportSize(size);await paint(page);
+    for(const selector of ['.final-equation','.value-table tbody']) {
+      const reader=page.locator(selector);if(await reader.getAttribute('tabindex')!=='0')continue;
+      checked.add(selector);await reader.focus();await page.keyboard.press('Home');await paint(page);
+      for(const end of [false,true]) {
+        if(end){await reader.evaluate(el=>{el.scrollTop=el.scrollHeight;el.scrollLeft=el.scrollWidth;});await paint(page);}
+        await paintedReaderRing(page,reader,testInfo.outputPath(`equation-ring-${selector.includes('tbody')?'table':'formula'}-${size.width}-${end?'end':'start'}.png`));
+      }
+      await page.locator('#scene').screenshot({path:testInfo.outputPath(`equation-focus-${selector.includes('tbody')?'table':'formula'}-${size.width}.png`)});
+    }
+  }
+  expect([...checked].sort()).toEqual(['.final-equation','.value-table tbody']);
 });
 
 test('circle handles, target choices and Create crop controls keep shaped focus inside their scrollers',async({page},testInfo)=>{

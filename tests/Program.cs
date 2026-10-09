@@ -128,9 +128,16 @@ static class ContractTests
     {
         try
         {
+            if (args.Contains("--relations-only", StringComparer.Ordinal))
+            {
+                HeightSquaredRelationContract();
+                Console.WriteLine($"PASS: {assertions} focused squared-height relation assertions");
+                return 0;
+            }
             if (args.Contains("--placement-performance-only", StringComparer.Ordinal))
             {
                 PiecewisePresentationContract();
+                ExactEqualityContract();
                 Console.WriteLine($"PASS: {assertions} focused placement performance correctness assertions");
                 return 0;
             }
@@ -3051,6 +3058,32 @@ static class ContractTests
 
     private static void PiecewisePresentationContract()
     {
+        // A cold 10.9 DQSA used to spend seconds simplifying complex cube-root
+        // forms merely to reject sine misses, exceeding the browser watchdog.
+        var liftedSine = Level(64);
+        foreach (char op in "DQSA")
+        {
+            var timer = System.Diagnostics.Stopwatch.StartNew();
+            liftedSine = Act(liftedSine["state"]!, new JsonObject
+            {
+                ["type"] = "insert", ["id"] = $"cold-sine-{op}", ["op"] = op.ToString(),
+                ["index"] = liftedSine["state"]!["nodes"]!.AsArray().Count
+            });
+            Console.WriteLine($"10.9 cold {op} placement: {timer.Elapsed.TotalMilliseconds:F1} ms");
+        }
+        Equal("True,False,False,False,False,False,False,True,True", string.Join(',',
+                liftedSine["result"]!["checkpoints"]!.AsArray().Select(point => point!["hit"]!.GetValue<bool>())),
+            "lifted nonlinear sine retains exactly the origin and two endpoint hits");
+        Equal(false, liftedSine["result"]!["heightGuide"]!["hit"]!.GetValue<bool>(),
+            "lifted nonlinear sine still misses the required height gap");
+        foreach (var point in liftedSine["result"]!["checkpoints"]!.AsArray())
+        {
+            var parts = point!["x"]!.GetValue<string>().Split('/');
+            double position = double.Parse(parts[0], System.Globalization.CultureInfo.InvariantCulture) /
+                (parts.Length == 1 ? 1 : double.Parse(parts[1], System.Globalization.CultureInfo.InvariantCulture));
+            True(Math.Abs(1 + Math.Sin(9 * Math.PI * Math.Pow(position, 4) / 2) - point["actualNumber"]!.GetValue<double>()) < 1e-10,
+                "exact lifted sine readings agree with the independent visual-value oracle");
+        }
         var fittedWave = PlayExtendedPuzzle(54, "SQHA")["result"]!.AsObject();
         Equal("1,5/4,3/2,5/4,1,3/2,1", string.Join(',', fittedWave["checkpoints"]!.AsArray()
                 .Select(point => point!["actual"]!.GetValue<string>())),
@@ -3299,6 +3332,80 @@ static class ContractTests
             System.Reflection.BindingFlags.NonPublic)!;
         bool EqualExactly(string left, string right) =>
             (bool)exactEqual.Invoke(null, [MathS.FromString(left), MathS.FromString(right)])!;
+        var separate = piecewise.GetMethod("trySeparateConstants",
+            System.Reflection.BindingFlags.Static |
+            System.Reflection.BindingFlags.Public |
+            System.Reflection.BindingFlags.NonPublic)!;
+        int? Separate(string left, string right) =>
+            (separate.Invoke(null, [MathS.FromString(left), MathS.FromString(right)])
+                as Microsoft.FSharp.Core.FSharpOption<int>)?.Value;
+
+        void Order(int? expected, int? actual, string label) => True(expected == actual, label);
+
+        // Known exact angle values provide an independent oracle. Enclosures
+        // may overlap at an identity, but must never reject it as a mismatch.
+        foreach (var (angle, value) in new[] {
+            ("0", "0"), ("pi/6", "1/2"), ("pi/4", "sqrt(2)/2"),
+            ("pi/2", "1"), ("7*pi/6", "-1/2"), ("-pi/2", "-1")
+        })
+        {
+            Order(null, Separate($"sin({angle})", value), "exact sine identity is never separated");
+            Order(1, Separate($"sin({angle})", $"({value})-1/1000"), "sine exceeds a lower rational-offset target");
+            Order(-1, Separate($"sin({angle})", $"({value})+1/1000"), "sine stays below a higher rational-offset target");
+        }
+        Order(1, Separate("1+sin(pi/18)", "9/8"), "lifted sine rejects a rational miss without radical expansion");
+        Order(-1, Separate("1+sin(8*pi/9)", "11/8"), "lifted sine detects a miss below its target");
+        Order(1, Separate("sin(200000000000000000000*pi+pi/6)", "49/100"),
+            "large exact phase uses outward period-reduction bounds");
+        Order(-1, Separate("sin(-200000000000000000000*pi-pi/6)", "-49/100"),
+            "negative exact phase retains outward bounds");
+        Order(null, Separate("cos(pi/3)", "1/2"), "cosine's shifted sine enclosure retains an exact identity");
+        Order(1, Separate("cos(pi/3)", "1/2-1/10000000000000000000000000000000000000000"),
+            "a difference below double precision is still exactly separated");
+        Order(null, Separate("sin(pi/6)", "1/2+1/10^100"),
+            "an unresolved overlap is not mistaken for either order or equality");
+        Order(null, Separate("sqrt(-1)", "0"), "non-real values are outside the interval proof");
+        Order(null, Separate("1/0", "1"), "undefined division has no certified enclosure");
+        Order(null, Separate("0^0", "0"), "an undefined zero power has no certified enclosure");
+
+        const string nearSine = "1736481776669303488517166267693147960003756771840693872362413781320658221390147354215166131573995740/10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+        string largeBase = "1" + new string('0', 100), rootScale = "1" + new string('0', 50);
+        Order(null, Separate($"{largeBase}^(1/2+sin(pi/18)-({nearSine}))", $"{rootScale}+1/{rootScale}"),
+            "a large base cannot amplify a tolerance-downcast exponent into a false certified order");
+        True(!EqualExactly("sin(pi/18)", nearSine),
+            "an unresolved sine enclosure cannot turn a nearby rational into an exact hit");
+        True(!EqualExactly("sin(pi/18)", "sin(pi/18)+1/10^100"),
+            "symbolic equality rejects a sine difference below the CAS numeric precision");
+        True(!EqualExactly("sqrt(2)+1/10^100", "sqrt(2)"),
+            "symbolic equality also rejects a tiny algebraic difference");
+        True(EqualExactly("sin(pi/6)", "1/2"), "exact sine landmarks survive disabled numeric downcasting");
+        True(EqualExactly("sin(pi/4)", "sqrt(2)/2"), "exact sine radicals survive disabled numeric downcasting");
+        True(EqualExactly("cos(pi/3)", "1/2"), "exact cosine landmarks survive disabled numeric downcasting");
+        True(EqualExactly("sin(pi/4)+137/139", "sqrt(2)/2+137/139"),
+            "an exact proof normalizes fresh rational constants without numeric conversion");
+        True(MathS.FromString("137/139").InnerSimplified is Entity.Number.Rational,
+            "an exact proof cannot contaminate later rational parsing with approximate numeral nodes");
+
+        var challenge = CreationArtifact(64, []);
+        challenge["type"] = "challenge";
+        challenge.Remove("nodes");
+        challenge["goals"] = Clone(Level(64)["state"]!["goals"]!);
+        challenge["goals"]![1]!["y"] = nearSine;
+        challenge["inventory"] = new JsonObject { ["D"] = 1, ["Q"] = 1, ["S"] = 1 };
+        challenge["limit"] = 3;
+        var nearChallenge = Ok(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = challenge }
+        });
+        foreach (char op in "DQS") nearChallenge = Act(nearChallenge["state"]!, new JsonObject
+        {
+            ["type"] = "insert", ["id"] = $"near-sine-{op}", ["op"] = op.ToString(),
+            ["index"] = nearChallenge["state"]!["nodes"]!.AsArray().Count
+        });
+        Equal(false, nearChallenge["result"]!["checkpoints"]![1]!["hit"]!.GetValue<bool>(),
+            "a shared challenge cannot award the rounded sine near miss");
+        Equal(false, nearChallenge["result"]!["solved"]!.GetValue<bool>(),
+            "a shared challenge with only the rounded sine near miss stays unsolved");
 
         True(EqualExactly("(sqrt(2)+1)^2", "3+2*sqrt(2)"),
             "exact equality retains full symbolic cancellation for a squared radical identity");
@@ -3529,6 +3636,27 @@ static class ContractTests
         var scaledSquare = ImportCreation(48, ["A", "Q", "H"])["result"]!["relation"]!.AsObject();
         CheckSignedSquareFlights(scaledSquare, x => (x - 1) / Math.Sqrt(2), 1,
             "positive scaled square");
+
+        var figureEight = ImportCreation(75, ["Q", "H", "N", "A", "Q", "N", "A"])["result"]!["relation"]!.AsObject();
+        CheckJoinedCrossingFlight(figureEight, x => (x - 2) * Math.Sqrt(Math.Max(0, 1 - (x - 2) * (x - 2) / 4)),
+            2, [0, 4], true, "shared QHNAQNA figure-eight");
+
+        var openFigureEight = ImportCreation(75, ["A", "Q", "H", "N", "A", "Q", "N", "A"])["result"]!["relation"]!.AsObject();
+        CheckJoinedCrossingFlight(openFigureEight, x => (x - 1) * Math.Sqrt(Math.Max(0, 1 - (x - 1) * (x - 1) / 4)),
+            1, [3], false, "crossing curve joined at one natural tip");
+
+        var clippedFigureEight = ImportCreation(75, ["H", "Q", "H", "N", "A", "Q", "N", "A"])["result"]!["relation"]!.AsObject();
+        CheckSignedSquareFlights(clippedFigureEight, x => (x - 2) / 2 * Math.Sqrt(1 - (x - 2) * (x - 2) / 16), 1,
+            "clipped radical crossings with four outer endpoints");
+
+        var isolatedZeros = ImportCreation(75, ["Q", "H", "N", "A", "Q", "N", "A", "N"])["result"]!["relation"]!.AsObject();
+        var isolatedPoints = isolatedZeros["playback"]!.AsArray();
+        Equal("0,2,4", string.Join(',', isolatedPoints.Select(point => point![0]!.GetValue<double>())),
+            "a negative remaining radicand retains isolated real square-factor zeros");
+        True(isolatedPoints.All(point => point![1]!.GetValue<double>() == 0),
+            "isolated roots have exact zero drawing heights instead of complex values");
+        Equal(2, isolatedZeros["breaks"]!.AsArray().Count,
+            "isolated real points are never connected through a negative domain");
 
         var roundedSquare = ImportCreation(48, ["F", "Q"])["result"]!["relation"]!.AsObject();
         CheckHeightFlights(roundedSquare, 2);
@@ -3763,6 +3891,57 @@ static class ContractTests
         }
         Equal(points.Count, next, $"{label} assigns every playback point to a flight");
         True(orientations.SetEquals([-1, 1]), $"{label} traces both opposite signed representatives");
+    }
+
+    private static void CheckJoinedCrossingFlight(JsonObject relation, Func<double, double> signedRoot,
+        double crossingX, double[] tips, bool closed, string label)
+    {
+        var points = relation["playback"]!.AsArray().Select(point =>
+            (X: point![0]!.GetValue<double>(), Y: point[1]!.GetValue<double>())).ToArray();
+        Equal(1, relation["flights"]!.AsArray().Count, $"{label} uses one cucumber for the whole connected stroke");
+        Equal(0, relation["breaks"]!.AsArray().Count, $"{label} needs no teleport or disconnected seam");
+        Equal(0, relation["flights"]![0]![0]!.GetValue<int>(), $"{label} starts at the first playback sample");
+        Equal(points.Length - 1, relation["flights"]![0]![1]!.GetValue<int>(), $"{label} traverses all playback samples");
+        Equal(points[0].X, points[^1].X, $"{label} returns to its outer endpoint's x position");
+        if (closed) Equal(points[0], points[^1], $"{label} closes the whole loop");
+        else True(points[0].Y * points[^1].Y < 0, $"{label} has two distinct outer endpoints");
+
+        var crossings = Enumerable.Range(1, points.Length - 2).Where(index =>
+            Math.Abs(points[index].X - crossingX) < 1e-12 && Math.Abs(points[index].Y) < 1e-12).ToArray();
+        Equal(2, crossings.Length, $"{label} passes its middle on each of the two smooth branches");
+        foreach (int index in crossings)
+        {
+            var before = points[index - 1]; var at = points[index]; var after = points[index + 1];
+            True(before.Y * after.Y < 0, $"{label} crosses height zero instead of bouncing off it");
+            double ax = at.X - before.X, ay = at.Y - before.Y;
+            double bx = after.X - at.X, by = after.Y - at.Y;
+            double alignment = (ax * bx + ay * by) / Math.Sqrt((ax * ax + ay * ay) * (bx * bx + by * by));
+            True(alignment > 0.99, $"{label} keeps its tangent direction through the crossing");
+        }
+        double minX = points.Min(point => point.X), maxX = points.Max(point => point.X);
+        var reference = Enumerable.Range(0, 4001).Select(index =>
+        {
+            double x = minX + (maxX - minX) * (1 - Math.Cos(Math.PI * index / 4000)) / 2;
+            return (X: x, Y: signedRoot(x));
+        }).ToArray();
+        for (int index = 0; index < points.Length; index++)
+        {
+            var point = points[index];
+            // Near a vertical radical tip, height-at-x error magnifies tiny
+            // drawing errors. Check geometric distance to an independent dense
+            // analytic reference instead; exact target equality is unchanged.
+            double distanceSquared = reference.Min(expected =>
+                Math.Pow(point.X - expected.X, 2) + Math.Pow(Math.Abs(point.Y) - Math.Abs(expected.Y), 2));
+            True(distanceSquared < 0.02 * 0.02, $"{label} stays on the real curve at x={point.X}");
+            if (index == 0 || index == points.Length - 1) continue;
+            if ((point.X - points[index - 1].X) * (points[index + 1].X - point.X) < 0)
+                True(tips.Any(tip => Math.Abs(point.X - tip) < 1e-9),
+                    $"{label} reverses horizontal direction only at a genuine outer tip");
+        }
+        var distances = PlaybackChordLengths(relation);
+        True(distances.All(distance => distance > 1e-9), $"{label} never stalls at duplicate samples");
+        True(distances.Max() < 0.08 && distances.Max() / distances.Min() < 1.2,
+            $"{label} remains continuously paced across branch joins");
     }
 
     private static List<double> PlaybackChordLengths(JsonObject relation)

@@ -189,6 +189,119 @@ module internal Piecewise =
         | target,(:? Entity.Sinf as sine) -> landmark target |> Option.bind (sineEqualsLandmark 0 sine)
         | _ -> None
 
+    let private proofEntity value : Entity =
+        // Parsing while numeric downcasting is disabled can cache Real numeral
+        // nodes for later requests. Construct exact nodes without the parser.
+        let numerator = PeterO.Numbers.EInteger.FromString(value.Numerator.ToString())
+        if value.Denominator = BigInteger.One then Entity.Number.Integer.Create(numerator)
+        else Entity.Number.Rational.Create(numerator,PeterO.Numbers.EInteger.FromString(value.Denominator.ToString()))
+
+    let rec private proofRational depth (value: Entity) =
+        if depth > 64 then None
+        else
+            let child = proofRational (depth+1)
+            let binary operation left right =
+                match child left,child right with
+                | Some a,Some b -> Some (operation a b)
+                | _ -> None
+            match value with
+            | :? Entity.Number.Rational -> tryParseRational (value.ToString())
+            | :? Entity.Sumf as sum -> binary add sum.Augend sum.Addend
+            | :? Entity.Minusf as difference -> binary subtract difference.Minuend difference.Subtrahend
+            | :? Entity.Mulf as product -> binary multiply product.Multiplier product.Multiplicand
+            | :? Entity.Divf as division ->
+                match child division.Dividend,child division.Divisor with
+                | Some numerator,Some denominator when denominator <> zero -> Some (divide numerator denominator)
+                | _ -> None
+            | :? Entity.Powf as power ->
+                match child power.Base,child power.Exponent with
+                | Some basis,Some exponent when exponent.Denominator = BigInteger.One &&
+                        BigInteger.Abs(exponent.Numerator) <= BigInteger(1024) &&
+                        basis <> zero &&
+                        BigInteger.Abs(exponent.Numerator) * BigInteger(basis.Numerator.GetBitLength()+basis.Denominator.GetBitLength()) <= BigInteger(16384) ->
+                    let count = int (BigInteger.Abs(exponent.Numerator))
+                    let result = createRational (BigInteger.Pow(basis.Numerator,count)) (BigInteger.Pow(basis.Denominator,count))
+                    Some (if exponent.Numerator.Sign < 0 then divide one result else result)
+                | Some basis,Some exponent when basis = zero && exponent.Denominator = BigInteger.One && exponent.Numerator.Sign > 0 -> Some zero
+                | _ -> None
+            | _ -> None
+
+    let rec private proofPiMultiple depth (value: Entity) =
+        if depth > 64 then None
+        elif value = piEntity then Some one
+        else
+            let child = proofPiMultiple (depth+1)
+            match value with
+            | :? Entity.Sumf as sum ->
+                match child sum.Augend,child sum.Addend with | Some a,Some b -> Some (add a b) | _ -> None
+            | :? Entity.Minusf as difference ->
+                match child difference.Minuend,child difference.Subtrahend with | Some a,Some b -> Some (subtract a b) | _ -> None
+            | :? Entity.Mulf as product ->
+                match proofRational 0 product.Multiplier,child product.Multiplicand with
+                | Some scale,Some angle -> Some (multiply scale angle)
+                | _ ->
+                    match child product.Multiplier,proofRational 0 product.Multiplicand with
+                    | Some angle,Some scale -> Some (multiply angle scale)
+                    | _ -> None
+            | :? Entity.Divf as division ->
+                match child division.Dividend,proofRational 0 division.Divisor with
+                | Some angle,Some divisor when divisor <> zero -> Some (divide angle divisor)
+                | _ -> None
+            | _ -> if proofRational 0 value = Some zero then Some zero else None
+
+    // Exact table landmarks and half-angle identities restore radical shoulder
+    // proofs without allowing the CAS to guess rational values numerically.
+    let rec private proofSine depth angle =
+        if depth > 16 then None
+        else
+            let two = ofInt 2
+            let half = divide one two
+            let reduced = subtract angle (multiply two (ofBigInteger (floorRational (divide angle two))))
+            let negative = compareRational reduced one > 0
+            let positive = if negative then subtract reduced one else reduced
+            let acute = if compareRational positive half > 0 then subtract one positive else positive
+            let value =
+                if acute = zero then Some exactZeroEntity
+                elif acute = half then Some exactOneEntity
+                elif acute = divide one (ofInt 6) then Some (proofEntity half)
+                elif acute = divide one (ofInt 4) then Some ((twoEntity.Pow(proofEntity half))/twoEntity)
+                elif acute = divide one (ofInt 3) then Some (((proofEntity (ofInt 3)).Pow(proofEntity half))/twoEntity)
+                elif acute.Denominator.IsEven then
+                    proofSine (depth+1) (subtract half (multiply two acute))
+                    |> Option.map (fun cosine -> ((exactOneEntity-cosine)/twoEntity).Pow(proofEntity half))
+                else None
+            value |> Option.map (fun result -> if negative then -result else result)
+
+    let private proveConstantEquality (left: Entity) (right: Entity) =
+        // Numeric downcasting can turn an unresolved difference
+        // such as sin(pi/18)-r into zero when r is a very close
+        // rational. Proofs must keep approximate numbers apart.
+        use exactNumbers = MathS.Settings.DowncastingEnabled.Set(false)
+        let rewrite (expression: Entity) =
+            expression.Replace(Func<Entity,Entity>(fun node ->
+                match proofRational 0 node with
+                | Some rational -> proofEntity rational
+                | None ->
+                    let sine =
+                        match node with
+                        | :? Entity.Sinf as sine -> proofPiMultiple 0 sine.Argument |> Option.bind (proofSine 0)
+                        | :? Entity.Cosf as cosine -> proofPiMultiple 0 cosine.Argument |> Option.bind (fun angle -> proofSine 0 (add angle (divide one (ofInt 2))))
+                        | _ -> None
+                    sine |> Option.defaultValue node))
+        let rec normalize remaining expression =
+            let next = rewrite expression
+            if remaining = 0 || next = expression then next else normalize (remaining-1) next
+        let rec finish remaining (expression: Entity) =
+            // Keep rational arithmetic and known angle identities
+            // exact while restoring the integer nodes needed by
+            // rewrite rules. Never reinterpret decimal estimates.
+            let integers = normalize 64 expression
+            let next = integers.InnerSimplified
+            if remaining = 0 || next = expression then integers
+            else finish (remaining-1) next
+        let expanded = (left-right) |> finish 64 |> fun value -> value.Expand() |> finish 64
+        expanded = exactZeroEntity || (expanded.Simplify() |> finish 64) = exactZeroEntity
+
     let exactEqual (left: Entity) (right: Entity) =
         if left = right then true
         else
@@ -209,7 +322,8 @@ module internal Piecewise =
                         if String.CompareOrdinal(leftText,rightText) <= 0 then leftText+"\u001f"+rightText
                         else rightText+"\u001f"+leftText
                     boundedExpressionCached exactEqualityCache exactEqualityOrder key (fun () ->
-                        (left-right).Simplify() = exactZeroEntity)
+                        if Seq.isEmpty left.Vars && Seq.isEmpty right.Vars then proveConstantEquality left right
+                        else (left-right).Simplify() = exactZeroEntity)
 
     let private containsIntegral (value: Entity) =
         value.Nodes |> Seq.exists (fun node -> node :? Entity.Integralf)
@@ -882,13 +996,79 @@ module internal Piecewise =
                 Some (createRational numeratorRoot denominatorRoot)
             else None
 
-    /// Compare bounded algebraic constants without using AngouriMath's numeric
-    /// Signum path. The authored targets currently need rational arithmetic and
-    /// square roots; dyadic bounds are widened outward and only decide once the
-    /// two intervals are disjoint.
-    let tryCompareConstants (left: Entity) (right: Entity) =
-        let minRational values = values |> List.reduce (fun best value -> if compareRational value best < 0 then value else best)
-        let maxRational values = values |> List.reduce (fun best value -> if compareRational value best > 0 then value else best)
+    // Machin's identity pi = 16 atan(1/5) - 4 atan(1/239), with each
+    // alternating series bracketed by consecutive partial sums. No floating
+    // point approximation participates in these bounds or target validation.
+    let private piBoundsCache = Dictionary<string,Rational*Rational>()
+    let private piBoundsOrder = Queue<string>()
+    let private piBounds bits =
+        boundedExpressionCached piBoundsCache piBoundsOrder (string bits) (fun () ->
+            let epsilon = createRational BigInteger.One (BigInteger.One <<< (bits+8))
+            let arctangent (denominator: int) =
+                let inverse = createRational BigInteger.One (BigInteger denominator)
+                let inverseSquared = square inverse
+                let mutable power = inverse
+                let mutable sum = zero
+                let mutable index = 0
+                let mutable term = inverse
+                while compareRational term epsilon > 0 do
+                    sum <- if index % 2 = 0 then add sum term else subtract sum term
+                    power <- multiply power inverseSquared
+                    index <- index+1
+                    term <- divide power (ofInt (2*index+1))
+                if index % 2 = 0 then sum,add sum term else subtract sum term,sum
+            let fiveLow,fiveHigh = arctangent 5
+            let otherLow,otherHigh = arctangent 239
+            subtract (multiply (ofInt 16) fiveLow) (multiply (ofInt 4) otherHigh),
+            subtract (multiply (ofInt 16) fiveHigh) (multiply (ofInt 4) otherLow))
+
+    let private minRational values = values |> List.reduce (fun best value -> if compareRational value best < 0 then value else best)
+    let private maxRational values = values |> List.reduce (fun best value -> if compareRational value best > 0 then value else best)
+    let private absoluteRational value = if value.Numerator.Sign < 0 then negate value else value
+    let private multiplyBounds (leftLow,leftHigh) (rightLow,rightHigh) =
+        let products = [multiply leftLow rightLow;multiply leftLow rightHigh
+                        multiply leftHigh rightLow;multiply leftHigh rightHigh]
+        minRational products,maxRational products
+
+    let private sineBounds bits (low,high) =
+        let piLow,piHigh = piBounds bits
+        let periodLow,periodHigh = multiply (ofInt 2) piLow,multiply (ofInt 2) piHigh
+        let turns = floorRational (add (divide (midpoint low high) (midpoint periodLow periodHigh)) (divide one (ofInt 2)))
+        let shiftLow,shiftHigh = multiplyBounds (ofBigInteger turns,ofBigInteger turns) (periodLow,periodHigh)
+        let reducedLow,reducedHigh = subtract low shiftHigh,subtract high shiftLow
+        let four = ofInt 4
+        if compareRational reducedLow (negate four) < 0 || compareRational reducedHigh four > 0 then
+            // A wide or enormous argument may lose useful information in range
+            // reduction. [-1,1] is still a valid enclosure; never guess its sign.
+            negate one,one
+        else
+            let scale = ofBigInteger (BigInteger.One <<< (bits+8))
+            let centre = divide (ofBigInteger (floorRational (multiply (midpoint reducedLow reducedHigh) scale))) scale
+            let radius = maxRational [absoluteRational (subtract centre reducedLow);absoluteRational (subtract reducedHigh centre)]
+            let epsilon = divide one scale
+            let squared = square centre
+            let mutable term = centre
+            let mutable sum = centre
+            let mutable index = 0
+            let mutable remainder = one
+            while compareRational remainder epsilon > 0 do
+                let divisor = ofInt ((2*index+2)*(2*index+3))
+                let next = negate (divide (multiply term squared) divisor)
+                remainder <- absoluteRational next
+                if compareRational remainder epsilon > 0 then
+                    sum <- add sum next
+                    term <- next
+                    index <- index+1
+            // Taylor's remainder is bounded by the first omitted odd power
+            // (all sine derivatives have magnitude <= 1). Sine is 1-Lipschitz,
+            // so widening by radius also covers every argument in the interval.
+            let error = add radius remainder
+            maxRational [negate one;subtract sum error],minRational [one;add sum error]
+
+    /// Only disjoint rational enclosures prove an order. Preserve the incoming
+    /// expression tree: InnerSimplified can expand innocent sin(pi/18) into
+    /// complex cube roots before the inexpensive sine bound gets to see it.
+    let trySeparateConstants (left: Entity) (right: Entity) =
         let sqrtBounds bits value =
             if value.Numerator.Sign < 0 then None
             else
@@ -901,56 +1081,67 @@ module internal Piecewise =
                     if root*root*value.Denominator = scaledSquare then lower
                     else createRational (root+BigInteger.One) scale
                 Some (lower,upper)
-        let rec bounds bits (value: Entity) =
-            match tryRationalEntity value with
-            | Some rational -> Some (rational,rational)
-            | None ->
-                match value.InnerSimplified with
+        let rec bounds bits depth (value: Entity) =
+            if depth > 64 then None
+            else
+                let child = bounds bits (depth+1)
+                match value with
+                | :? Entity.Number.Rational -> tryParseRational (value.ToString()) |> Option.map (fun rational -> rational,rational)
+                | _ when value = piEntity -> Some (piBounds bits)
                 | :? Entity.Sumf as sum ->
-                    match bounds bits sum.Augend,bounds bits sum.Addend with
+                    match child sum.Augend,child sum.Addend with
                     | Some (leftLow,leftHigh),Some (rightLow,rightHigh) ->
                         Some (add leftLow rightLow,add leftHigh rightHigh)
                     | _ -> None
                 | :? Entity.Minusf as difference ->
-                    match bounds bits difference.Minuend,bounds bits difference.Subtrahend with
+                    match child difference.Minuend,child difference.Subtrahend with
                     | Some (leftLow,leftHigh),Some (rightLow,rightHigh) ->
                         Some (subtract leftLow rightHigh,subtract leftHigh rightLow)
                     | _ -> None
                 | :? Entity.Mulf as product ->
-                    match bounds bits product.Multiplier,bounds bits product.Multiplicand with
-                    | Some (leftLow,leftHigh),Some (rightLow,rightHigh) ->
-                        let products = [multiply leftLow rightLow;multiply leftLow rightHigh
-                                        multiply leftHigh rightLow;multiply leftHigh rightHigh]
-                        Some (minRational products,maxRational products)
+                    match child product.Multiplier,child product.Multiplicand with
+                    | Some leftBounds,Some rightBounds -> Some (multiplyBounds leftBounds rightBounds)
                     | _ -> None
                 | :? Entity.Divf as division ->
-                    match bounds bits division.Dividend,bounds bits division.Divisor with
-                    | Some (numeratorLow,numeratorHigh),Some (denominatorLow,denominatorHigh)
+                    match child division.Dividend,child division.Divisor with
+                    | Some numerator,Some (denominatorLow,denominatorHigh)
                         when compareRational denominatorLow zero > 0 || compareRational denominatorHigh zero < 0 ->
-                        let reciprocalLow,reciprocalHigh = divide one denominatorHigh,divide one denominatorLow
-                        let products = [multiply numeratorLow reciprocalLow;multiply numeratorLow reciprocalHigh
-                                        multiply numeratorHigh reciprocalLow;multiply numeratorHigh reciprocalHigh]
-                        Some (minRational products,maxRational products)
+                        Some (multiplyBounds numerator (divide one denominatorHigh,divide one denominatorLow))
                     | _ -> None
-                | :? Entity.Powf as power when tryRationalEntity power.Exponent = Some (createRational BigInteger.One (BigInteger 2)) ->
-                    match bounds bits power.Base with
-                    | Some (baseLow,baseHigh) when compareRational baseLow zero >= 0 ->
+                | :? Entity.Powf as power ->
+                    // A symbolic exponent close to 1/2 can be downcast to that
+                    // rational by InnerSimplified. The bound must prove its
+                    // exponent using exact arithmetic as well as its base.
+                    match proofRational 0 power.Exponent,child power.Base with
+                    | Some exponent,Some (baseLow,baseHigh) when exponent = createRational BigInteger.One (BigInteger 2) && compareRational baseLow zero >= 0 ->
                         match sqrtBounds bits baseLow,sqrtBounds bits baseHigh with
                         | Some (low,_),Some (_,high) -> Some (low,high)
                         | _ -> None
+                    | Some exponent,Some baseBounds when exponent.Denominator = BigInteger.One && exponent.Numerator > BigInteger.Zero && exponent.Numerator <= BigInteger(32) ->
+                        let mutable product = one,one
+                        for _ in 1..int exponent.Numerator do product <- multiplyBounds product baseBounds
+                        Some product
                     | _ -> None
+                | :? Entity.Sinf as sine -> child sine.Argument |> Option.map (sineBounds bits)
+                | :? Entity.Cosf as cosine ->
+                    child cosine.Argument |> Option.map (fun (low,high) ->
+                        let piLow,piHigh = piBounds bits
+                        sineBounds bits (add low (divide piLow (ofInt 2)),add high (divide piHigh (ofInt 2))))
                 | _ -> None
+        if left = right then None
+        else
+            [32;64;128;256]
+            |> List.tryPick (fun bits ->
+                match bounds bits 0 left,bounds bits 0 right with
+                | Some (_,leftHigh),Some (rightLow,_) when compareRational leftHigh rightLow < 0 -> Some -1
+                | Some (leftLow,_),Some (_,rightHigh) when compareRational leftLow rightHigh > 0 -> Some 1
+                | _ -> None)
+
+    /// Enclosures reject unequal constants; an overlap never establishes a hit.
+    /// Retain symbolic equality for identities and values outside the bounds API.
+    let tryCompareConstants (left: Entity) (right: Entity) =
         if left = right then Some 0
         else
-            // Disjoint certified intervals already prove inequality. Asking the
-            // general simplifier first made cold nested-radical misses costly.
-            let order =
-                [32;64;128;256]
-                |> List.tryPick (fun bits ->
-                    match bounds bits left,bounds bits right with
-                    | Some (_,leftHigh),Some (rightLow,_) when compareRational leftHigh rightLow < 0 -> Some -1
-                    | Some (leftLow,_),Some (_,rightHigh) when compareRational leftLow rightHigh > 0 -> Some 1
-                    | _ -> None)
-            match order with
+            match trySeparateConstants left right with
             | Some value -> Some value
             | None -> if exactEqual left right then Some 0 else None

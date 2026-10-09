@@ -2,7 +2,7 @@ import { revealFocusRing } from './scroll';
 
 const READERS='.final-equation,.value-table tbody,.flow-line,.flow-goals:not(:has(button)),.notes-reading,.dialog-reading';
 const CONTAINERS='#scene,.recipe-content,.pipeline,.rail-slots,.notes-index,.flow-goals:has(button)';
-type Directions=''|'x'|'y'|'xy'|'up'|'xdown';
+type Directions=''|'x'|'y'|'xy'|'xdown';
 
 function scrollDirections(element:HTMLElement):Directions {
   if(!element.clientWidth||!element.clientHeight)return '';
@@ -46,12 +46,12 @@ export function installKeyboardAffordances(documentRoot:Document) {
     if(active.matches('input[type=range]:not(:disabled)')){directions='x';knob=true;}
     else if(active.matches('[data-circle-handle]'))directions='xy';
     else if(active.matches('.part-body'))directions='xdown';
-    else if(active.matches('.ingredient:not(:disabled):not([data-return])')&&!active.closest('.choice-game'))directions='up';
-    else if(active.matches('[role=tab],.empty-slot'))directions='x';
+    else if(active.matches('[role=tab]'))directions=(active.closest<HTMLElement>('[role=tablist]')?.dataset.tabDirections as Directions|undefined)??'x';
+    else if(active.matches('.empty-slot'))directions='x';
     else if(active.matches(READERS))directions=scrollDirections(active);
     if(active.id==='tab-flight'&&scrollDirections(documentRoot.querySelector<HTMLElement>('#scene')!).includes('y'))directions='xy';
     if(documentRoot.documentElement.dataset.shortcutLabels==='hidden'&&!knob){cue.hidden=true;return;}
-    const dedicated=active.matches('#launch,#rethrow,#undo,#redo,#reset,[data-back-shortcut]');
+    const dedicated=active.matches('#launch,#rethrow,#undo,#redo,#reset');
     const activation=!dedicated&&!active.matches('[role=tab],:disabled')&&(active.matches('button,summary,[role=button],input[type=checkbox],a[href]'));
     if(!directions&&!activation){cue.hidden=true;return;}
     activate.hidden=!activation;activate.textContent=active.matches('a[href]')?'Enter':'Space';activate.classList.toggle('is-enter',active.matches('a[href]'));
@@ -98,12 +98,14 @@ export function installKeyboardAffordances(documentRoot:Document) {
     const current=new Set<Element>();
     for(const reader of readers) {
       const directions=scrollDirections(reader),index=directions?0:-1;
-      if(reader.tabIndex!==index)reader.tabIndex=index;
+      if(reader.getAttribute('tabindex')!==String(index))reader.tabIndex=index;
       reader.dataset.scrollDirections=directions;
       if(reader.matches('.value-table tbody'))reader.setAttribute('aria-label','Comparison values');
       current.add(reader);for(const child of reader.children)current.add(child);
     }
-    for(const element of documentRoot.querySelectorAll<HTMLElement>(CONTAINERS))if(element.tabIndex!==-1)element.tabIndex=-1;
+    // A div reports tabIndex=-1 even when Firefox implicitly makes its
+    // overflow scrollable by Tab. Explicitly opt containers out of that stop.
+    for(const element of documentRoot.querySelectorAll<HTMLElement>(CONTAINERS))if(element.getAttribute('tabindex')!=='-1')element.tabIndex=-1;
     for(const element of observed)if(!current.has(element)){resize.unobserve(element);observed.delete(element);}
     for(const element of current)if(!observed.has(element)){resize.observe(element);observed.add(element);}
     if(documentRoot.documentElement.dataset.focusModality==='keyboard')for(const cap of documentRoot.querySelectorAll<HTMLElement>('#palette .button-hotkey')) {
@@ -113,6 +115,10 @@ export function installKeyboardAffordances(documentRoot:Document) {
     showCue();
   };
   const schedule=()=>{if(!frame)frame=requestAnimationFrame(measure);};
+  // Tab layout can settle after the window's resize event, especially inside
+  // a newly revealed hint. Refresh when its supported directions change.
+  const tabDirections=new MutationObserver(schedule);
+  tabDirections.observe(documentRoot.documentElement,{subtree:true,attributes:true,attributeFilter:['data-tab-directions']});
   const focus=(event:FocusEvent)=>{
     if(event.target instanceof HTMLElement) {
       pendingFocus=event.target;
@@ -147,17 +153,27 @@ export function installKeyboardAffordances(documentRoot:Document) {
     schedule();
   };
   const released=(event:KeyboardEvent)=>{if(event.key==='Shift')schedule();};
+  const toggle=(event:Event)=>{
+    if(!(event.target instanceof HTMLDetailsElement))return;
+    // Exclusive chapters can close a preceding panel without changing the
+    // whole list's size. Observe the toggle itself, after Space activates it.
+    const active=documentRoot.activeElement;
+    if(active instanceof HTMLElement&&active.matches('summary'))pendingFocus=active;
+    schedule();
+  };
   documentRoot.addEventListener('keydown',key,true);
   documentRoot.addEventListener('keyup',released,true);
   documentRoot.addEventListener('focusin',focus,true);
+  documentRoot.addEventListener('toggle',toggle,true);
   for(const event of ['focusout','input','pointerdown','scroll'])documentRoot.addEventListener(event,schedule,true);
   window.addEventListener('resize',schedule);documentRoot.fonts.ready.then(schedule);
   schedule();
   return {refresh:schedule,remove:()=>{
-    cancelAnimationFrame(frame);resize.disconnect();cue.remove();
+    cancelAnimationFrame(frame);resize.disconnect();tabDirections.disconnect();cue.remove();
     documentRoot.removeEventListener('keydown',key,true);
     documentRoot.removeEventListener('keyup',released,true);
     documentRoot.removeEventListener('focusin',focus,true);
+    documentRoot.removeEventListener('toggle',toggle,true);
     for(const event of ['focusout','input','pointerdown','scroll'])documentRoot.removeEventListener(event,schedule,true);
     window.removeEventListener('resize',schedule);
   }};

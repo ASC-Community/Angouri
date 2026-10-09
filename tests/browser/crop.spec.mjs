@@ -54,6 +54,10 @@ test('range previews leave acknowledged state alone, cancel cleanly, and commit 
   expect(await page.evaluate(()=>({state:window.angouri.state,history:window.angouri.history}))).toEqual(before);
   await page.keyboard.press('Escape');await expect(range).toHaveValue('4');
   expect(await page.evaluate(()=>window.angouri.result.crop.to)).toBe('4');
+  await expect(page.locator('html')).toHaveAttribute('data-focus-modality','keyboard');
+  await page.keyboard.press('Escape');await expect(range).toBeFocused();await expect(page.locator('html')).toHaveAttribute('data-focus-modality','pointer');
+  await expect(page.locator('.keyboard-focus-cue')).toBeHidden();
+  expect(await page.evaluate(()=>({state:window.angouri.state,history:window.angouri.history}))).toEqual(before);
   await range.evaluate(input=>{input.value='2';input.dispatchEvent(new Event('input',{bubbles:true}));});
   await page.waitForFunction(()=>window.angouri.result.crop.to==='2');
   await range.dispatchEvent('change');await idle(page);
@@ -133,13 +137,13 @@ test('rounded and pointed ends are taught before the cucumber synthesis',async({
   await add(page,'Q');await expect(page.locator('#feedback')).toContainText('rounded ends become pointed');
   const before=await page.evaluate(()=>({state:window.angouri.state,history:window.angouri.history}));
   await page.locator('#ideas-open').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
-  const comparison=page.locator('[data-note-comparison]').filter({has:page.getByRole('group',{name:'Same roof. Rounded or pointed ends.',exact:true})});
-  await comparison.getByRole('button',{name:'Roof squared',exact:true}).click();
+  const comparison=page.locator('[data-note-comparison]').filter({has:page.getByRole('tablist',{name:'Same roof. Rounded or pointed ends.',exact:true})});
+  await comparison.getByRole('tab',{name:'Roof squared',exact:true}).click();
   await expect(comparison.locator('[data-note-panel="1"]')).toBeVisible();
   expect(await page.evaluate(()=>({state:window.angouri.state,history:window.angouri.history}))).toEqual(before);
   await ready(page,77);await page.locator('#ideas-open').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
-  await expect(page.locator('#notes-content')).toContainText('Broadness, rounded caps and thickness are separate');
-  await expect(page.getByRole('group',{name:'The final right side chooses the cap shape.',exact:true})).toBeVisible();
+  await expect(page.locator('#notes-concept')).toHaveText('Broadness, rounded caps and thickness are separate');
+  await expect(page.getByRole('tablist',{name:'The final right side chooses the cap shape.',exact:true})).toBeVisible();
   await expect(page.locator('.katex-error')).toHaveCount(0);
 });
 

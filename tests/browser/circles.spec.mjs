@@ -46,6 +46,9 @@ test('circle handles support drag, text-selection pickup, cancellation, and tap 
   const second=await handle.boundingBox(),end=await screenPoint(page,1.5,.5);await page.mouse.move(second.x+second.width/2,second.y+second.height/2);await page.mouse.down();await page.mouse.move(end.x,end.y,{steps:8});await page.mouse.up();await idle(page);
   expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(true);expect(await page.evaluate(()=>window.angouri.history.undo)).toBe(1);
   await handle.focus();await page.keyboard.press('Space');await expect(handle).toHaveAttribute('aria-pressed','true');await page.keyboard.press('Escape');await expect(handle).toHaveAttribute('aria-pressed','false');
+  await expect(page.locator('html')).toHaveAttribute('data-focus-modality','keyboard');
+  await page.keyboard.press('Escape');await expect(handle).toBeFocused();await expect(page.locator('html')).toHaveAttribute('data-focus-modality','pointer');
+  await expect(page.locator('.keyboard-focus-cue')).toBeHidden();
   await expect(page.locator('[data-circle-value="radius"]')).toHaveCount(0);
 });
 

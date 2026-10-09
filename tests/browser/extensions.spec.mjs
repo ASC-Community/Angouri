@@ -17,6 +17,40 @@ async function recipe(page,ops){
 }
 const snapshot=page=>page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}));
 
+test('10.9 nonlinear sine placements stay responsive on cold and repeated edits without restarting the engine',async({page},testInfo)=>{
+  await ready(page,64);
+  const timings=[];
+  for(const op of 'DQSA'){
+    await add(page,op);
+    timings.push({op,milliseconds:await page.evaluate(()=>window.angouri.measurements.edits.at(-1))});
+    expect(await page.evaluate(()=>window.angouri.measurements.restarts)).toBe(0);
+  }
+  expect(await page.evaluate(()=>window.angouri.state.nodes.map(node=>node.op).join(''))).toBe('DQSA');
+  const result=await page.evaluate(()=>window.angouri.result);
+  expect(result.checkpoints.map(point=>point.hit)).toEqual([true,false,false,false,false,false,false,true,true]);
+  expect(result.heightGuide.hit).toBe(false);expect(result.solved).toBe(false);
+  // Keep a generous machine-independent margin while preventing a regression
+  // to the reported >8s watchdog loop. Record cold and warm readings separately.
+  expect(timings.at(-1).milliseconds).toBeLessThan(2000);
+  await page.locator('#undo').click();await idle(page);
+  expect(await page.evaluate(()=>window.angouri.state.nodes.map(node=>node.op).join(''))).toBe('DQS');
+  await page.locator('#redo').click();await idle(page);
+  timings.push({op:'redo',milliseconds:await page.evaluate(()=>window.angouri.measurements.edits.at(-1))});
+  expect(await page.evaluate(()=>window.angouri.result)).toEqual(result);
+  await page.locator('#tab-function').click();await expect(page.locator('.katex-error')).toHaveCount(0);
+  await page.locator('#tab-flow').click();await page.locator('#flow-position').fill('1');await page.locator('#flow-position').dispatchEvent('input');
+  await page.locator('#tab-flight').click();await page.locator('#launch').click();
+  await page.waitForFunction(()=>window.angouri.flight.phase==='landed');
+  expect(await page.evaluate(()=>window.angouri.measurements.restarts)).toBe(0);
+  await testInfo.attach('10.9-placement-timings',{body:JSON.stringify(timings,null,2),contentType:'application/json'});
+  // The bounded miss check and stricter fallback must still prove the exact
+  // half-angle shoulder in the authored solution, in the same worker session.
+  await page.locator('#reset').click();await idle(page);await recipe(page,'DSQHA');
+  expect(await page.evaluate(()=>window.angouri.result.checkpoints.every(point=>point.hit))).toBe(true);
+  expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(true);
+  expect(await page.evaluate(()=>window.angouri.measurements.restarts)).toBe(0);
+});
+
 test('a roof recipe constructs both heights and validates squared target heights',async({page})=>{
   await ready(page,48);await recipe(page,'QNA');
   const result=await page.evaluate(()=>window.angouri.result);
@@ -49,6 +83,31 @@ test('squared-height recipes simplify, solve for height, and travel continuously
   expect(Math.max(...distances)).toBeLessThan(.06);
   await page.locator('#menu-open').click();await page.locator('#settings-open').click();await page.locator('#motion-toggle').uncheck();await page.keyboard.press('Escape');
   await page.locator('#tab-flight').click();await page.locator('#launch').click();await page.waitForFunction(()=>window.angouri.flight.phase==='landed');await expect(page.locator('.ring[data-status="hit"]')).toHaveCount(4);
+});
+
+test('the shared figure-eight flies through its crossing twice with one cucumber and one continuous trail',async({page},testInfo)=>{
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  const artifact={schema:1,rules:'vine-1',engine:'AngouriMath-2.5.0',type:'creation',sourceId:75,view:'flight',nodes:[...'QHNAQNA'].map((op,i)=>({id:`crossing-${i}`,op}))};
+  await page.goto('/#v1='+Buffer.from(JSON.stringify(artifact)).toString('base64url'));
+  await page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
+  expect(await page.evaluate(()=>window.angouri.state.nodes.map(node=>node.op).join(''))).toBe('QHNAQNA');
+  const before=await snapshot(page),relation=await page.evaluate(()=>window.angouri.result.relation);
+  expect(relation.flights).toEqual([[0,relation.playback.length-1]]);expect(relation.breaks).toEqual([]);
+  const crossings=relation.playback.flatMap(([x,y],i)=>Math.abs(x-2)<1e-12&&Math.abs(y)<1e-12?[i]:[]);
+  expect(crossings).toHaveLength(2);
+  for(const i of crossings){
+    const a=relation.playback[i-1],b=relation.playback[i+1];expect(a[1]*b[1]).toBeLessThan(0);
+    expect((2-a[0])*(b[0]-2)).toBeGreaterThan(0);
+  }
+  await expect(page.locator('[data-flight-stroke]')).toHaveCount(1);await expect(page.locator('[data-flight-stroke] > [id^="cucumber"]')).toHaveCount(1);
+  await page.locator('#launch').click();
+  await page.waitForFunction(()=>window.angouri.flight.phase==='flying'&&window.angouri.flight.position>.3);
+  await page.screenshot({path:testInfo.outputPath('figure-eight-in-flight.png')});
+  await page.locator('#tab-flow').click();await expect(page.locator('#flow-position')).toBeDisabled();
+  await page.locator('#tab-flight').click();await expect(page.locator('[data-flight-stroke]')).toHaveCount(1);
+  await page.waitForFunction(()=>window.angouri.flight.phase==='landed');
+  const trail=await page.locator('#flight-trail').getAttribute('d');expect(trail.match(/M/g)).toHaveLength(1);
+  await page.screenshot({path:testInfo.outputPath('figure-eight-complete.png')});expect(await snapshot(page)).toEqual(before);
 });
 
 test('one-sided stations expose only usable slots and preserve their fixed operation',async({page})=>{
@@ -190,7 +249,7 @@ test('Notes keep independent reference examples while puzzle sketches require ex
   await ready(page,60);await page.locator('#ideas-open').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
   const comparison=page.locator('[data-note-comparison]').first();await expect(comparison.locator('.note-step-end.open').first()).toBeVisible();
   const old=await comparison.locator('[data-note-panel]:visible path.note-curve').evaluateAll(paths=>paths.map(p=>p.getAttribute('d')).join(' '));
-  await comparison.locator('[data-note-choice="1"]').click();await expect(comparison.locator('[data-note-choice="1"]')).toHaveAttribute('aria-pressed','true');
+  await comparison.locator('[data-note-choice="1"]').click();await expect(comparison.locator('[data-note-choice="1"]')).toHaveAttribute('aria-selected','true');
   const changed=await comparison.locator('[data-note-panel]:visible path.note-curve').evaluateAll(paths=>paths.map(p=>p.getAttribute('d')).join(' '));expect(changed).not.toBe(old);
   await page.keyboard.press('Escape');await ready(page,67);const before=await snapshot(page);await page.locator('#hints-open').click();
   await expect(page.locator('#hint-notes')).toBeVisible();

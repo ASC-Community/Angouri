@@ -21,9 +21,9 @@ test('Shift alone toggles shortcut labels while focus, editing and modified keys
   await expect(labels).toHaveCount(0);await page.keyboard.press('Shift');await expect(launchKey).toBeVisible();
   await page.keyboard.press('Shift');await expect(labels).toHaveCount(0);
   expect(await page.evaluate(()=>window.angouri.state)).toEqual(initial);
-  await page.keyboard.press('Tab');await expect(page.locator('#tab-flight')).toBeFocused();
-  expect(await hasVisibleOutline(page.locator('#tab-flight'))).toBe(true);await expect(labels).toHaveCount(0);
-  await page.locator('#palette [data-op="A"]').focus();await page.keyboard.press('ArrowUp');await idle(page);
+  await page.keyboard.press('Tab');await expect(page.locator('#construction [data-empty="0"]')).toBeFocused();
+  expect(await hasVisibleOutline(page.locator('#construction [data-empty="0"]'))).toBe(true);await expect(labels).toHaveCount(0);
+  await page.locator('#palette [data-op="A"]').focus();await page.keyboard.press('2');await idle(page);
   await expect(page.locator('.part-body')).toBeFocused();expect(await hasVisibleOutline(page.locator('.part-body'))).toBe(true);await expect(labels).toHaveCount(0);
   await page.keyboard.press('Shift');await expect(page.locator('.keyboard-focus-cue:visible kbd:visible')).toHaveText(['Space','⌫']);
   await page.keyboard.down('Shift');await page.keyboard.down('Shift');await expect(launchKey).toBeVisible();await page.keyboard.up('Shift');await expect(labels).toHaveCount(0);
@@ -41,13 +41,36 @@ test('Shift alone toggles shortcut labels while focus, editing and modified keys
   await expect(page.locator('#help-dialog details')).not.toHaveAttribute('open');
 });
 
-test('hiding shortcut labels retains the slider knob focus ring and arrow-key control',async({page})=>{
-  await ready(page,'/#level=3&view=flow');await page.keyboard.press('Tab');await page.keyboard.press('Tab');
+test('Escape hides keyboard decoration after cancellation and Tab resumes without losing its place',async({page})=>{
+  await ready(page,'/#level=25');await page.keyboard.press('2');await idle(page);
+  const block=page.locator('.part-body'),labels=page.locator('.keyboard-focus-cue:visible,.button-hotkey:visible');
+  const before=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}));
+  await page.keyboard.press('Space');await expect(block).toHaveAttribute('aria-pressed','true');
+  await page.keyboard.down('Escape');await page.keyboard.down('Escape');await page.keyboard.up('Escape');
+  await expect(block).toHaveAttribute('aria-pressed','false');expect(await hasVisibleOutline(block)).toBe(true);
+  await page.keyboard.press('Escape');await expect(block).toBeFocused();expect(await hasVisibleOutline(block)).toBe(false);await expect(labels).toHaveCount(0);
+  await page.keyboard.press('Tab');const first=page.locator('[data-empty="1"]');await expect(first).toBeFocused();expect(await hasVisibleOutline(first)).toBe(true);
+  await page.keyboard.press('Shift');await expect(labels).toHaveCount(0);
+  await page.keyboard.press('Escape');await expect(first).toBeFocused();expect(await hasVisibleOutline(first)).toBe(false);
+  await page.keyboard.press('Tab');const second=page.locator('[data-empty="2"]');await expect(second).toBeFocused();expect(await hasVisibleOutline(second)).toBe(true);await expect(labels).toHaveCount(0);
+  await page.keyboard.press('Shift');
+  await page.keyboard.press('m');await expect(page.locator('#menu-dialog .dialog-top button')).toBeFocused();
+  await page.keyboard.press('Escape');const menu=page.locator('#menu-open');await expect(menu).toBeFocused();expect(await hasVisibleOutline(menu)).toBe(true);
+  await page.keyboard.press('Escape');await expect(menu).toBeFocused();expect(await hasVisibleOutline(menu)).toBe(false);await expect(labels).toHaveCount(0);
+  await page.keyboard.press('m');await expect(page.locator('#menu-dialog .dialog-top button')).toBeFocused();
+  expect(await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}))).toEqual(before);
+});
+
+test('hiding shortcut labels retains the slider knob focus ring and Escape hides navigation until a keyboard action',async({page})=>{
+  await ready(page,'/#level=3&view=flow');await page.locator('#tab-flow').focus();await page.keyboard.press('Tab');
   const slider=page.locator('#flow-position'),ring=page.locator('.keyboard-knob-ring'),arrows=page.locator('.is-knob .keyboard-horizontal');
   await expect(slider).toBeFocused();await expect(ring).toBeVisible();await expect(arrows).toBeVisible();
   await page.keyboard.press('Shift');await expect(arrows).toBeHidden();await expect(ring).toBeVisible();await expect(slider).toBeFocused();
   const before=await slider.inputValue();await page.keyboard.press('ArrowRight');await expect(slider).not.toHaveValue(before);await expect(ring).toBeVisible();await expect(arrows).toBeHidden();
   await page.keyboard.press('Shift');await expect(arrows).toBeVisible();
+  const paused=await slider.inputValue();
+  await page.keyboard.press('Escape');await expect(slider).toBeFocused();await expect(ring).toBeHidden();await expect(arrows).toBeHidden();await expect(slider).toHaveValue(paused);
+  await page.keyboard.press('ArrowRight');await expect(ring).toBeVisible();await expect(arrows).toBeVisible();await expect(slider).not.toHaveValue(paused);
 });
 
 test('Backspace follows menu Back and Cancel without intercepting text editing',async({page})=>{
@@ -91,7 +114,7 @@ test('arrival leaves controls unselected and the first Tab shows keyboard focus'
     expect(await page.evaluate(()=>document.activeElement===document.body)).toBe(true);
     await expect(page.locator('button:focus-visible,a:focus-visible')).toHaveCount(0);
   }
-  await page.keyboard.press('Tab');await expect(page.locator('#tab-flight')).toBeFocused();
+  await page.keyboard.press('Tab');await expect(page.locator('#construction [data-empty="0"]')).toBeFocused();
   for(const [opener,id,back] of [['ideas-open','ideas-dialog','Back to puzzle'],['menu-open','menu-dialog','Back to game']]) {
     await page.locator(`#${opener}`).click();const dialog=page.locator(`#${id}`);
     await expect(dialog).toBeFocused();expect(await dialog.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');
@@ -107,7 +130,9 @@ test('first Tab starts directly at visible play controls without a skip link or 
   for(const [path,target,next] of [
     ['/#level=1','#palette [data-op="H"]','#palette [data-op="A"]'],
     ['/#level=2','#palette [data-op="H"]','#palette [data-op="A"]'],
-    ['/#level=3&view=flow','#tab-flow','#flow-position']
+    ['/#level=3&view=flow','#construction [data-empty="0"]','#construction [data-empty="1"]'],
+    ['/#level=53&view=function','#construction [data-empty="1"]','#palette [data-op="N"]'],
+    ['/#level=6&view=flow','#palette [data-op="H"]','#palette [data-op="A"]']
   ]) {
     await page.goto('/about/');
     await ready(page,path);const url=page.url();
@@ -121,14 +146,14 @@ test('first Tab starts directly at visible play controls without a skip link or 
 test('the complete game Tab cycle has no empty page stop in either direction',async({page})=>{
   await page.setViewportSize({width:1146,height:850});
   const choices=['#palette [data-op="H"]','#palette [data-op="A"]'];
-  const header=['a.brand','#ideas-open','#menu-open'];
+  const header=['a.brand','#menu-open','#ideas-open'];
   const recipe=['#construction [data-empty="0"]','#construction [data-empty="1"]',...choices,'#launch',...header];
   for(const [path,order] of [
     ['/#level=1',[...choices,'a.brand','#menu-open']],
     ['/#level=2',[...choices,'#palette [data-op="N"]','a.brand','#menu-open']],
-    ['/#level=3&view=flight',['#tab-flight',...recipe]],
-    ['/#level=3&view=function',['#tab-function',...recipe]],
-    ['/#level=3&view=flow',['#tab-flow','#flow-position',...recipe]]
+    ['/#level=3&view=flight',[...recipe,'#tab-flight']],
+    ['/#level=3&view=function',[...recipe,'#tab-function']],
+    ['/#level=3&view=flow',[...recipe,'#tab-flow','#flow-position']]
   ]) {
     await page.goto('/about/');await ready(page,path);
     // Firefox's comparison rows are slightly taller. Include a reader when
@@ -136,7 +161,7 @@ test('the complete game Tab cycle has no empty page stop in either direction',as
     const readers=path.includes('function')?['.final-equation','.value-table tbody']:path.includes('flow')?['.flow-goals','.flow-line']:[];
     const overflowing=[];
     for(const selector of readers)if(await page.locator(selector).evaluate(el=>el.scrollHeight>el.clientHeight+1||el.scrollWidth>el.clientWidth+1))overflowing.push(selector);
-    order.splice(path.includes('flow')?2:1,0,...overflowing);
+    order.push(...overflowing);
     for(const selector of [...order,...order]) {
       await page.keyboard.press('Tab');await expect(page.locator(selector),`${path}: ${selector}`).toBeFocused();
       expect(await page.evaluate(()=>document.hasFocus()&&document.activeElement!==document.body)).toBe(true);
@@ -148,6 +173,15 @@ test('the complete game Tab cycle has no empty page stop in either direction',as
     }
     expect(await page.evaluate(()=>[scrollY,document.documentElement.scrollHeight-innerHeight])).toEqual([0,0]);
   }
+});
+
+test('first Tab returns to the first editable block in a resumed recipe',async({page})=>{
+  await ready(page,'/#level=25');await page.keyboard.press('2');await idle(page);await page.keyboard.press('c');
+  const id=await page.evaluate(()=>window.angouri.state.nodes[0].id);
+  await page.reload();await page.waitForFunction(()=>window.angouri?.state&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
+  expect(await page.evaluate(()=>document.activeElement===document.body)).toBe(true);
+  await page.keyboard.press('Tab');await expect(page.locator(`.part-body[data-stage="${id}"]`)).toBeFocused();
+  await expect(page.locator('#tab-flow')).toHaveAttribute('aria-selected','true');
 });
 
 test('game Tab boundaries follow enabled controls and leave browser shortcuts available',async({page})=>{
@@ -407,6 +441,49 @@ test('view tabs follow the focused tab while Tab and Shift+Tab keep native order
   await page.keyboard.press('Home');
   await expect(flight).toBeFocused();
   await expect(flight).toHaveAttribute('aria-selected','true');
+});
+
+test('chapter Space indicators follow their header when another chapter collapses',async({page},testInfo)=>{
+  for(const size of [{width:1146,height:850},{width:320,height:568}]) {
+    await page.setViewportSize(size);await page.goto('/about/');await ready(page,'/#level=25');
+    await page.keyboard.press('m');await page.locator('#puzzles-open').focus();await page.keyboard.press('Space');
+    const second=page.locator('.chapter-group').nth(1),summary=second.locator('summary');await summary.focus();
+    const aligned=()=>summary.evaluate(el=>{const a=el.getBoundingClientRect(),b=document.querySelector('.keyboard-focus-cue')?.getBoundingClientRect();return b?Math.abs(b.top+9-a.top):1000;});
+    await expect.poll(aligned).toBeLessThan(1);const before=await summary.boundingBox();
+    await page.keyboard.press('Space');await expect(second).toHaveAttribute('open','');await expect(summary).toBeFocused();
+    await expect.poll(aligned).toBeLessThan(1);expect((await summary.boundingBox()).y).toBeLessThan(before.y);
+    await expect(page.locator('.keyboard-activate:visible')).toHaveText('Space');
+    await page.screenshot({path:testInfo.outputPath(`chapter-keycap-${size.width}.png`)});
+  }
+});
+
+test('save and reset confirmations show supported key indicators on their focused controls',async({page},testInfo)=>{
+  await ready(page,'/#level=25');await page.keyboard.press('2');await idle(page);await page.keyboard.press('m');
+  await page.locator('#nav-create').focus();await page.keyboard.press('Space');
+  await expect(page.locator('#leave-dialog')).toBeVisible();await expect(page.locator('#leave-cancel')).toBeFocused();
+  await expect(page.locator('#leave-cancel .button-hotkey')).toBeVisible();await expect(page.locator('.keyboard-activate:visible')).toHaveText('Space');
+  await page.screenshot({path:testInfo.outputPath('save-confirmation-cancel.png')});
+  for(const id of ['leave-discard','leave-save']) {
+    await page.keyboard.press('Tab');await expect(page.locator(`#${id}`)).toBeFocused();await expect(page.locator('.keyboard-activate:visible')).toHaveText('Space');
+  }
+  await page.screenshot({path:testInfo.outputPath('save-confirmation-save.png')});
+  await page.keyboard.press('Tab');await expect(page.locator('#leave-name')).toBeFocused();
+  await expect(page.locator('#leave-cancel .button-hotkey')).toBeHidden();await page.locator('#leave-name').fill('Keep me');await page.keyboard.press('Backspace');await expect(page.locator('#leave-name')).toHaveValue('Keep m');
+  await page.keyboard.press('Escape');await expect(page.locator('#leave-dialog')).toBeHidden();
+  await page.keyboard.press('m');await page.locator('#settings-open').focus();await page.keyboard.press('Space');await page.locator('#reset-progress-open').focus();await page.keyboard.press('Space');
+  await expect(page.locator('#reset-progress-cancel')).toBeFocused();await expect(page.locator('#reset-progress-cancel .button-hotkey')).toBeVisible();
+  await page.keyboard.press('Tab');await expect(page.locator('#reset-progress-confirm')).toBeFocused();await expect(page.locator('.keyboard-activate:visible')).toHaveText('Space');
+  await page.keyboard.press('Backspace');await expect(page.locator('#settings-dialog')).toBeVisible();
+});
+
+test('pointer progress reset leaves introductory help hidden until real hover or keyboard focus',async({page})=>{
+  await ready(page,'/#level=25');await page.locator('#menu-open').click();await page.locator('#settings-open').click();
+  await page.locator('#reset-progress-open').click();await page.locator('#reset-progress-confirm').click();await idle(page);
+  const halve=page.locator('#palette [data-op="H"]'),tip=page.locator('#block-tooltip');await expect(halve).toBeFocused();
+  expect(await hasVisibleOutline(halve)).toBe(false);await expect(tip).toBeHidden();
+  await page.keyboard.press('Tab');await expect(page.locator('#palette [data-op="A"]')).toBeFocused();await expect(tip).toBeVisible();
+  await page.keyboard.press('Escape');await expect(tip).toBeHidden();
+  await halve.hover();await expect(tip).toBeVisible();await page.mouse.move(0,0);await expect(tip).toBeHidden();
 });
 
 test('undoing a focused block keeps focus in the recipe for continued editing',async({page})=>{

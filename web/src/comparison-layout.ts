@@ -16,6 +16,9 @@ export function sizeEquationTables(root:HTMLElement) {
       table.style.width='';table.classList.add('comparison-sized');
     };
     measure();
+    // The body focus border belongs to the stationary table, below its header.
+    // Keep the native header height when columns reflow; never scroll this ring.
+    table.style.setProperty('--comparison-header-height',`${head.getBoundingClientRect().height}px`);
     body.tabIndex=-1;body.setAttribute('aria-label','Comparison values');
     const align=()=>{
       head.style.transform=`translateX(${-body.scrollLeft}px)`;

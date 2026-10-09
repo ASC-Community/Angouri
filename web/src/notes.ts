@@ -3,7 +3,7 @@ import { Kernel } from './engine';
 import { CHAPTERS, chapterIndex, EXTRA_PUZZLES, GEOMETRY_PUZZLES, MIXED_PUZZLES, OPTIONAL_PUZZLES, PUZZLE_ORDER, LEVELS, puzzleLabel, escape, fraction, targetHeight, type Op, type Result } from './types';
 import learningPath from '../../content/learning-path.json';
 import { heightAtFormula, rationalTex, tex } from './views';
-import { chapterArt, lesson, move, viewButton, recall, strip, compare, circleSketch, diagramChoices, relationSketch } from './note-diagrams';
+import { chapterArt, lesson, move, viewButton, recall, strip, compare, circleSketch, diagramChoices, relationSketch, connectComparisonPanels } from './note-diagrams';
 import { renderReference } from './reference';
 export { chapterArt } from './note-diagrams';
 
@@ -35,18 +35,71 @@ export class ShapeNotes {
       const button=(event.target as Element).closest<HTMLElement>('[data-note]');
       if(button)void this.select(Number(button.dataset.note));
     });
+    this.index.addEventListener('focusin',()=>this.tabLayout());
+    this.index.addEventListener('keydown',event=>this.navigateTabs(event,this.index));
     const referenceAction=(event:Event)=>{
       if((event.target as Element).closest('[data-retry-notes]'))void this.select(this.topic);
       const choice=(event.target as Element).closest<HTMLButtonElement>('[data-note-choice]');
       const comparison=choice?.closest<HTMLElement>('[data-note-comparison]');
       if(choice&&comparison) {
-        comparison.querySelectorAll<HTMLButtonElement>('[data-note-choice]').forEach(button=>button.setAttribute('aria-pressed',String(button===choice)));
+        comparison.querySelectorAll<HTMLButtonElement>('[data-note-choice]').forEach(button=>{button.setAttribute('aria-selected',String(button===choice));button.tabIndex=button===choice?0:-1;});
         comparison.querySelectorAll<HTMLElement>('[data-note-panel]').forEach(panel=>panel.hidden=panel.dataset.notePanel!==choice.dataset.noteChoice);
       }
     };
-    this.content.addEventListener('click',referenceAction);
-    document.getElementById('hints-content')!.addEventListener('click',referenceAction);
+    const referenceContents=[this.content,document.getElementById('hints-content')!];
+    for(const content of referenceContents) {
+      content.addEventListener('click',referenceAction);
+      content.addEventListener('focusin',event=>{const list=(event.target as Element).closest<HTMLElement>('.note-choices');if(list)this.tabLayout(list);});
+      content.addEventListener('keydown',event=>{const list=(event.target as Element).closest<HTMLElement>('.note-choices');if(list)this.navigateTabs(event,list);});
+    }
+    const resized=new ResizeObserver(()=>{
+      this.tabLayout();
+      for(const content of referenceContents)for(const list of content.querySelectorAll<HTMLElement>('.note-choices'))this.tabLayout(list);
+    });
+    for(const content of [this.index,...referenceContents])resized.observe(content);
     document.getElementById('ideas-dialog')!.addEventListener('close',()=>this.version++);
+  }
+
+  private navigateTabs(event:KeyboardEvent,index:HTMLElement) {
+    if(event.defaultPrevented||event.isComposing||event.altKey||event.ctrlKey||event.metaKey||event.shiftKey)return;
+    const tabs=this.tabs(index),at=tabs.indexOf(event.target as HTMLElement);
+    if(at<0)return;
+    const {rows,vertical}=this.tabLayout(index);
+    let next:HTMLElement|undefined;
+    if(event.key==='Home'||event.key==='End')next=event.key==='Home'?tabs[0]:tabs.at(-1);
+    else if(vertical?['ArrowUp','ArrowDown'].includes(event.key):['ArrowLeft','ArrowRight'].includes(event.key))
+      next=tabs[(at+(['ArrowLeft','ArrowUp'].includes(event.key)?tabs.length-1:1))%tabs.length];
+    else if(!vertical&&rows.length>1&&['ArrowUp','ArrowDown'].includes(event.key)) {
+      const row=rows.findIndex(row=>row.includes(tabs[at])),direction=event.key==='ArrowUp'?-1:1;
+      const rect=tabs[at].getBoundingClientRect(),centre=rect.left+rect.width/2;
+      next=rows[(row+direction+rows.length)%rows.length].reduce((nearest,tab)=>{
+        const a=nearest.getBoundingClientRect(),b=tab.getBoundingClientRect();
+        return Math.abs(b.left+b.width/2-centre)<Math.abs(a.left+a.width/2-centre)?tab:nearest;
+      });
+    }
+    if(next){event.preventDefault();if(next!==tabs[at])next.click();next.focus({preventScroll:true});}
+  }
+  private tabs(index=this.index) {return [...index.querySelectorAll<HTMLElement>('[role=tab]')];}
+  private tabLayout(index=this.index) {
+    const tabs=this.tabs(index),rows:HTMLElement[][]=[];
+    for(const tab of tabs) {
+      const top=tab.getBoundingClientRect().top;
+      const row=rows.find(row=>Math.abs(row[0].getBoundingClientRect().top-top)<2);
+      if(row)row.push(tab);else rows.push([tab]);
+    }
+    rows.sort((a,b)=>a[0].getBoundingClientRect().top-b[0].getBoundingClientRect().top);
+    const vertical=tabs.length>1&&rows.every(row=>row.length===1);
+    index.setAttribute('aria-orientation',vertical?'vertical':'horizontal');
+    index.dataset.tabDirections=tabs.length<2?'':vertical?'y':rows.length>1?'xy':'x';
+    return {rows,vertical};
+  }
+  private selectTab(selector:string,value:string) {
+    for(const tab of this.tabs()) {
+      const selected=tab.getAttribute(selector)===value;
+      tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1;
+      if(selected)document.getElementById('notes-reading')!.setAttribute('aria-labelledby',tab.id);
+    }
+    this.tabLayout();
   }
 
   show(source:number) {
@@ -60,10 +113,10 @@ export class ShapeNotes {
     const prerequisites=learningPath.lessons.find(lesson=>lesson.id===source)?.prerequisites??[];
     this.relevant=new Set([source,...prerequisites]);
     if(source&&!OPTIONAL_PUZZLES.includes(source)) {
-      const button=(id:number)=>`<button data-note-lesson="${id}" aria-controls="notes-heading notes-content" aria-pressed="false"><span class="note-lesson-numbers">${puzzleLabel(id)}</span><span>${escape(LEVELS[id-1].name)}</span></button>`;
+      const button=(id:number)=>`<button id="note-lesson-${id}" role="tab" tabindex="-1" data-note-lesson="${id}" aria-controls="notes-reading" aria-selected="false"><span class="note-lesson-numbers">${puzzleLabel(id)}</span><span>${escape(LEVELS[id-1].name)}</span></button>`;
       this.index.classList.add('notes-lessons');
       this.index.setAttribute('aria-label','Lesson notes');
-      this.index.innerHTML=`<div class="notes-section" role="group" aria-labelledby="notes-current-label"><p id="notes-current-label" class="notes-scope">This lesson</p><div class="notes-buttons">${button(source)}</div></div>`+(prerequisites.length?`<div class="notes-section" role="group" aria-labelledby="notes-related-label"><p id="notes-related-label" class="notes-scope">Related ideas</p><div class="notes-buttons">${prerequisites.map(button).join('')}</div></div>`:'');
+      this.index.innerHTML=`<div class="notes-section" role="presentation"><p class="notes-scope">This lesson</p><div class="notes-buttons">${button(source)}</div></div>`+(prerequisites.length?`<div class="notes-section" role="presentation"><p class="notes-scope">Related ideas</p><div class="notes-buttons">${prerequisites.map(button).join('')}</div></div>`:'');
       this.index.hidden=false;
       void this.selectLesson(source);
       return;
@@ -71,7 +124,7 @@ export class ShapeNotes {
     this.index.classList.remove('notes-lessons');
     this.index.setAttribute('aria-label','Chapter notes');
     this.topics=new Set(CHAPTERS.flatMap((chapter,i)=>this.known.has(chapter.levels[0])?[i]:[]));
-    const choices=CHAPTERS.flatMap((chapter,i)=>this.topics.has(i)?[`<button data-note="${i}" aria-controls="notes-heading notes-content" aria-pressed="false"><span class="note-tab-art ${chapter.color}">${chapterArt(i)}</span><span>${chapter.name}</span></button>`]:[]);
+    const choices=CHAPTERS.flatMap((chapter,i)=>this.topics.has(i)?[`<button id="note-chapter-${i}" role="tab" tabindex="-1" data-note="${i}" aria-controls="notes-reading" aria-selected="false"><span class="note-tab-art ${chapter.color}">${chapterArt(i)}</span><span>${chapter.name}</span></button>`]:[]);
     this.index.innerHTML=choices.join('');
     this.index.hidden=choices.length<2;
     void this.select(MIXED_PUZZLES.includes(source)?9:GEOMETRY_PUZZLES.includes(source)?6:EXTRA_PUZZLES.includes(source)?EXTRA_PUZZLES.indexOf(source)<4?4:5:Math.max(0,chapterIndex(source)));
@@ -82,7 +135,7 @@ export class ShapeNotes {
     this.referenceSource=source;
     const topic=Math.max(0,chapterIndex(source));
     this.topics=new Set([topic]);
-    this.index.querySelectorAll<HTMLElement>('[data-note-lesson]').forEach(button=>button.setAttribute('aria-pressed',String(Number(button.dataset.noteLesson)===source)));
+    this.selectTab('data-note-lesson',String(source));
     await this.select(topic);
   }
 
@@ -91,7 +144,7 @@ export class ShapeNotes {
     const version=++this.version;this.topic=topic;
     const focused=this.source&&!OPTIONAL_PUZZLES.includes(this.source);
     const referenceSource=focused?this.referenceSource:this.source;
-    this.index.querySelectorAll<HTMLElement>('[data-note]').forEach(button=>button.setAttribute('aria-pressed',String(Number(button.dataset.note)===topic)));
+    if(!focused)this.selectTab('data-note',String(topic));
     this.heading.innerHTML='<h3 id="notes-concept">Opening notes…</h3>';
     document.getElementById('notes-reading')!.scrollTop=0;
     this.content.setAttribute('aria-busy','true');
@@ -116,6 +169,7 @@ export class ShapeNotes {
       if(title){title.id='notes-concept';this.heading.replaceChildren(title);}
       // View links belong to the explanation that gives them a purpose.
       // Do not append a second, unexplained navigation row to every lesson.
+      connectComparisonPanels(template.content);
       this.content.innerHTML=template.innerHTML;
     } catch {
       if(version!==this.version)return;
@@ -136,6 +190,7 @@ export class ShapeNotes {
     const html=await sketches.render(topic);
     const template=document.createElement('template');template.innerHTML=html;
     template.content.querySelectorAll('.note-recall').forEach(el=>el.remove());
+    connectComparisonPanels(template.content);
     return template.innerHTML;
   }
 }

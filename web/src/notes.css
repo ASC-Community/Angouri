@@ -80,7 +80,7 @@
 .notes-lessons button { justify-content: flex-start; text-align: left; min-height: 38px; line-height: 1.4; }
 .notes-lessons .note-lesson-numbers { flex: none; margin: 0; }
 .notes-index button:hover { background: #f4f7eb; }
-.notes-index [aria-pressed=true] { border-color: #72964f; background: #eff5e4; box-shadow: inset 0 -2px #72964f; }
+.notes-index [aria-selected=true] { border-color: #72964f; background: #eff5e4; box-shadow: inset 0 -2px #72964f; }
 .note-tab-art { display: grid; place-items: center; flex: none; width: 33px; height: 33px; border-radius: 7px; color: #637d4c; }.note-tab-art>svg { width: 27px; height: 27px; }
 .notes-heading { margin: 20px 0 12px; }
 .notes-heading h3 { font: 26px/1.2 Georgia,serif; margin: 0; letter-spacing: -.5px; color: #344e36; }
@@ -119,7 +119,7 @@
 .note-choices { display: flex; gap: 6px; flex-wrap: wrap; }
 .note-choices button { flex: 1; min-height: 36px; padding: 7px 9px; border: 1px solid #c6d4b8; border-radius: 7px; background: #fffefa; color: #526c42; font-size: 11px; }
 .note-choices button:hover { border-color: #78965d; background: #edf3e2; }
-.note-choices button[aria-pressed=true] { color: #34532b; border-color: #718f52; background: #e8f0da; box-shadow: inset 0 -2px #718f52; }
+.note-choices button[aria-selected=true] { color: #34532b; border-color: #718f52; background: #e8f0da; box-shadow: inset 0 -2px #718f52; }
 .note-comparison figure { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); align-items: center; gap: 10px; margin: 10px 0 0; }
 .note-comparison [hidden] { display: none; }
 .note-comparison figcaption { min-width: 0; text-align: center; }

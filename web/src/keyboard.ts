@@ -47,12 +47,14 @@ export function installTabStops(documentRoot: Document = document) {
 /** The first keyboard action starts at a visible game control, without an
  * extra skip-link stop or unsolicited focus while the document loads. */
 export function focusGameControl(documentRoot:Document=document) {
-  const candidates=documentRoot.querySelectorAll<HTMLElement>('.view-tabs [aria-selected=true],#palette [data-op]:not(:disabled),#menu-open');
-  const target=[...candidates].filter(element=>element.getClientRects().length&&getComputedStyle(element).visibility==='visible');
-  // Menu occurs earlier in the document; it is only the loading fallback.
-  const control=target.find(element=>element.id!=='menu-open')??target[0];
-  control?.focus({preventScroll:true});
-  return !!control;
+  // Start with construction. Direct-choice lessons have no visible rail, and
+  // Menu is the fallback while the engine is loading. Keep native Tab order
+  // from this entry point so views remain reachable later in the same cycle.
+  for(const selector of ['#construction .part-body,#construction .empty-slot','#palette [data-op]:not(:disabled)','.view-tabs [aria-selected=true]','#menu-open']) {
+    const control=[...documentRoot.querySelectorAll<HTMLElement>(selector)].find(element=>enabled(element)&&!element.closest('[inert]')&&element.getClientRects().length&&getComputedStyle(element).visibility==='visible');
+    if(control){control.focus({preventScroll:true});return true;}
+  }
+  return false;
 }
 
 function installGameEntry(documentRoot:Document) {
@@ -119,6 +121,7 @@ export function installFocusModality(documentRoot: Document = document) {
   let shiftPress:{visible:boolean;used:boolean}|undefined;
   const keyboard=(event:KeyboardEvent)=>{
     if(!event.isTrusted)return;
+    if(event.key==='Escape'&&event.repeat)return;
     if(event.key==='Shift'&&!event.repeat) {
       if(shiftPress)shiftPress.used=true;
       else if(!event.ctrlKey&&!event.metaKey&&!event.altKey)shiftPress={visible:root.dataset.focusModality==='keyboard'&&root.dataset.shortcutLabels!=='hidden',used:false};
@@ -133,6 +136,15 @@ export function installFocusModality(documentRoot: Document = document) {
     if(event.isTrusted&&!press.used&&!event.ctrlKey&&!event.metaKey&&!event.altKey)root.dataset.shortcutLabels=press.visible?'hidden':'shown';
   };
   const pointer=(event:Event)=>{if(event.isTrusted){root.dataset.focusModality='pointer';if(shiftPress)shiftPress.used=true;}};
+  const dismiss=(event:KeyboardEvent)=>{
+    // Run after control/game handlers so cancellation and native modal Escape
+    // take priority. Hide decoration without losing the sequential Tab target
+    // or changing the separate Shift label preference.
+    if(event.defaultPrevented||event.key!=='Escape'||event.repeat||event.isComposing||event.altKey||event.ctrlKey||event.metaKey||event.shiftKey||documentRoot.querySelector('dialog[open]'))return;
+    const target=event.target;
+    if(!(target instanceof HTMLElement)||target!==documentRoot.body&&!target.closest('.game-shell')||target.isContentEditable||target.matches('input:not([type=range]):not([type=checkbox]):not([type=radio]),textarea,select'))return;
+    event.preventDefault();root.dataset.focusModality='pointer';
+  };
   const blur=()=>{shiftPress=undefined;};
   root.dataset.focusModality='pointer';
   documentRoot.addEventListener('keydown',keyboard,true);
@@ -141,6 +153,7 @@ export function installFocusModality(documentRoot: Document = document) {
   documentRoot.addEventListener('mousedown',pointer,true);
   documentRoot.addEventListener('touchstart',pointer,{capture:true,passive:true});
   documentRoot.defaultView?.addEventListener('blur',blur);
+  documentRoot.defaultView?.addEventListener('keydown',dismiss);
   return ()=>{
     documentRoot.removeEventListener('keydown',keyboard,true);
     documentRoot.removeEventListener('keyup',released,true);
@@ -148,6 +161,7 @@ export function installFocusModality(documentRoot: Document = document) {
     documentRoot.removeEventListener('mousedown',pointer,true);
     documentRoot.removeEventListener('touchstart',pointer,true);
     documentRoot.defaultView?.removeEventListener('blur',blur);
+    documentRoot.defaultView?.removeEventListener('keydown',dismiss);
     delete root.dataset.focusModality;
     delete root.dataset.shortcutLabels;
   };
@@ -196,6 +210,7 @@ export function restoreFocus(bookmark: FocusBookmark | undefined, documentRoot: 
   if(!bookmark)return false;
   const candidates: (HTMLElement|null)[]=[];
   if(bookmark.element.isConnected)candidates.push(bookmark.element);
+  if(bookmark.element.id)candidates.push(documentRoot.getElementById(bookmark.element.id));
   if(bookmark.key&&bookmark.value!==undefined) {
     const attribute=bookmark.key.replace(/[A-Z]/g,letter=>'-'+letter.toLowerCase());
     candidates.push(documentRoot.querySelector<HTMLElement>(`[data-${attribute}="${CSS.escape(bookmark.value)}"]`));
