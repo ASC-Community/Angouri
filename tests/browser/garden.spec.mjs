@@ -48,7 +48,7 @@ test('garden Tab order follows labels across the top and bottom without changing
     await page.setViewportSize(size);await ready(page);const before=await snapshot(page);
     await page.locator('#picture-open').focus();await page.keyboard.press('Space');await expect(page.locator('[data-garden-piece]')).toHaveCount(8);
     const paint=await page.locator('[data-garden-piece]').evaluateAll(es=>es.map(el=>Number(el.dataset.gardenPiece)));
-    expect(paint).toEqual([74,76,82,72,75,73,83,77]);
+    expect(paint).toEqual([74,76,72,82,75,73,83,77]);
     const order=['#garden-back',...[74,77,83,73,75,76,72,82].map(id=>`[data-garden-piece="${id}"]`),'[data-garden-done]'];
     await expect(page.locator(order[0])).toBeFocused();
     for(const selector of [...order.slice(1),order[0]]){await page.keyboard.press('Tab');await expect(page.locator(selector)).toBeFocused();}
@@ -84,7 +84,7 @@ test('the cucumber completion waits for its final artwork crossfade before enabl
   await expect(page.locator('[data-garden-done]')).toBeDisabled();await expect(page.locator('#launch')).toBeDisabled();
   await expect(page.locator('[data-garden-done]')).toBeEnabled();await expect(page.locator('[data-garden-done]')).toBeFocused();
   await expect(page.locator('.garden-canonical')).toHaveCSS('opacity','1');await expect(page.locator('.garden-canonical')).toHaveCSS('filter','none');
-  await expect(page.locator('.garden-cucumber-morph')).toHaveCSS('opacity','0');await expect(page.locator('.garden-collection')).toHaveCount(0);
+  await expect(page.locator('.garden-piece-cucumber .garden-art-path')).toHaveCSS('opacity','0');await expect(page.locator('.garden-collection')).toHaveCount(0);
   await expect(page.locator('#launch')).toHaveAttribute('data-action','continue');
 });
 
@@ -96,7 +96,7 @@ test('earned curves reveal the cucumber, preserve the recipe, and fit compact la
   await page.locator('#launch').click();await page.waitForFunction(()=>window.angouri.flight.phase==='landed');
   await expect(page.locator('[data-garden-piece][data-complete="true"]')).toHaveCount(8);
   await expect(page.locator('.garden-canonical')).toHaveCSS('opacity','1');
-  await expect(page.locator('.garden-shell')).toHaveClass(/trace-complete/);await expect(page.locator('.garden-shell')).toHaveClass(/morph-complete/);
+  await expect(page.locator('.garden-shell')).toHaveClass(/trace-complete/);await expect(page.locator('.garden-shell')).toHaveClass(/show-canonical/);
   for(const piece of ['moon','leaf','bank'])await expect(page.locator(`.garden-piece-${piece} .garden-piece-fill`)).toHaveCSS('opacity','1');
   const before=await snapshot(page);
   for(const [width,height] of [[1440,900],[390,844],[320,568],[844,390]]){
@@ -128,7 +128,7 @@ test('earned curves reveal the cucumber, preserve the recipe, and fit compact la
         const xs=points.map(point=>point.x),ys=points.map(point=>point.y),left=Math.min(...xs),top=Math.min(...ys);
         return {x:left,y:top,width:Math.max(...xs)-left,height:Math.max(...ys)-top};
       };
-      const a=bounds(document.querySelector('.garden-canonical-body')),b=bounds(document.querySelector('.garden-cucumber-morph'));
+      const a=bounds(document.querySelector('.garden-canonical-body')),b=bounds(document.querySelector('.garden-piece-cucumber .garden-art-path'));
       return Math.max(Math.abs(a.x-b.x),Math.abs(a.y-b.y),Math.abs(a.width-b.width),Math.abs(a.height-b.height));
     });
     expect(bodyAlignment).toBeLessThan(2);
@@ -241,7 +241,7 @@ test('every earned piece settles into the garden once and leaves the constructio
     expect(frames.at(-1).arrival).toBe(1);
     expect(new Set(frames.map(frame=>`${Math.round(frame.x)},${Math.round(frame.y)}`)).size).toBeGreaterThan(4);
     expect(await page.evaluate(()=>({state:window.angouri.state,history:window.angouri.history}))).toEqual(before);
-    await page.locator('[data-garden-done]').click();await expect(page.locator('#launch')).toHaveText(id===77?'Mastery challenge':'Next puzzle');
+    await page.locator('[data-garden-done]').click();await expect(page.locator('#launch')).toHaveAccessibleName(id===77?'Mastery challenge':'Next puzzle');
     await page.locator('#rethrow').click();await page.waitForFunction(()=>window.angouri.flight.phase==='landed');
     await expect(page.locator('#garden-dialog')).toBeHidden();
     expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual(pieces.slice(0,index+1).map(([source])=>source));

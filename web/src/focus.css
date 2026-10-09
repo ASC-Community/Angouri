@@ -109,7 +109,7 @@ dialog :is(button,a,input,select,textarea,[tabindex]) { scroll-margin: 8px; }
 }
 
 /* The garden draws its focus indication inside SVG instead of with outline. */
-:root[data-focus-modality=pointer] .garden-piece:focus:not(.is-pointed) .garden-focus-path {
+:root[data-focus-modality=pointer] .garden-piece:focus:not(.is-pointed) .garden-piece-highlight {
   opacity: 0;
 }
 
@@ -125,8 +125,8 @@ dialog :is(button,a,input,select,textarea,[tabindex]) { scroll-margin: 8px; }
   stroke-width: 1;
 }
 
-:root[data-focus-modality=keyboard] .garden-piece:focus .garden-focus-path {
-  opacity: .65;
+:root[data-focus-modality=keyboard] .garden-piece:focus .garden-piece-highlight {
+  opacity: 1;
 }
 
 :root[data-focus-modality=keyboard] .garden-piece.is-missing:focus .garden-art-path {

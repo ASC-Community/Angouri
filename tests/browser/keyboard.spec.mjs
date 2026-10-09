@@ -288,14 +288,14 @@ test('pointer modality keeps field focus and suppresses garden keyboard decorati
   const piece=page.locator('[data-garden-piece]').first();
   await expect(piece).toBeVisible();
   await piece.focus();
-  const path=piece.locator('.garden-focus-path').first(),label=piece.locator('.garden-piece-label rect');
+  const highlight=piece.locator('.garden-piece-highlight'),label=piece.locator('.garden-piece-label rect');
   await expect(page.locator('html')).toHaveAttribute('data-focus-modality','pointer');
-  await expect(path).toHaveCSS('opacity','0');
+  await expect(highlight).toHaveCSS('opacity','0');
   await expect(label).toHaveCSS('stroke-width','1px');
 
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('html')).toHaveAttribute('data-focus-modality','keyboard');
-  await expect(path).toHaveCSS('opacity','0.65');
+  await expect(highlight).toHaveCSS('opacity','1');
   await expect(label).toHaveCSS('stroke-width','2px');
 });
 
