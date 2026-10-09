@@ -31,8 +31,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 .launch-button.continue-ready svg { animation: next-arrow .45s ease-out; }
 @keyframes continue-arrive { from { opacity: .2; transform: translateY(8px) scale(.95); } to { opacity: 1; transform: none; } }
 @keyframes next-arrow { from { transform: translateX(-8px); } to { transform: none; } }
-.has-selection .insert-slot { border: 1px dashed #8fa975; background: #e7efd9; color: #618146; }
-.has-selection .insert-slot:hover { background: #d5e6bb; border-style: solid; }
+.has-selection .insert-slot .empty-face { border: 1px dashed #8fa975; background: #e7efd9; color: #618146; }
+.has-selection .insert-slot:hover .empty-face { background: #d5e6bb; border-style: solid; }
 .playground:not([data-phase=flying]) .speed-lines { opacity: 0; }
 .speed-lines { stroke: #90ac5c; stroke-width: 2; stroke-linecap: round; fill: none; opacity: .7; }
 .slingshot-band { fill: none; stroke: #66784a; stroke-width: 2.5; stroke-linecap: round; }
@@ -94,11 +94,13 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 .source-choice { display: flex; align-items: center; gap: 6px; min-height: 31px; padding: 3px 6px; border: 1px solid #b3c29e; border-bottom-width: 2px; border-radius: 7px; background: #fffef8; color: #456d39; cursor: pointer; }
 .source-choice:hover { background: #eef4df; border-color: #6e9154; }
 .source-part .source-choice { pointer-events: auto; }
-.insert-slot { position: relative; flex: 0 0 var(--rail-piece-width); min-width: 0; height: 49px; display: flex; align-items: center; justify-content: center; border: 1px dashed #bac8a6; border-radius: 9px; padding: 0; color: #93a27d; background: #e9edde80; cursor: grab; touch-action: none; transition: background .12s, border-color .12s, box-shadow .12s; }
+.insert-slot { position: relative; z-index: 0; flex: 0 0 var(--rail-piece-width); min-width: 0; height: 49px; border: 1px solid transparent; border-radius: 9px; padding: 0; color: #93a27d; cursor: grab; touch-action: none; }
+.empty-face { position: absolute; inset: -1px; display: flex; align-items: center; justify-content: center; border: 1px dashed #bac8a6; border-radius: inherit; background: #e9edde80; pointer-events: none; transition: background .12s, border-color .12s, box-shadow .12s; }
+.empty-slot:focus { z-index: 2; }
 .empty-slot .piece-grip { position: absolute; left: 6px; opacity: .45; }
-.insert-slot:hover, .insert-slot.selected, .insert-slot.suggested-slot { border-color: #6e8b4b; background: #e2ebd1; color: #486b35; box-shadow: inset 0 0 0 1px #8fa96d; }
-.is-dragging .insert-slot { border: 2px dashed #87a25f; color: #5b7f3e; background: #e6eed7; }
-.is-dragging .insert-slot.drop-target { border-style: solid; border-color: #3f713c; background: #cbdfa9; box-shadow: 0 0 0 3px #88a96540; }
+.insert-slot:hover .empty-face, .insert-slot.selected .empty-face, .insert-slot.suggested-slot .empty-face { border-color: #6e8b4b; background: #e2ebd1; color: #486b35; box-shadow: inset 0 0 0 1px #8fa96d; }
+.is-dragging .insert-slot .empty-face { border: 2px dashed #87a25f; color: #5b7f3e; background: #e6eed7; }
+.is-dragging .insert-slot.drop-target .empty-face { border-style: solid; border-color: #3f713c; background: #cbdfa9; box-shadow: 0 0 0 3px #88a96540; }
 .sage { --piece-fill: var(--sage); --piece-edge: #a7bb8d; --piece-base: #a0b483; --piece-ink: #405d32; }
 .peach { --piece-fill: var(--peach); --piece-edge: #d3b391; --piece-base: #c9a37b; --piece-ink: #815331; }
 .blue { --piece-fill: var(--blue); --piece-edge: #9aa9d0; --piece-base: #8496c2; --piece-ink: #3e5188; }
@@ -114,8 +116,9 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 .note-operation { background: var(--piece-fill); }
 .flow-machine { background: var(--piece-fill, #f0f3e7); }
 .recipe-part.teal .part-formula { font-size: 14px; overflow: visible; }
-.recipe-part, .ingredient-surface, .drag-ghost { position: relative; border: 1px solid var(--piece-edge); border-radius: 10px; background: var(--piece-fill); color: var(--piece-ink); box-shadow: 0 4px 0 var(--piece-base), inset 0 1px 0 #ffffffc9; user-select: none; -webkit-user-select: none; }
-.recipe-part { z-index: 0; flex: 0 0 var(--rail-piece-width); min-width: 0; height: 49px; }
+.recipe-face, .ingredient-surface, .drag-ghost { position: relative; border: 1px solid var(--piece-edge); border-radius: 10px; background: var(--piece-fill); color: var(--piece-ink); box-shadow: 0 4px 0 var(--piece-base), inset 0 1px 0 #ffffffc9; user-select: none; -webkit-user-select: none; }
+.recipe-part { position: relative; z-index: 0; flex: 0 0 var(--rail-piece-width); min-width: 0; height: 49px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--piece-ink); }
+.recipe-face { position: absolute; inset: -1px; display: flex; align-items: center; justify-content: center; gap: inherit; padding: inherit; }
 .recipe-part:focus-within { z-index: 2; }
 .recipe-part.drop-target { outline: 3px solid #6b9450; outline-offset: 3px; }
 .recipe-part.receiving-cell { outline: 1px dashed #829c66; outline-offset: 3px; }
@@ -126,9 +129,9 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 /* KaTeX uses invisible, tall positioning struts. Only the piece's actual button
    should receive input, including when a disabled formula sits below the rail. */
 .ingredient *, .part-body *, .machine-body *, .source-part * { pointer-events: none; }
-.recipe-part:hover { border-color: var(--piece-ink); }
+.recipe-part:hover .recipe-face { border-color: var(--piece-ink); }
 .recipe-part.inspected { outline: 2px solid var(--piece-ink); outline-offset: 2px; }
-.recipe-part.inspected::before { content: ''; position: absolute; bottom: 3px; left: calc(50% - 6px); width: 12px; height: 2px; border-radius: 2px; background: var(--piece-ink); }
+.recipe-part.inspected::before { content: ''; position: absolute; z-index: 1; bottom: 3px; left: calc(50% - 6px); width: 12px; height: 2px; border-radius: 2px; background: var(--piece-ink); pointer-events: none; }
 .palette { --piece-height: 74px; --stack-step: 8px; --stock-middle-opacity: .65; --stock-bottom-opacity: .3; display: flex; justify-content: center; align-items: end; gap: 12px; flex-wrap: wrap; padding: 10px 3px 5px; min-height: calc(var(--piece-height) + var(--stack-room,0) * var(--stack-step) + 15px); }
 .palette:has(.condensed-stack,.reusable-stack) { --stock-mark-room: 20px; }
 .ingredient-stack { --stock-top: calc((var(--stack-capacity,0) - var(--stack-depth,0)) * var(--stack-step)); --pile-height: calc(var(--piece-height) + var(--stack-capacity,0) * var(--stack-step)); position: relative; flex: 1 1 135px; min-width: 0; max-width: 218px; height: calc(var(--pile-height) + var(--stock-mark-room,0px)); background: transparent; isolation: isolate; }
@@ -177,6 +180,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 .ingredient.return-target .ingredient-surface { border-style: solid; box-shadow: 0 0 0 4px #91b16740; }
 .ingredient.return-target .ingredient-face { opacity: 1; }
 .dragging { opacity: .28; box-shadow: none; transform: none!important; }
+.dragging .recipe-face { box-shadow: none; }
 .drag-ghost { position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none; display: flex; align-items: center; justify-content: center; gap: 7px; width: 92px; height: 57px; transform: translate(-50%,-60%) rotate(-5deg); box-shadow: 0 5px 0 var(--piece-base), 0 13px 24px #26392130; }
 .drag-ghost.over-slot { transform: translate(-50%,-60%); outline: 2px solid #527c3c; outline-offset: 3px; }
 .drag-ghost.over-return { transform: translate(-50%,-60%) rotate(5deg) scale(.9); }

@@ -222,14 +222,17 @@ function updateHintCue(history:'push'|'keep'|'clear') {
   if(unsuccessfulRevisions<3)return false;
   hintOffered=true;hintCue=true;return true;
 }
-function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:RailSlots,requestedView?:View,animateCurve=true,editedId?:string,emptySelection?:number,completeSelection=false) {
+type CellMove={from:number;to:number};
+function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:RailSlots,requestedView?:View,animateCurve=true,editedId?:string,emptySelection?:number,completeSelection=false,move?:CellMove) {
   requireOk(reply);
   const firstArrival=!state;
   const previousState=state,previousResult=result,previousPoints=displayedPoints||result?.points,previousSlope=displayedSlope??result?.startSlope,previousProbeX=result?probePoints(result)[probeIndex]?.[0]:undefined;
   const previousVisual=animateCurve&&!reduced&&!state?.circle&&displayedView()==='flight'?captureFlightGeometry($('scene')):undefined;
   const previousScroll=$('construction').querySelector('.pipeline')?.scrollLeft||0;
   const previousSlots=[...railSlots];
-  const previousRects=new Map([...document.querySelectorAll<HTMLElement>('.recipe-part')].map(el=>[el.dataset.part!,el.getBoundingClientRect()]));
+  const previousRects=new Map([...document.querySelectorAll<HTMLElement>('.recipe-part')].map(el=>[el.dataset.part!,el.querySelector('.recipe-face')!.getBoundingClientRect()]));
+  const movingEmpty=move&&previousSlots[move.from]===null?document.querySelector<HTMLElement>(`[data-empty="${move.from}"]`):undefined;
+  let emptyRect=movingEmpty?.querySelector('.empty-face')?.getBoundingClientRect();
   const changed=state && JSON.stringify(state)!==JSON.stringify(reply.state);
   const nextSlots=normalizeSlots(reply.state,history==='clear'?slots:slots||railSlots);
   const layoutChanged=JSON.stringify(nextSlots)!==JSON.stringify(railSlots);
@@ -237,7 +240,20 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
   // Blur can report a field that Enter already committed. Replacing controls
   // for that no-op can swallow typing in the next field. A crop can return to
   // its starting bounds while an earlier preview is still displayed, though.
-  if(state&&!changed&&!layoutChanged&&!previewChanged&&history!=='clear'&&!requestedView&&!(emptySelection!==undefined&&emptySelection!==insertionIndex)&&!(completeSelection&&(selectedStage||insertionIndex!==undefined)))return true as const;
+  if(state&&!changed&&!layoutChanged&&!previewChanged&&history!=='clear'&&!requestedView&&!(emptySelection!==undefined&&emptySelection!==insertionIndex)&&!(completeSelection&&(selectedStage||insertionIndex!==undefined))) {
+    // Indistinguishable holes do not change the construction or its history,
+    // but the focused empty piece still travels to the chosen position.
+    if(move&&emptyRect) {
+      movingEmpty?.getAnimations({subtree:true}).forEach(animation=>animation.cancel());
+      const destination=document.querySelector<HTMLElement>(`[data-empty="${move.to}"]`)!;
+      destination.getAnimations({subtree:true}).forEach(animation=>animation.cancel());
+      focusEmpty(move.to);revealFocusRing(destination);
+      const delta=($('construction').querySelector('.pipeline')?.scrollLeft||0)-previousScroll;
+      slideCell(destination,new DOMRect(emptyRect.x-delta,emptyRect.y,emptyRect.width,emptyRect.height),completeSelection);
+      fadeEmpty(movingEmpty);
+    }
+    return true as const;
+  }
   if(history==='clear') {
     undo=[];redo=[];resetFlowScroll=true;
     $('construction').querySelectorAll<HTMLElement>('.pipeline,.rail-slots').forEach(rail=>rail.scrollLeft=0);
@@ -293,8 +309,7 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
   if(completeSelection||!result.stages.some(s=>s.id===selectedStage)) selectedStage='';
   insertionIndex=completeSelection?undefined:emptySelection;
   notice={text:result.relation&&!result.relation.playback.length?'No real heights yet. Bring the right side to zero or above.':state.circle?'':state.nodes.length?'':choiceActive()?'Choose a block.':'Tap or drag a block.',kind:''};
-  progress();render();
-  if(emptySelection!==undefined)focusEmpty(emptySelection);
+  progress();render(move&&(completeSelection||movingEmpty)?move.to:emptySelection);
   if(repeatHint&&hintCue)for(const animation of $('hints-open').getAnimations()) {
     if(animation instanceof CSSAnimation&&animation.animationName==='hint-invite')animation.currentTime=0;
   }
@@ -310,10 +325,11 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
   if(document.activeElement instanceof HTMLElement&&document.activeElement.closest('#construction'))revealFocusRing(document.activeElement);
   const scrollDelta=($('construction').querySelector('.pipeline')?.scrollLeft||0)-previousScroll;
   if(scrollDelta)previousRects.forEach((r,id)=>previousRects.set(id,new DOMRect(r.x-scrollDelta,r.y,r.width,r.height)));
-  if((changed||layoutChanged)&&!newSource&&previousState&&previousResult&&previousPoints) {
+  if(scrollDelta&&emptyRect)emptyRect=new DOMRect(emptyRect.x-scrollDelta,emptyRect.y,emptyRect.width,emptyRect.height);
+  if((changed||layoutChanged||move)&&!newSource&&previousState&&previousResult&&previousPoints) {
     const moved=state.nodes.find(node=>node.id===editedId);
     $('move-announcement').textContent=state.circle?`Centre ${state.circle.x}, ${state.circle.y}. Radius ${state.circle.radius}. ${result.checkpoints.filter(c=>c.hit).length} targets match.`:changed?`${state.nodes.map(n=>OPS[n.op].name).join(', ')||'Recipe cleared'}. Ready to throw.`:moved?`${OPS[moved.op].name} moved to slot ${railSlots.indexOf(moved.id)+1}.`:'Empty slot moved.';
-    animateChange(previousState,previousResult,previousPoints,previousRects,previousSlots,previousSlope!,previousVisual);
+    animateChange(previousState,previousResult,previousPoints,previousRects,previousSlots,previousSlope!,previousVisual,move,emptyRect,completeSelection);
   }
   if(offeredHint)$('move-announcement').textContent+=' Hints can help with this puzzle.';
   return true as const;
@@ -377,9 +393,9 @@ function recipe() {
   $('construction').classList.toggle('has-selection',!!selectedStage||insertionIndex!==undefined);
   const cells=railSlots.map((id,index)=>{
     if(id===state!.station?.id)return '';
-    if(!id)return `<button class="empty-slot insert-slot ${insertionIndex===index?'selected':''}" data-cell="${index}" data-empty="${index}" data-insert="${index}" draggable="false" aria-label="${selectedStage?'Move selected block to':'Empty'} slot ${index+1}" aria-pressed="${insertionIndex===index}" aria-describedby="empty-keyboard-help" title="Choose a block for this slot, or drag the empty slot to reposition it"><span class="piece-grip">${icon('grip',12)}</span>${icon('plus',18)}</button>`;
+    if(!id)return `<button class="empty-slot insert-slot ${insertionIndex===index?'selected':''}" data-cell="${index}" data-empty="${index}" data-insert="${index}" draggable="false" aria-label="${selectedStage?'Move selected block to':'Empty'} slot ${index+1}" aria-pressed="${insertionIndex===index}" aria-describedby="empty-keyboard-help" aria-keyshortcuts="Space ArrowLeft ArrowRight${adjacentSlot(railSlots,state!,index,-1)!==index?' Backspace':''}" title="Choose a block for this slot, or drag the empty slot to reposition it"><span class="empty-face"><span class="piece-grip">${icon('grip',12)}</span>${icon('plus',18)}</span></button>`;
     const node=state!.nodes.find(n=>n.id===id)!,receiving=selectedStage&&selectedStage!==id||insertionIndex!==undefined;
-    return `<div class="recipe-part ${OPS[node.op].color} ${selectedStage===node.id?'inspected':''} ${receiving?'receiving-cell':''}" data-cell="${index}" data-part="${node.id}" draggable="false"><button class="part-body" data-stage="${node.id}" aria-label="${receiving?'Move selection to slot '+(index+1):OPS[node.op].name+', slot '+(index+1)}" aria-pressed="${selectedStage===node.id}" aria-describedby="block-keyboard-help" title="${receiving?'Move selection here':OPS[node.op].name+' · drag to move, drag off the recipe to return'}"><span class="piece-grip">${icon('grip',14)}</span><span class="part-formula">${operationTex(node.op)}</span></button></div>`;
+    return `<div class="recipe-part ${OPS[node.op].color} ${selectedStage===node.id?'inspected':''} ${receiving?'receiving-cell':''}" data-cell="${index}" data-part="${node.id}" draggable="false"><button class="part-body" data-stage="${node.id}" aria-label="${receiving?'Move selection to slot '+(index+1):OPS[node.op].name+', slot '+(index+1)}" aria-pressed="${selectedStage===node.id}" aria-describedby="block-keyboard-help" aria-keyshortcuts="Space ArrowLeft ArrowRight ArrowDown Backspace" title="${receiving?'Move selection here':OPS[node.op].name+' · drag to move, drag off the recipe to return'}"><span class="recipe-face"><span class="piece-grip">${icon('grip',14)}</span><span class="part-formula">${operationTex(node.op)}</span></span></button></div>`;
   });
   const source=state.mode==='remix'?`<button id="source-choose" class="source-choice" aria-label="Change starting curve" aria-haspopup="dialog" aria-controls="curves-dialog" title="Change starting curve">${tex((result.relation?'h^2 = ':'h = ')+result.stages[0].latex)}<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4 3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>`:tex((result.relation?'h^2 = ':'h = ')+result.stages[0].latex);
   const station=state.station;
@@ -456,7 +472,7 @@ function updatePrimary() {
   if(won)$('success').innerHTML=`<span class="success-medal">${icon(state&&isMastery(state.sourceId)?'mastery':'check',22)}<span>${state?.mode==='puzzle'&&isMastery(state.sourceId)?'Mastery earned!':state?.mode==='puzzle'&&isPicture(state.sourceId)?'Picture piece earned!':state?.sourceId===4&&state.nodes.length>4?'Try fewer blocks?':'All targets!'}</span></span>`;
   showNotice();
 }
-function render() {
+function render(focusCell?:number) {
   if(!state||!result)return;
   // Read before replacing the tray. WebKit can clamp the old Flow scroller
   // during that temporary layout, before its own replacement is rendered.
@@ -531,7 +547,8 @@ function render() {
   $('undo').classList.toggle('retry-cue',flight.phase==='landed'&&!result.solved);
   for(const id of ['share-open','nav-create','favorite-save'])$<HTMLButtonElement>(id).disabled=false;
   updatePrimary();renderScene();
-  if(!restoreFocus(focus)&&focus?.element.id==='circle-fit')$(`tab-${displayedView()}`).focus({preventScroll:true});
+  if(focusCell!==undefined)focusSlot(focusCell);
+  else if(!restoreFocus(focus)&&focus?.element.id==='circle-fit')$(`tab-${displayedView()}`).focus({preventScroll:true});
 }
 function setView(next: View) {view=next;preferences();progress();render();}
 function hasTargetFrame() {return !!state&&state.mode==='puzzle'&&state.sourceId>=48&&!state.circle&&!result?.relation;}
@@ -563,20 +580,36 @@ $('circle-fit').onclick=()=>{
   camera=fullCurve?fittedCamera():{...defaultCamera};
   render();$('circle-fit').focus({preventScroll:true});
 };
-function animateChange(previousState:State,previousResult:Result, from:Result['points'], rects:Map<string,DOMRect>,previousSlots:RailSlots,fromSlope:number,previousVisual?:SVGGElement) {
+function slideCell(cell:HTMLElement,before:DOMRect,keepFocusAtDestination=false) {
+  if(reduced)return;
+  const face=cell.querySelector<HTMLElement>('.recipe-face,.empty-face')!,after=face.getBoundingClientRect();
+  if(Math.abs(before.left-after.left)<=2&&Math.abs(before.top-after.top)<=2)return;
+  // Arrow moves carry the focused piece; a Space/tap destination stays put
+  // while the painted face arrives. Its button, outline and keycaps never
+  // travel back to the source just to participate in that animation.
+  const target=keepFocusAtDestination?face:cell;
+  target.animate([{transform:`translate(${before.left-after.left}px,${before.top-after.top}px)`},{transform:'translate(0,0)'}],{id:'recipe-move',duration:220,easing:'ease-out'});
+}
+function fadeEmpty(empty:HTMLElement|null|undefined) {
+  if(!reduced&&empty&&empty!==document.activeElement)empty.animate([{opacity:0},{opacity:1}],{id:'recipe-vacancy',duration:220,easing:'ease-out'});
+}
+function animateChange(previousState:State,previousResult:Result, from:Result['points'], rects:Map<string,DOMRect>,previousSlots:RailSlots,fromSlope:number,previousVisual?:SVGGElement,move?:CellMove,emptyRect?:DOMRect,completeSelection=false) {
   if(reduced||!state||!result)return;
   if(state.circle||previousState.circle)return;
   document.querySelectorAll<HTMLElement>('.recipe-part').forEach(el=>{
-    const before=rects.get(el.dataset.part!),after=el.getBoundingClientRect();
+    const before=rects.get(el.dataset.part!);
     if(!previousState.nodes.some(n=>n.id===el.dataset.part))el.classList.add('just-placed');
-    else if(before&&(Math.abs(before.left-after.left)>2||Math.abs(before.top-after.top)>2)) {
+    else if(before) {
       // Continue from the actual painted position if interrupted. Focus, not
       // animation order or DOM order, determines which crossing block is above.
-      el.animate([{transform:`translate(${before.left-after.left}px,${before.top-after.top}px)`},{transform:'translate(0,0)'}],{id:'recipe-move',duration:220,easing:'ease-out'});
+      slideCell(el,before,completeSelection&&Number(el.dataset.cell)===move?.to);
     }
   });
-  for(const empty of document.querySelectorAll<HTMLElement>('.empty-slot'))if(previousSlots[Number(empty.dataset.cell)]&&empty!==document.activeElement)
-    empty.animate([{opacity:0},{opacity:1}],{duration:220,easing:'ease-out'});
+  for(const empty of document.querySelectorAll<HTMLElement>('.empty-slot')) {
+    const cell=Number(empty.dataset.cell);
+    if(emptyRect&&cell===move?.to)slideCell(empty,emptyRect,completeSelection);
+    else if(previousSlots[cell]||emptyRect&&cell===move?.from)fadeEmpty(empty);
+  }
   if(displayedView()!=='flight'||!previousVisual)return;
   if(!previousVisual.dataset.fromFade&&previousVisual.querySelector('.curve-change-trajectory')?.getAttribute('d')===$('trajectory')?.getAttribute('d'))return;
   const morph=previousVisual.dataset.fromFade?undefined:curveMorph(previousResult,result,from===previousResult.points?undefined:from);
@@ -767,11 +800,24 @@ function showEnding() {
 }
 function focusPart(id:string) {
   const part=document.querySelector<HTMLElement>(`.part-body[data-stage="${CSS.escape(id)}"]`);
-  part?.focus({preventScroll:true});revealRailCell(part);
+  focusRecipeControl(part);
 }
 function focusEmpty(index:number) {
   const slot=document.querySelector<HTMLElement>(`[data-empty="${index}"]`);
-  slot?.focus({preventScroll:true});revealRailCell(slot);
+  focusRecipeControl(slot);
+}
+function focusSlot(index:number) {
+  const id=railSlots[index];if(id)focusPart(id);else focusEmpty(index);
+}
+function focusRecipeControl(control:HTMLElement|null) {
+  if(!control)return;
+  const dialog=document.querySelector<HTMLDialogElement>('#hints-dialog[open],#ideas-dialog[open]');
+  const origin=dialog&&referenceOrigins.get(dialog);
+  // If H/N overtook an accepted edit, carry that edit's intended destination
+  // into the return bookmark without taking focus out of the modal reference.
+  if(origin)origin.focus=rememberFocus(document,control);
+  else control.focus({preventScroll:true});
+  revealRailCell(control);
 }
 function moveCell(from:number,to:number,completeSelection=false) {
   if(!state)return;
@@ -779,34 +825,44 @@ function moveCell(from:number,to:number,completeSelection=false) {
   const id=railSlots[from],slots=movedSlots(railSlots,state,from,to);
   if(!slots)return;
   const emptySelection=!id&&insertionIndex===from?to:undefined;
+  const move={from,to};
   if(state.station) {
     const nodes=slots.flatMap(id=>id?[state!.nodes.find(node=>node.id===id)!]:[]);
-    return serial(async()=>accept(await kernel.run({...state!,nodes},{type:'evaluate'}),'push',slots,undefined,true,id??undefined,emptySelection,completeSelection));
+    return serial(async()=>accept(await kernel.run({...state!,nodes},{type:'evaluate'}),'push',slots,undefined,true,id??undefined,emptySelection,completeSelection,move));
   }
-  if(!id)return serial(async()=>{if(!state||!result)return;return accept({status:'ok',state,result},'push',slots,undefined,true,undefined,emptySelection,completeSelection);});
+  if(!id)return serial(async()=>{if(!state||!result)return;return accept({status:'ok',state,result},'push',slots,undefined,true,undefined,emptySelection,completeSelection,move);});
   const index=slots.slice(0,to).filter(Boolean).length;
-  return serial(async()=>accept(await kernel.run(state,{type:'move',id,index}),'push',slots,undefined,true,id,undefined,completeSelection));
+  return serial(async()=>accept(await kernel.run(state,{type:'move',id,index}),'push',slots,undefined,true,id,undefined,completeSelection,move));
 }
-function insertIntoSlot(op:Op,index=insertionIndex??railSlots.indexOf(null)) {
+function insertIntoSlot(op:Op,index=insertionIndex??railSlots.indexOf(null),advance=false) {
   if(!state||index<0||index>=railSlots.length)return;
   // Insert at the indicated slot, shifting only as far as a free slot. Prefer
   // the right; a hole to the left still lets the new block land where dropped.
   const id=crypto.randomUUID(),slots=insertedSlots(railSlots,state,id,index);
   if(!slots)return;
   selectedStage='';
+  const place=(reply:Response)=>{
+    requireOk(reply);
+    const acceptedSlots=normalizeSlots(reply.state,slots);
+    const next=advance?[...acceptedSlots.keys()].find(i=>i>index&&acceptedSlots[i]===null)??acceptedSlots.indexOf(null):-1;
+    const accepted=accept(reply,'push',acceptedSlots,undefined,true,id,next>=0?next:undefined);
+    if(advance&&next<0)focusPart(id);
+    return accepted;
+  };
   if(state.station) {
     const nodes=slots.flatMap(slot=>slot?[slot===id?{id,op}:state!.nodes.find(node=>node.id===slot)!]:[]);
-    return {id,work:serial(async()=>accept(await kernel.run({...state!,nodes},{type:'evaluate'}),'push',slots))};
+    return {id,work:serial(async()=>place(await kernel.run({...state!,nodes},{type:'evaluate'})))};
   }
-  return {id,work:perform({type:'insert',op,id,index:slots.slice(0,index).filter(Boolean).length},'push',slots)};
+  return {id,work:serial(async()=>place(await kernel.run(state,{type:'insert',op,id,index:slots.slice(0,index).filter(Boolean).length})))};
 }
-function removePart(id:string,keepSlot=false) {
+function removePart(id:string,focus:'stack'|'slot'|'previous'='stack') {
   const index=state?.nodes.findIndex(n=>n.id===id)??-1;
   const op=state?.nodes[index]?.op;
   const cell=railSlots.indexOf(id);
+  const destination=focus==='previous'?adjacentSlot(railSlots,state!,cell,-1):cell;
   return perform({type:'remove',id},'push',railSlots.map(slot=>slot===id?null:slot)).then(accepted=>{
     if(!accepted)return;
-    if(keepSlot)focusEmpty(cell);else document.querySelector<HTMLElement>(`[data-op="${op}"]`)?.focus({preventScroll:true});
+    if(focus!=='stack')focusSlot(destination);else focusRecipeControl(document.querySelector<HTMLElement>(`[data-op="${op}"]`));
     $('move-announcement').textContent=`${op?OPS[op].name:'Block'} returned to its stack.`;
   });
 }
@@ -928,7 +984,7 @@ document.addEventListener('keydown',event=>{
   }
   if(characterShortcuts&&inPlay&&!event.altKey&&!event.shiftKey&&['h','n'].includes(event.key.toLowerCase())) {
     const button=$<HTMLButtonElement>(event.key.toLowerCase()==='h'?'hints-open':'ideas-open');
-    if(!event.repeat&&!button.disabled&&button.getClientRects().length){event.preventDefault();button.click();}
+    if(!event.repeat&&!button.disabled&&button.getClientRects().length){event.preventDefault();(event.key.toLowerCase()==='h'?openHints:openNotes)(rememberFocus());}
     return;
   }
   if(characterShortcuts&&inPlay&&!event.shiftKey&&['z','x','c'].includes(event.key.toLowerCase())) {
@@ -945,7 +1001,10 @@ document.addEventListener('keydown',event=>{
     if(initialized&&!pending&&!event.repeat&&button&&!button.disabled&&button.getClientRects().length) {
       event.preventDefault();
       if(choiceActive()||button.dataset.return)button.click();
-      else {const placed=insertIntoSlot(button.dataset.op as Op);if(placed)void placed.work.then(accepted=>{if(accepted)focusPart(placed.id);});}
+      else {
+        const advance=insertionIndex!==undefined,placed=insertIntoSlot(button.dataset.op as Op,undefined,advance);
+        if(placed&&!advance)void placed.work.then(accepted=>{if(accepted)focusPart(placed.id);});
+      }
     }
     return;
   }
@@ -963,7 +1022,12 @@ document.addEventListener('keydown',event=>{
       event.preventDefault();const to=adjacentSlot(railSlots,state,index,event.key==='ArrowLeft'?-1:1);
       if(to!==index){selectedStage=id;void moveCell(index,to)?.then(()=>focusPart(id));}
     }
-    if(event.key==='ArrowDown'||event.key==='Delete'||event.key==='Backspace'){event.preventDefault();void removePart(id,event.key!=='ArrowDown');}
+    if(event.key==='ArrowDown'||event.key==='Delete'||event.key==='Backspace') {
+      event.preventDefault();void removePart(id,event.key==='ArrowDown'?'stack':event.key==='Backspace'?'previous':'slot');
+    }
+  }
+  if(target.matches('.empty-slot')&&!pending&&event.key==='Backspace') {
+    event.preventDefault();focusSlot(adjacentSlot(railSlots,state!,Number(target.dataset.empty),-1));
   }
   if(target.matches('.empty-slot')&&!pending&&(event.key==='ArrowLeft'||event.key==='ArrowRight')) {
     event.preventDefault();const from=Number(target.dataset.empty),to=adjacentSlot(railSlots,state!,from,event.key==='ArrowLeft'?-1:1);
@@ -1089,9 +1153,13 @@ function finishPointer(event?:PointerEvent,cancel=false){
 document.addEventListener('pointerup',event=>finishPointer(event));document.addEventListener('pointercancel',event=>finishPointer(event,true));
 window.addEventListener('blur',()=>finishPointer(undefined,true));
 
-const open=(id:string,returnId='menu-open')=>{
-  cancelCirclePickup();if(pointer)finishPointer(undefined,true);closeDialogs();$(returnId).focus({preventScroll:true});
-  const dialog=$<HTMLDialogElement>(id);dialog.showModal();
+const referenceOrigins=new WeakMap<HTMLDialogElement,{focus:ReturnType<typeof rememberFocus>;native:Element|null}>();
+const open=(id:string,returnId='menu-open',origin?:ReturnType<typeof rememberFocus>)=>{
+  cancelCirclePickup();if(pointer)finishPointer(undefined,true);closeDialogs();
+  if(!restoreFocus(origin))$(returnId).focus({preventScroll:true});
+  const dialog=$<HTMLDialogElement>(id),native=document.activeElement;
+  if(origin)referenceOrigins.set(dialog,{focus:origin,native});else referenceOrigins.delete(dialog);
+  dialog.showModal();
   if(!dialog.querySelector('[autofocus]')) {
     const back=dialog.querySelector<HTMLElement>('.dialog-top button');
     const keyboard=document.documentElement.dataset.focusModality==='keyboard';
@@ -1103,11 +1171,24 @@ const open=(id:string,returnId='menu-open')=>{
     } else dialog.focus({preventScroll:true});
   }
 };
+for(const id of ['hints-dialog','ideas-dialog'])$(id).addEventListener('close',()=>{
+  // Native dialog return handles the usual case. An accepted edit may have
+  // replaced the originating block while the reference was opening; resolve
+  // that same logical control without overriding a deliberate view change.
+  const dialog=$<HTMLDialogElement>(id),origin=referenceOrigins.get(dialog);
+  const restore=()=>{
+    if(document.querySelector('dialog[open]')||document.activeElement!==document.body&&document.activeElement!==origin?.native&&!dialog.contains(document.activeElement))return true;
+    return restoreFocus(origin?.focus);
+  };
+  if(origin&&!restore())requestAnimationFrame(restore);
+});
 document.querySelectorAll<HTMLDialogElement>('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();const e=event as MouseEvent;if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}}));
 for(const [button,dialog] of [['help-open','help-dialog'],['menu-open','menu-dialog'],['settings-open','settings-dialog']])$(button).onclick=()=>open(dialog);
 $('puzzles-open').onclick=()=>{if(!initialized)return;renderLevels();open('puzzles-dialog');};
-$('ideas-open').onclick=()=>{if(!state)return;open('ideas-dialog','ideas-open');shapeNotes.show(state.mode==='puzzle'?state.sourceId:0);};
-$('hints-open').onclick=()=>{if(!state||!result||state.mode!=='puzzle'||introActive()||isDiscovery(state))return;hintOffered=true;hintCue=false;$('hints-open').classList.remove('hint-cue');$('hints-content').innerHTML=puzzleHints(state,result);open('hints-dialog','hints-open');};
+function openNotes(origin?:ReturnType<typeof rememberFocus>) {if(!state)return;open('ideas-dialog','ideas-open',origin);shapeNotes.show(state.mode==='puzzle'?state.sourceId:0);}
+function openHints(origin?:ReturnType<typeof rememberFocus>) {if(!state||!result||state.mode!=='puzzle'||introActive()||isDiscovery(state))return;hintOffered=true;hintCue=false;$('hints-open').classList.remove('hint-cue');$('hints-content').innerHTML=puzzleHints(state,result);open('hints-dialog','hints-open',origin);}
+$('ideas-open').onclick=()=>openNotes();
+$('hints-open').onclick=()=>openHints();
 $('hints-content').onclick=event=>{
   const target=event.target as Element,button=target.closest<HTMLButtonElement>('#hint-more-toggle');
   if(button)revealHintSpoiler(button,$('hint-extra'));
@@ -1121,7 +1202,7 @@ $('hints-content').onclick=event=>{
       }).catch(()=>{if(panel.isConnected){delete panel.dataset.loaded;panel.innerHTML='<p>The sketch could not load. Close and reopen it to try again.</p>';}}).finally(()=>panel.setAttribute('aria-busy','false'));
     }
   }
-  if(target.closest('#hint-notes'))$('ideas-open').click();
+  if(target.closest('#hint-notes'))openNotes(referenceOrigins.get($<HTMLDialogElement>('hints-dialog'))?.focus);
 };
 $('menu-version').onclick=()=>open('releases-dialog','menu-version');
 $('ending-create').onclick=()=>$('nav-create').click();

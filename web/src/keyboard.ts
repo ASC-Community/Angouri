@@ -179,9 +179,8 @@ export function guardArrivalFocus(documentRoot: Document = document) {
   };
 }
 
-/** Remember focus before render code replaces the palette or recipe markup. */
-export function rememberFocus(documentRoot: Document = document): FocusBookmark | undefined {
-  const element=documentRoot.activeElement;
+/** Bookmark a logical control before a render; default to the current focus. */
+export function rememberFocus(documentRoot: Document = document, element:Element|null=documentRoot.activeElement): FocusBookmark | undefined {
   if(!(element instanceof HTMLElement)||element===documentRoot.body)return;
   const key=DATA_KEYS.find(candidate=>element.dataset[candidate]!==undefined);
   const cell=element.closest<HTMLElement>('[data-cell]')?.dataset.cell;

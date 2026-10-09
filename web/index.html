@@ -31,9 +31,9 @@
         <div class="recipe-heading"><h2>Recipe</h2><div class="history-actions"><button id="undo" class="button history-button" aria-label="Undo" title="Undo" aria-keyshortcuts="Control+Z Meta+Z" disabled><span data-icon="undo"></span><kbd class="button-hotkey" aria-hidden="true"></kbd></button><button id="redo" class="button history-button" aria-label="Redo" title="Redo" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z" disabled><span data-icon="redo"></span><kbd class="button-hotkey" aria-hidden="true"></kbd></button><button id="reset" class="button history-button restart-button" aria-label="Restart puzzle" title="Restart puzzle (⇧+⌫)" aria-keyshortcuts="Shift+Backspace" disabled><span data-icon="reset"></span><kbd class="button-hotkey" aria-hidden="true">⇧+⌫</kbd></button></div></div>
         <div class="recipe-content"><div id="construction" class="construction"></div><div id="palette" class="palette" aria-label="Add a block to your recipe"></div></div>
         <div class="dock-footer"><div id="recipe-guidance" class="recipe-guidance"><div id="feedback" class="feedback" role="status" aria-live="polite">Tap or drag a block.</div><button id="hints-open" class="ideas-button hints-button" aria-haspopup="dialog" aria-controls="hints-dialog" disabled><span data-icon="bulb"></span>Hints<kbd class="button-hotkey" data-character aria-hidden="true">H</kbd></button></div><div id="success" class="success" hidden></div><div class="dock-actions"><button id="rethrow" class="icon-button rethrow-button" aria-label="Rethrow" title="Rethrow" aria-keyshortcuts="Enter" hidden><span data-icon="throw"></span><kbd class="button-hotkey" aria-hidden="true">Enter</kbd></button><button id="launch" class="button primary launch-button" aria-keyshortcuts="Enter" disabled><span data-icon="throw"></span><span>Throw</span><kbd class="button-hotkey" aria-hidden="true">Enter</kbd></button></div></div>
-        <p id="block-keyboard-help" class="sr-only">Left and Right move this block. Down returns it and focus to its stack. Backspace, labelled Delete on Mac, clears this slot and keeps focus here. Space selects or deselects; moving the selection clears it. Enter throws the recipe. Escape clears selection. You can also select a block, then tap another slot to move or its matching stack to return it. Drag off the recipe to return a block.</p>
+        <p id="block-keyboard-help" class="sr-only">Left and Right move this block. Down returns it and focus to its stack. Backspace, labelled Delete on Mac, clears this slot and moves focus one editable slot left, stopping at the first slot. Space selects or deselects; moving the selection clears it and keeps focus at the destination. Enter throws the recipe. Escape clears selection. You can also select a block, then tap another slot to move or its matching stack to return it. Drag off the recipe to return a block.</p>
         <p id="deck-keyboard-help" class="sr-only">Space places a block and keeps focus here while copies remain. Up places a block and follows it into the recipe. Enter throws the recipe.</p>
-        <p id="empty-keyboard-help" class="sr-only">Space selects or deselects this empty slot without moving focus. Select another slot to exchange positions and clear the selection, or choose a block to fill it. Left and Right move this slot and its insertion choice. Undo restores slot positions too.</p>
+        <p id="empty-keyboard-help" class="sr-only">Space selects or deselects this empty slot without moving focus. Select another slot to exchange positions and clear the selection, or choose a block to fill it. Left and Right move this slot and its insertion choice. Backspace moves only focus one editable slot left, stopping at the first slot. Number shortcuts fill the selected slot and advance to the next empty slot. Undo restores slot positions too.</p>
         <div id="move-announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
       </div>
     </section>
@@ -87,12 +87,12 @@
         <dt><kbd>Space</kbd></dt><dd>Select a block or empty slot, then a destination. Each completed move clears the selection.</dd>
         <dt><kbd>↑</kbd></dt><dd>Place from a stack and follow the block into the recipe</dd>
         <dt><kbd>↓</kbd></dt><dd>Return a block and focus to its stack</dd>
-        <dt><kbd>⌫</kbd></dt><dd>Clear the focused slot and keep focus there</dd>
+        <dt><kbd>⌫</kbd></dt><dd>Clear a block and step left. On an empty slot, just step left. Stop at the first editable slot.</dd>
       </dl></section>
       <section class="keyboard-group"><h3>Quick keys</h3><p>On by default. Settings → Disable quick keys turns them off; Tab navigation stays the same.</p><dl class="keyboard-guide">
-        <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>Placement follows the new block. Depleted stacks keep their number.</dd>
+        <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>Fill a selected empty slot and advance to the next; otherwise follow the new block. Depleted stacks keep their number.</dd>
         <dt><kbd>Z</kbd> <kbd>X</kbd> <kbd>C</kbd></dt><dd>Keep editing focus when switching views</dd>
-        <dt><kbd>H</kbd></dt><dd>Open Hints with spoilers still covered</dd>
+        <dt><kbd>H</kbd> <kbd>N</kbd></dt><dd>Open Hints or Notes; closing returns to your editing position.</dd>
         <dt><kbd>?</kbd></dt><dd>Open this guide</dd>
       </dl></section>
     </details>

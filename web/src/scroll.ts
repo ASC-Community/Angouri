@@ -1,7 +1,7 @@
 // Accepted moves have already revealed their final layout. Scrolling toward
 // their transient painted position would undo that reveal during the slide.
 function movingCell(target:HTMLElement) {
-  return target.closest('.recipe-part')?.getAnimations().some(animation=>animation.id==='recipe-move'&&animation.playState!=='finished');
+  return target.closest('.recipe-part,.empty-slot')?.getAnimations().some(animation=>animation.id==='recipe-move'&&animation.playState!=='finished');
 }
 
 export function revealFocusRing(target:HTMLElement) {

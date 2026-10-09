@@ -6,7 +6,7 @@ async function ready(page,id=25) {
   await page.goto(`/#level=${id}&view=flight`);
   await page.waitForFunction(()=>window.angouri?.state&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
 }
-const settled=page=>page.waitForFunction(()=>[...document.querySelectorAll('.recipe-part')].every(el=>el.getAnimations().every(a=>a.playState==='finished')));
+const settled=page=>page.waitForFunction(()=>[...document.querySelectorAll('.recipe-part,.empty-slot')].every(el=>el.getAnimations({subtree:true}).every(a=>a.playState==='finished')));
 const cue=page=>page.locator('.keyboard-arrows:visible');
 
 test('Delete clears the focused slot while Down returns focus to the stack',async({page})=>{
@@ -16,9 +16,50 @@ test('Delete clears the focused slot while Down returns focus to the stack',asyn
   await page.keyboard.press('Delete');await idle(page);
   await expect(page.locator('[data-empty="1"]')).toBeFocused();expect(await page.evaluate(()=>window.angouri.state.nodes)).toEqual([]);
   await page.keyboard.press('Control+z');await idle(page);await expect(page.locator(`[data-stage="${id}"]`)).toBeFocused();
-  await page.keyboard.press('Backspace');await idle(page);await expect(page.locator('[data-empty="1"]')).toBeFocused();
-  await page.keyboard.press('Control+z');await idle(page);await page.keyboard.press('ArrowDown');await idle(page);
+  await page.keyboard.press('Backspace');await idle(page);await expect(page.locator('[data-empty="0"]')).toBeFocused();
+  await page.keyboard.press('Control+z');await idle(page);await expect(page.locator('[data-empty="0"]')).toBeFocused();
+  await page.locator(`[data-stage="${id}"]`).focus();await page.keyboard.press('ArrowDown');await idle(page);
   await expect(page.locator('#palette [data-op="A"]')).toBeFocused();expect(await page.evaluate(()=>window.angouri.state.nodes)).toEqual([]);
+});
+
+test('Backspace clears backward through blocks and holes, stops at the first slot and preserves Undo',async({page})=>{
+  await ready(page);
+  for(let i=0;i<3;i++){await page.keyboard.press('2');await idle(page);}
+  for(let i=0;i<2;i++){await page.keyboard.press('ArrowRight');await idle(page);}
+  const before=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}));
+  await page.keyboard.press('Backspace');await idle(page);await expect(page.locator('[data-empty="3"]')).toBeFocused();
+  await expect(cue(page).locator('kbd:visible')).toHaveText(['Space','⌫']);
+  const removed=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}));
+  for(const index of [2,1]) {
+    await page.keyboard.press('Backspace');await idle(page);
+    await expect(page.locator(`[data-cell="${index}"]${index===1?' .part-body':''}`)).toBeFocused();
+    expect(await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}))).toEqual(removed);
+  }
+  await page.keyboard.press('Backspace');await idle(page);await expect(page.locator('[data-cell="0"] .part-body')).toBeFocused();
+  await page.keyboard.press('Backspace');await idle(page);await expect(page.locator('[data-empty="0"]')).toBeFocused();
+  await expect(cue(page).locator('kbd:visible')).toHaveText(['Space']);
+  expect(await page.evaluate(()=>window.angouri.state.nodes)).toEqual([]);
+  const cleared=await page.evaluate(()=>window.angouri.history);expect(cleared.undo).toBe(before.history.undo+3);
+  await page.keyboard.press('Backspace');await idle(page);await expect(page.locator('[data-empty="0"]')).toBeFocused();
+  expect(await page.evaluate(()=>window.angouri.history)).toEqual(cleared);
+  for(let i=0;i<3;i++){await page.keyboard.press('Control+z');await idle(page);}
+  expect(await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots}))).toEqual({state:before.state,slots:before.slots});
+  expect(await page.evaluate(()=>window.angouri.history)).toEqual({...before.history,redo:3});
+});
+
+test('Backspace crosses a fixed station without selecting it, while forward Delete keeps its slot',async({page})=>{
+  await ready(page,54);const original=await page.evaluate(()=>window.angouri.state);
+  await page.locator('#palette [data-op="H"]').focus();await page.keyboard.press('ArrowUp');await idle(page);
+  await page.keyboard.press('ArrowRight');await idle(page);
+  const id=await page.evaluate(()=>window.angouri.state.nodes.find(node=>node.op==='H').id);
+  await page.keyboard.press('Backspace');await idle(page);await expect(page.locator('[data-empty="0"]')).toBeFocused();
+  expect(await page.evaluate(()=>window.angouri.state)).toEqual(original);
+  const history=await page.evaluate(()=>window.angouri.history);
+  await page.locator('[data-empty="2"]').focus();await page.keyboard.press('Backspace');await expect(page.locator('[data-empty="0"]')).toBeFocused();
+  expect(await page.evaluate(()=>window.angouri.history)).toEqual(history);
+  await page.keyboard.press('Control+z');await idle(page);await page.locator(`[data-stage="${id}"]`).focus();
+  await page.keyboard.press('Delete');await idle(page);await expect(page.locator('[data-empty="2"]')).toBeFocused();
+  expect(await page.evaluate(()=>window.angouri.state)).toEqual(original);
 });
 
 test('Shift Delete restarts only the current recipe, remains undoable and leaves text editing alone',async({page})=>{
@@ -48,12 +89,54 @@ test('H and N open available references directly without revealing spoilers or e
   await page.keyboard.press('h');await expect(page.locator('#hints-dialog')).toBeVisible();await expect(page.locator('#hints-dialog .dialog-top button')).toBeFocused();
   await expect(page.locator('#hint-more-toggle')).toBeVisible();await expect(page.locator('#hint-more-toggle')).toHaveAttribute('aria-expanded','false');
   await page.keyboard.press('n');await expect(page.locator('#ideas-dialog')).not.toBeVisible();
-  await page.keyboard.press('Escape');await expect(page.locator('#hints-open')).toBeFocused();
+  await page.keyboard.press('Escape');await expect(page.locator('#palette [data-op="A"]')).toBeFocused();
   await page.keyboard.press('n');await expect(page.locator('#ideas-dialog')).toBeVisible();await expect(page.locator('#ideas-dialog .dialog-top button')).toBeFocused();
-  await page.keyboard.press('Escape');await expect(page.locator('#ideas-open')).toBeFocused();
+  await page.keyboard.press('Escape');await expect(page.locator('#palette [data-op="A"]')).toBeFocused();
   expect(await page.evaluate(()=>({state:window.angouri.state,history:window.angouri.history}))).toEqual(before);
   await ready(page,1);await page.keyboard.press('h');await page.keyboard.press('n');await expect(page.locator('dialog[open]')).toHaveCount(0);
   await ready(page,3);await page.keyboard.press('h');await expect(page.locator('dialog[open]')).toHaveCount(0);await page.keyboard.press('n');await expect(page.locator('#ideas-dialog')).toBeVisible();
+});
+
+test('reference shortcuts restore selected blocks and holes, including Hints to Notes and pending edits',async({page})=>{
+  await ready(page);await page.keyboard.press('1');await idle(page);await page.keyboard.press('Space');
+  const block=page.locator('.part-body');await expect(block).toHaveAttribute('aria-pressed','true');
+  const before=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}));
+  for(const [key,dialog] of [['h','hints-dialog'],['n','ideas-dialog']]) {
+    await page.keyboard.press(key);await expect(page.locator(`#${dialog} .dialog-top button`).first()).toBeFocused();
+    await page.keyboard.press('Backspace');await expect(block).toBeFocused();await expect(block).toHaveAttribute('aria-pressed','true');
+  }
+  await page.keyboard.press('h');await page.locator('#hint-notes').click();await expect(page.locator('#ideas-dialog')).toBeVisible();
+  await page.keyboard.press('Escape');await expect(block).toBeFocused();
+  expect(await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}))).toEqual(before);
+  await page.keyboard.press('Escape');const empty=page.locator('[data-empty="2"]');await empty.focus();await page.keyboard.press('Space');
+  for(const [key,dialog] of [['h','hints-dialog'],['n','ideas-dialog']]) {
+    await page.keyboard.press(key);await page.locator(`#${dialog} .dialog-top button`).first().click();
+    await expect(empty).toBeFocused();await expect(empty).toHaveAttribute('aria-pressed','true');
+  }
+  // An explicit view link remains a navigation choice, not reference dismissal.
+  await page.keyboard.press('n');await page.locator('#ideas-dialog .note-view-button[data-view="function"]').first().click();
+  await expect(page.locator('#tab-function')).toBeFocused();
+  await page.locator('#ideas-open').click();await page.keyboard.press('Escape');await expect(page.locator('#ideas-open')).toBeFocused();
+  await block.focus();
+  await page.evaluate(()=>{
+    const block=document.activeElement;
+    block.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));
+    block.dispatchEvent(new KeyboardEvent('keydown',{key:'h',bubbles:true,cancelable:true}));
+  });
+  await idle(page);await expect(page.locator('#hints-dialog')).toBeVisible();
+  await page.keyboard.press('Escape');await expect(block).toBeFocused();
+  expect(await page.evaluate(()=>window.angouri.slots.indexOf(window.angouri.state.nodes[0].id))).toBe(1);
+  await ready(page);await page.locator('[data-empty="0"]').focus();await page.keyboard.press('Shift');
+  for(const [key,reference,next,selected] of [['ArrowRight','h',1,false],['ArrowRight','n',2,true],['2','h',3,true]]) {
+    if(next===2)await page.keyboard.press('Space');
+    await page.evaluate(([key,reference])=>{
+      const slot=document.activeElement;
+      for(const value of [key,reference])slot.dispatchEvent(new KeyboardEvent('keydown',{key:value,bubbles:true,cancelable:true}));
+    },[key,reference]);
+    await idle(page);await expect(page.locator(`#${reference==='h'?'hints':'ideas'}-dialog .dialog-top button`).first()).toBeFocused();
+    await page.keyboard.press('Escape');await expect(page.locator(`[data-empty="${next}"]`)).toBeFocused();
+    await expect(page.locator(`[data-empty="${next}"]`)).toHaveAttribute('aria-pressed',String(selected));
+  }
 });
 
 test('quick-key opt-out preserves defaults, Tab navigation and modified shortcuts',async({page})=>{
@@ -93,11 +176,14 @@ test('number shortcuts follow stable palette positions, chosen slots and return 
   await page.keyboard.press('1');await idle(page);await expect(page.locator('.part-body')).toBeFocused();
   expect(await page.evaluate(()=>window.angouri.state.nodes.map(n=>n.op))).toEqual([ops[0]]);
   await expect(page.locator('#palette [data-op]').first()).toBeDisabled();await expect(page.locator('#palette [data-op]').last().locator('.button-hotkey')).toHaveText('2');
+  await page.locator('[data-empty="1"]').focus();await page.keyboard.press('Space');
   await page.keyboard.press('1');await idle(page);expect(await page.evaluate(()=>window.angouri.state.nodes.length)).toBe(1);
+  await expect(page.locator('[data-empty="1"]')).toBeFocused();await expect(page.locator('[data-empty="1"]')).toHaveAttribute('aria-pressed','true');
   await page.keyboard.press('2');await idle(page);expect(await page.evaluate(()=>window.angouri.state.nodes.map(n=>n.op))).toEqual(ops);
 
   await ready(page,25);await page.locator('[data-empty="2"]').focus();await page.keyboard.press('Space');await page.keyboard.press('2');await idle(page);
-  const id=await page.evaluate(()=>window.angouri.state.nodes[0].id);await expect(page.locator(`[data-stage="${id}"]`)).toBeFocused();expect(await page.evaluate(()=>window.angouri.slots.indexOf(window.angouri.state.nodes[0].id))).toBe(2);
+  const id=await page.evaluate(()=>window.angouri.state.nodes[0].id);await expect(page.locator('[data-empty="3"]')).toBeFocused();await expect(page.locator('[data-empty="3"]')).toHaveAttribute('aria-pressed','true');expect(await page.evaluate(()=>window.angouri.slots.indexOf(window.angouri.state.nodes[0].id))).toBe(2);
+  await page.keyboard.press('Escape');await page.locator(`[data-stage="${id}"]`).focus();
   await page.keyboard.press('Space');await expect(page.locator('#palette [data-op="A"]')).toHaveAttribute('data-return',id);
   await page.keyboard.press('2');await idle(page);expect(await page.evaluate(()=>window.angouri.state.nodes)).toEqual([]);await expect(page.locator('#palette [data-op="A"]')).toBeFocused();
   await page.keyboard.press('Control+z');await idle(page);expect(await page.evaluate(()=>window.angouri.slots.indexOf(window.angouri.state.nodes[0].id))).toBe(2);
@@ -107,6 +193,43 @@ test('number shortcuts follow stable palette positions, chosen slots and return 
   for(let index=0;index<all.length;index++){await page.keyboard.press(String(index+1));await idle(page);await expect(page.locator('.part-body').last()).toBeFocused();}
   expect(await page.evaluate(()=>window.angouri.state.nodes.map(n=>n.op))).toEqual(all);
   await ready(page,1);await page.keyboard.press('1');await idle(page);await expect(page.locator('#palette [data-op="H"]')).toBeFocused();expect(await page.evaluate(()=>window.angouri.state.nodes.map(n=>n.op))).toEqual(['H']);
+});
+
+test('number placement advances a selected hole, skips filled cells, wraps and stops at a full recipe',async({page})=>{
+  await ready(page);await page.keyboard.press('1');await idle(page);
+  const first=await page.evaluate(()=>window.angouri.state.nodes[0].id);
+  const last=await page.evaluate(()=>window.angouri.slots.length-1);
+  await page.locator(`[data-empty="${last}"]`).focus();await page.keyboard.press('Space');
+  let index=last,count=0;
+  while(index>=0) {
+    const previous=await page.evaluate(()=>({slots:window.angouri.slots,history:window.angouri.history}));
+    const number=await page.locator('#palette [data-op]:not(:disabled):not([data-return])').first().getAttribute('data-shortcut');
+    await page.keyboard.press(number);await idle(page);count++;
+    const next=previous.slots.findIndex((id,i)=>i>index&&id===null);
+    previous.slots[index]='filled';index=next>=0?next:previous.slots.indexOf(null);
+    expect(await page.evaluate(()=>window.angouri.history.undo)).toBe(previous.history.undo+1);
+    expect(await page.evaluate(()=>window.angouri.slots[0])).toBe(first);
+    if(index>=0){await expect(page.locator(`[data-empty="${index}"]`)).toBeFocused();await expect(page.locator(`[data-empty="${index}"]`)).toHaveAttribute('aria-pressed','true');}
+    else {await expect(page.locator('.part-body:focus')).toHaveCount(1);await expect(page.locator('#construction')).not.toHaveClass(/has-selection/);}
+  }
+  expect(count).toBe(last);const full=await page.evaluate(()=>window.angouri.slots);
+  await page.keyboard.press('1');await idle(page);expect(await page.evaluate(()=>window.angouri.slots)).toEqual(full);
+  await page.keyboard.press('Control+z');await idle(page);expect(await page.locator('.empty-slot').count()).toBe(1);
+  await page.keyboard.press('Control+Shift+z');await idle(page);expect(await page.evaluate(()=>window.angouri.slots)).toEqual(full);
+});
+
+test('selected number placement skips a fixed station and advances into new Create slots',async({page})=>{
+  await ready(page,54);const station=await page.evaluate(()=>window.angouri.state.station);
+  await page.locator('[data-empty="0"]').focus();await page.keyboard.press('Space');await page.keyboard.press('1');await idle(page);
+  await expect(page.locator('[data-empty="2"]')).toBeFocused();await expect(page.locator('[data-empty="2"]')).toHaveAttribute('aria-pressed','true');
+  expect(await page.evaluate(()=>window.angouri.slots[1])).toBe(station.id);
+  await ready(page,3);await page.locator('#menu-open').click();await page.locator('#nav-create').click();await idle(page);
+  await page.locator('[data-empty="0"]').focus();await page.keyboard.press('Space');
+  for(let index=0;index<3;index++) {
+    await page.keyboard.press('3');await idle(page);
+    await expect(page.locator(`[data-empty="${index+1}"]`)).toBeFocused();await expect(page.locator(`[data-empty="${index+1}"]`)).toHaveAttribute('aria-pressed','true');
+    expect(await page.evaluate(()=>window.angouri.history.undo)).toBe(index+1);
+  }
 });
 
 test('play controls do not intercept assistive modifier combinations or composition',async({page})=>{
@@ -313,31 +436,40 @@ async function beginFrames(page) {
   await page.evaluate(()=>{
     window.recipeFrames=[];window.recipeFramesDone=false;const start=performance.now();
     const sample=()=>requestAnimationFrame(()=>setTimeout(()=>{
-      const active=document.activeElement,part=active.closest('.recipe-part'),cue=document.querySelector('.keyboard-arrows');
+      const active=document.activeElement,part=active.closest('.recipe-part,.empty-slot'),cue=document.querySelector('.keyboard-arrows');
       if(part&&cue&&!cue.hidden) {
-        const r=active.getBoundingClientRect(),c=cue.getBoundingClientRect();
-        const overlaps=[...document.querySelectorAll('.recipe-part')].filter(other=>other!==part).map(other=>{
+        const r=active.getBoundingClientRect(),c=cue.getBoundingClientRect(),after=active.getBoundingClientRect();
+        // WebKit can advance a compositor animation between geometry reads.
+        // Bracket the cue read with its parent's positions, including borders,
+        // rather than treating two different instants as the same frame.
+        const offsetError=(value,start,end)=>Math.max(Math.min(start,end)-value,value-Math.max(start,end),0);
+        const overlaps=[...document.querySelectorAll('.recipe-part,.empty-slot')].filter(other=>other!==part).map(other=>{
           const b=other.getBoundingClientRect();return {left:Math.max(r.left,b.left),right:Math.min(r.right,b.right),top:Math.max(r.top,b.top),bottom:Math.min(r.bottom,b.bottom)};
         }).filter(b=>b.right-b.left>2&&b.bottom-b.top>2);
-        const above=overlaps.every(b=>document.elementFromPoint((b.left+b.right)/2,(b.top+b.bottom)/2)?.closest('.recipe-part')===part);
-        window.recipeFrames.push({id:active.dataset.stage,x:r.x,above,overlaps:overlaps.length,cueError:Math.abs(c.x-(r.left-6)),topError:Math.abs(c.top-Math.max(2,r.top-9)),moving:part.getAnimations().some(a=>a.id==='recipe-move'&&a.playState==='running')});
+        const above=overlaps.every(b=>document.elementFromPoint((b.left+b.right)/2,(b.top+b.bottom)/2)?.closest('.recipe-part,.empty-slot')===part);
+        window.recipeFrames.push({id:active.dataset.stage??`empty:${active.dataset.empty}`,x:r.x,faceX:part.querySelector('.recipe-face,.empty-face').getBoundingClientRect().x,above,overlaps:overlaps.length,attached:cue.parentElement===active,cueError:offsetError(c.x,r.left+active.clientLeft-6,after.left+active.clientLeft-6),topError:offsetError(c.top,r.top+active.clientTop-9,after.top+active.clientTop-9),moving:part.getAnimations({subtree:true}).some(a=>a.id==='recipe-move'&&a.playState==='running')});
       }
       if(performance.now()-start<520)sample();else window.recipeFramesDone=true;
     },0));sample();
   });
 }
-async function checkFrames(page) {
+async function checkFrames(page,stationary=false) {
   await page.waitForFunction(()=>window.recipeFramesDone);
   const frames=await page.evaluate(()=>window.recipeFrames),moving=frames.filter(frame=>frame.moving);
+  await test.info().attach('recipe-frames',{body:JSON.stringify(frames),contentType:'application/json'});
   expect(moving.length).toBeGreaterThan(2);
+  expect(frames.every(frame=>frame.attached),'keycaps stay attached to the focused control').toBe(true);
   expect(Math.max(...frames.map(f=>f.cueError))).toBeLessThan(1.1);
   expect(Math.max(...frames.map(f=>f.topError))).toBeLessThan(1.1);
-  expect(frames.every(frame=>frame.above),'focused block paints above every overlapping neighbour').toBe(true);
+  if(!stationary)expect(frames.every(frame=>frame.above),'focused piece paints above every overlapping neighbour').toBe(true);
   const moved=frames.filter(frame=>frame.id===frames.at(-1).id);
-  expect(Math.max(...moved.map(f=>f.x))-Math.min(...moved.map(f=>f.x))).toBeGreaterThan(10);
+  expect(Math.max(...moved.map(f=>f.faceX))-Math.min(...moved.map(f=>f.faceX))).toBeGreaterThan(10);
+  const focusTravel=Math.max(...moved.map(f=>f.x))-Math.min(...moved.map(f=>f.x));
+  if(stationary)expect(focusTravel,'Space keeps focus at the receiving slot throughout the slide').toBeLessThan(1.1);
+  else expect(focusTravel).toBeGreaterThan(10);
 }
 
-test('arrow moves and Space swaps carry the focus cue through every painted frame',async({page},testInfo)=>{
+test('arrows carry focus while Space swaps keep focus at the receiving slot throughout the animation',async({page},testInfo)=>{
   await page.emulateMedia({reducedMotion:'no-preference'});
   await page.setViewportSize({width:1146,height:850});await ready(page);
   for(const op of ['A','H']){await page.locator(`#palette [data-op="${op}"]`).click();await idle(page);}
@@ -356,12 +488,65 @@ test('arrow moves and Space swaps carry the focus cue through every painted fram
   expect(await slots()).toEqual(original);
 
   await page.keyboard.press('Escape');await first.focus();await page.keyboard.press('Space');await page.keyboard.press('Tab');await expect(second).toBeFocused();
-  await beginFrames(page);await page.keyboard.press('Space');await idle(page);await checkFrames(page);
+  await beginFrames(page);await page.keyboard.press('Space');await idle(page);await checkFrames(page,true);
   await expect(first).toBeFocused();await expect(first).toHaveAttribute('aria-pressed','false');await expect(page.locator('#construction')).not.toHaveClass(/has-selection/);expect(await page.evaluate(()=>window.angouri.slots.slice(0,2))).toEqual([nodes[1].id,nodes[0].id]);
   expect(await slots()).toEqual(original);
   await page.screenshot({path:testInfo.outputPath('space-swap.png')});
   await page.keyboard.press('Control+z');await idle(page);await settled(page);
   expect(await page.evaluate(()=>window.angouri.slots.slice(0,2))).toEqual(nodes.map(n=>n.id));
+});
+
+test('empty arrow moves animate through identical holes, reversals and filled neighbours without phantom history',async({page})=>{
+  await page.emulateMedia({reducedMotion:'no-preference'});await ready(page);
+  await page.locator('[data-empty="0"]').focus();await page.keyboard.press('Shift');
+  const original=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}));
+  await beginFrames(page);await page.keyboard.press('ArrowRight');await idle(page);
+  await page.waitForTimeout(60);await page.keyboard.press('ArrowRight');await idle(page);await checkFrames(page);
+  await expect(page.locator('[data-empty="2"]')).toBeFocused();await expect(page.locator('[data-empty="2"]')).toHaveAttribute('aria-pressed','false');
+  await page.keyboard.press('Space');await beginFrames(page);await page.keyboard.press('ArrowRight');await idle(page);
+  await page.waitForTimeout(60);await page.keyboard.press('ArrowLeft');await idle(page);await checkFrames(page);
+  await expect(page.locator('[data-empty="2"]')).toBeFocused();await expect(page.locator('[data-empty="2"]')).toHaveAttribute('aria-pressed','true');
+  expect(await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}))).toEqual(original);
+  await page.keyboard.press('ArrowLeft');await idle(page);await settled(page);
+  await page.keyboard.press('2');await idle(page);await settled(page);await page.keyboard.press('Escape');
+  const block=await page.evaluate(()=>window.angouri.state.nodes[0].id);
+  await page.locator('[data-empty="0"]').focus();await beginFrames(page);await page.keyboard.press('ArrowRight');await idle(page);await checkFrames(page);
+  await expect(page.locator('[data-empty="1"]')).toBeFocused();expect(await page.evaluate(()=>window.angouri.slots.slice(0,2))).toEqual([block,null]);
+  expect(await page.evaluate(()=>window.angouri.history)).toEqual({undo:2,redo:0});
+  await page.keyboard.press('Control+z');await idle(page);expect(await page.evaluate(()=>window.angouri.slots.slice(0,2))).toEqual([null,block]);
+  await page.emulateMedia({reducedMotion:'reduce'});await ready(page);
+  await page.locator('[data-empty="0"]').focus();await page.keyboard.press('ArrowRight');await idle(page);
+  await expect(page.locator('[data-empty="1"]')).toBeFocused();expect(await page.locator('#construction').evaluate(el=>el.getAnimations({subtree:true}).length)).toBe(0);
+});
+
+test('empty arrows skip the fixed machine with the same travelling focus and no boundary move',async({page})=>{
+  await page.emulateMedia({reducedMotion:'no-preference'});await ready(page,54);
+  await page.locator('[data-empty="0"]').focus();await page.keyboard.press('Shift');
+  const original=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}));
+  await beginFrames(page);await page.keyboard.press('ArrowRight');await idle(page);await checkFrames(page);
+  await expect(page.locator('[data-empty="2"]')).toBeFocused();
+  await beginFrames(page);await page.keyboard.press('ArrowLeft');await idle(page);await checkFrames(page);
+  await expect(page.locator('[data-empty="0"]')).toBeFocused();await page.keyboard.press('ArrowLeft');await idle(page);
+  expect(await page.locator('[data-empty="0"]').evaluate(el=>el.getAnimations({subtree:true}).length)).toBe(0);
+  expect(await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}))).toEqual(original);
+});
+
+test('Space destinations stay focused as blocks and empty faces arrive',async({page},testInfo)=>{
+  await page.emulateMedia({reducedMotion:'no-preference'});await ready(page);await page.keyboard.press('2');await idle(page);await settled(page);
+  const block=page.locator('.part-body');await page.keyboard.press('Space');await page.keyboard.press('Tab');await expect(page.locator('[data-empty="1"]')).toBeFocused();
+  const destination=await page.locator('[data-empty="1"]').boundingBox();
+  await beginFrames(page);await page.keyboard.press('Space');await idle(page);await checkFrames(page,true);
+  await expect(block).toBeFocused();expect(Math.abs((await block.boundingBox()).x-destination.x)).toBeLessThan(1.1);
+  await expect(block).toHaveAttribute('aria-pressed','false');
+  await page.locator('[data-empty="0"]').focus();await page.keyboard.press('Space');await page.keyboard.press('Tab');await expect(block).toBeFocused();
+  await beginFrames(page);await page.keyboard.press('Space');await idle(page);await checkFrames(page,true);
+  await expect(page.locator('[data-empty="1"]')).toBeFocused();await expect(page.locator('[data-empty="1"]')).toHaveAttribute('aria-pressed','false');
+  const history=await page.evaluate(()=>window.angouri.history);
+  await page.keyboard.press('Space');await page.locator('[data-empty="3"]').focus();
+  await beginFrames(page);await page.keyboard.press('Space');await idle(page);await checkFrames(page,true);
+  await expect(page.locator('[data-empty="3"]')).toBeFocused();await expect(page.locator('[data-empty="3"]')).toHaveAttribute('aria-pressed','false');
+  expect(await page.evaluate(()=>window.angouri.history)).toEqual(history);
+  await page.screenshot({path:testInfo.outputPath('empty-destination.png')});
 });
 
 test('offscreen arrow moves reveal the final block and keep its ring inside the rail',async({page})=>{
@@ -384,6 +569,12 @@ test('offscreen arrow moves reveal the final block and keep its ring inside the 
     const before=await page.evaluate(()=>window.angouri.slots);
     await page.keyboard.press('ArrowDown');await idle(page);await expect(page.locator('#palette [data-op="A"]')).toBeFocused();
     await page.keyboard.press('Control+z');await idle(page);expect(await page.evaluate(()=>window.angouri.slots)).toEqual(before);
+    await page.locator('[data-empty="4"]').focus();await page.keyboard.press('ArrowRight');await idle(page);await settled(page);
+    await expect(page.locator('[data-empty="5"]')).toBeFocused();
+    const edges=await page.locator('[data-empty="5"]').evaluate(el=>{
+      const r=el.getBoundingClientRect(),rail=el.closest('.pipeline'),box=rail.getBoundingClientRect();
+      return [r.left-6-(box.left+rail.clientLeft),box.left+rail.clientLeft+rail.clientWidth-r.right-6];
+    });for(const edge of edges)expect(edge).toBeGreaterThanOrEqual(-1);
   }
 });
 

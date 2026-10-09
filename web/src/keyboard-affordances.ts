@@ -55,7 +55,8 @@ export function installKeyboardAffordances(documentRoot:Document) {
     const activation=!dedicated&&!active.matches('[role=tab],:disabled')&&(active.matches('button,summary,[role=button],input[type=checkbox],a[href]'));
     if(!directions&&!activation){cue.hidden=true;return;}
     activate.hidden=!activation;activate.textContent=active.matches('a[href]')?'Enter':'Space';activate.classList.toggle('is-enter',active.matches('a[href]'));
-    remove.hidden=!active.matches('.part-body');arrows.hidden=!directions;
+    const canStepBack=active.matches('.empty-slot')&&active!==active.closest('.pipeline')?.querySelector('[data-cell]');
+    remove.hidden=!active.matches('.part-body')&&!canStepBack;arrows.hidden=!directions;
     cue.dataset.directions=directions;cue.classList.toggle('is-knob',knob);cue.classList.toggle('keyboard-arrows',!!directions);
     const piece=active.matches('.part-body,.empty-slot')?active:active.querySelector('.ingredient-surface');
     cue.classList.toggle('on-piece',!!piece);
@@ -112,7 +113,16 @@ export function installKeyboardAffordances(documentRoot:Document) {
     showCue();
   };
   const schedule=()=>{if(!frame)frame=requestAnimationFrame(measure);};
-  const focus=(event:FocusEvent)=>{if(event.target instanceof HTMLElement)pendingFocus=event.target;schedule();};
+  const focus=(event:FocusEvent)=>{
+    if(event.target instanceof HTMLElement) {
+      pendingFocus=event.target;
+      // Local cues must change owner in the focus event itself. Waiting for
+      // the next layout pass can leave them on a departing empty slot for
+      // the first frame of a move that does not replace the rail markup.
+      if(event.target.matches('.part-body,.empty-slot,.ingredient'))showCue();else cue.hidden=true;
+    }
+    schedule();
+  };
   const key=(event:KeyboardEvent)=>{
     // Update before the browser chooses the next sequential focus target.
     if(event.key==='Tab')measure();
