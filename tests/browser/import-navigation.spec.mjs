@@ -1,6 +1,7 @@
 import {test,expect} from '@playwright/test';
+import {STORAGE_KEYS,clearStorage,readStorage,writeStorage,failStorageWrites,restoreStorageWrites} from './storage-fixtures.mjs';
 
-const SAVE='angouri:vine:v1:progress';
+const SAVE=STORAGE_KEYS.progress;
 const idle=page=>page.evaluate(()=>window.angouri.whenIdle());
 const encoded=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
 async function ready(page,source=4,view='flow') {
@@ -8,8 +9,10 @@ async function ready(page,source=4,view='flow') {
   await page.waitForFunction(()=>window.angouri?.state&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
 }
 async function snapshot(page) {
-  return page.evaluate(key=>({state:window.angouri.state,slots:window.angouri.slots,view:window.angouri.view,history:window.angouri.history,saved:localStorage.getItem(key),entry:location.hash}),SAVE);
+  const current=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,view:window.angouri.view,history:window.angouri.history,entry:location.hash}));
+  return {...current,saved:await readStorage(page,SAVE)};
 }
+const mirror=page=>page.evaluate(key=>localStorage.getItem(key),SAVE);
 async function place(page,op='H'){await page.locator(`[data-op="${op}"]`).click();await idle(page);}
 async function importFile(page,value){await page.locator('#import-file').setInputFiles({name:'recipe.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(value))});}
 async function hash(page,entry){await page.evaluate(entry=>{location.hash=entry;},entry);}
@@ -27,25 +30,25 @@ async function holdAction(page,type) {
 
 test('URL progress saves have no completion authority but explicit files retain it',async({page})=>{
   await ready(page);await place(page);
-  await page.evaluate(key=>{const save=JSON.parse(localStorage.getItem(key));save.completed=[1,2,3];localStorage.setItem(key,JSON.stringify(save));},SAVE);
+  const save=JSON.parse(await readStorage(page,SAVE));save.completed=[1,2,3];await writeStorage(page,SAVE,JSON.stringify(save));
   await page.reload();await page.waitForFunction(()=>window.angouri?.state);await idle(page);
-  const before=await snapshot(page),payload={...JSON.parse(before.saved),completed:[]};
+  const before=await snapshot(page),originalMirror=await mirror(page),payload={...JSON.parse(before.saved),completed:[]};
   await page.goto('/about/');await page.goto(`/#v1=${encoded(payload)}`);
   await page.waitForFunction(()=>window.angouri?.state);await idle(page);
-  expect(await snapshot(page)).toEqual(before);
+  expect(await snapshot(page)).toEqual(before);expect(await mirror(page)).toBe(originalMirror);
   await expect(page.locator('#feedback')).toContainText('saved recipe is ready');
   await hash(page,`#v1=${encoded({...payload,completed:[84]})}`);
   await expect(page.locator('#feedback')).toContainText('Import progress from file');
-  expect(await snapshot(page)).toEqual(before);
+  expect(await snapshot(page)).toEqual(before);expect(await mirror(page)).toBe(originalMirror);
   await expect(page.locator('#leave-dialog')).not.toBeVisible();
   await importFile(page,payload);await expect(page.locator('#leave-dialog')).toBeVisible();
   await page.locator('#leave-discard').click();await idle(page);
-  await expect.poll(()=>page.evaluate(key=>JSON.parse(localStorage.getItem(key)).completed,SAVE)).toEqual([]);
+  await expect.poll(async()=>JSON.parse(await readStorage(page,SAVE)).completed).toEqual([]);
 });
 
 test('malformed and rejected startup links restore exact saved work without engine Retry',async({page})=>{
   await ready(page);await place(page);await page.locator('[data-empty="2"]').click();await place(page,'H');
-  const before=await snapshot(page);
+  const before=await snapshot(page),originalMirror=await mirror(page);
   const invalidCreation={schema:1,rules:'vine-1',engine:'AngouriMath-2.5.0',type:'creation',sourceId:4,view:'flow',nodes:[{id:'bad',op:'?'}]};
   const links=['%25',Buffer.from([255]).toString('base64url'),Buffer.from('{broken').toString('base64url'),encoded({schema:999,type:'creation'}),encoded(invalidCreation)];
   for(const link of links) {
@@ -53,6 +56,7 @@ test('malformed and rejected startup links restore exact saved work without engi
     await page.waitForFunction(()=>window.angouri?.state);await idle(page);
     const after=await snapshot(page);
     expect(after).toEqual({...before,history:{undo:0,redo:0}});
+    expect(await mirror(page)).toBe(originalMirror);
     await expect(page.locator('#retry-engine')).toHaveCount(0);
     await expect(page.locator('#feedback')).toContainText('saved recipe is ready');
   }
@@ -89,19 +93,19 @@ test('file replacement validates first, saves accepted work, and stays open when
   const destination={schema:1,type:'level',sourceId:3,view:'flight'};
   await importFile(page,destination);await expect(page.locator('#leave-dialog')).toBeVisible();
   await page.locator('#leave-name').fill('Protected blocks');
-  await page.evaluate(()=>{const write=Storage.prototype.setItem;window.restoreStorage=()=>Storage.prototype.setItem=write;Storage.prototype.setItem=function(key,value){if(key.endsWith(':seeds'))throw Error('test storage failure');return write.call(this,key,value);};});
+  await failStorageWrites(page,STORAGE_KEYS.seeds);
   await page.locator('#leave-save').click();await expect(page.locator('#leave-error')).toBeVisible();
   expect(await snapshot(page)).toEqual(before);await expect(page.locator('#leave-dialog')).toBeVisible();
-  await page.evaluate(()=>window.restoreStorage());await page.locator('#leave-save').click();
+  await restoreStorageWrites(page);await page.locator('#leave-save').click();
   await page.waitForFunction(()=>window.angouri.state.sourceId===3);await idle(page);
-  const seed=await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:seeds')).find(seed=>seed.name==='Protected blocks'));
+  const seed=JSON.parse(await readStorage(page,STORAGE_KEYS.seeds)).find(seed=>seed.name==='Protected blocks');
   expect(seed.snapshot).toEqual({state:before.state,slots:before.slots});expect(seed.view).toBe(before.view);
 });
 
 test('a queued accepted edit is protected before Puzzle, Create, and saved-recipe navigation',async({page})=>{
   test.setTimeout(90000);
   for(const destination of ['puzzle','create','saved']) {
-    await page.goto('/about/');await page.evaluate(()=>localStorage.clear());await ready(page);
+    await page.goto('/about/');await clearStorage(page);await ready(page);
     if(destination==='saved') {
       await page.locator('#menu-open').click();await page.locator('#library-open').click();
       await page.locator('#seed-name').fill('Empty baseline');await page.locator('#favorite-save').click();await idle(page);
@@ -128,7 +132,7 @@ test('circle and crop-only work receive the same import guard',async({page})=>{
   const radius=page.locator('[data-circle-value="radius"]');await radius.fill('3');await radius.press('Enter');await idle(page);
   const circle=await snapshot(page);await hash(page,'#level=3&view=flight');await expect(page.locator('#leave-dialog')).toBeVisible();
   await page.locator('#leave-cancel').click();expect(await snapshot(page)).toEqual(circle);
-  await page.goto('/about/');await page.evaluate(()=>localStorage.clear());await ready(page,1,'flight');
+  await page.goto('/about/');await clearStorage(page);await ready(page,1,'flight');
   await page.locator('#menu-open').click();await page.locator('#nav-create').click();await idle(page);
   await page.locator('[data-crop-add]').click();await idle(page);
   const bound=page.locator('[data-crop-exact="to"]');await bound.fill('2');await bound.press('Enter');await idle(page);
@@ -176,19 +180,46 @@ for(const response of ['success','invalid','error'])test(`newer hash owns startu
 });
 
 
-test('a newer link cancels a progress file waiting for the cross-tab storage lock',async({context,page})=>{
+test('a newer link cancels a progress file waiting for the primary storage transaction',async({context,page})=>{
   await ready(page);await place(page);
-  await page.evaluate(key=>{const save=JSON.parse(localStorage.getItem(key));save.completed=[1,2,3];localStorage.setItem(key,JSON.stringify(save));},SAVE);
+  const save=JSON.parse(await readStorage(page,SAVE));save.completed=[1,2,3];await writeStorage(page,SAVE,JSON.stringify(save));
   await page.reload();await page.waitForFunction(()=>window.angouri?.state);await idle(page);
   const before=await snapshot(page),blocker=await context.newPage();await blocker.goto('/about/');
-  await blocker.evaluate(key=>new Promise(held=>{
-    const gate=new Promise(resolve=>{window.releaseProgressLock=resolve;});
-    void navigator.locks.request(key,async()=>{held();await gate;});
-  }),SAVE);
   await importFile(page,{...JSON.parse(before.saved),completed:[]});
+  await expect(page.locator('#leave-dialog')).toBeVisible();
+  // Let the unsaved-work library read finish before holding the shared records
+  // store. A real readwrite transaction then queues the file's progress write.
+  await blocker.evaluate(key=>new Promise((held,reject)=>{
+    const request=indexedDB.open('angouri:device:v1',1);
+    request.onerror=()=>reject(request.error);
+    request.onsuccess=()=>{
+      const db=request.result,transaction=db.transaction('records','readwrite'),store=transaction.objectStore('records');
+      let released=false,announce=true;
+      const finished=new Promise((resolve,reject)=>{
+        transaction.oncomplete=()=>{db.close();resolve();};
+        transaction.onabort=()=>{db.close();reject(transaction.error||Error('Held transaction aborted'));};
+      });
+      window.releaseProgressTransaction=()=>{released=true;return finished;};
+      const keepAlive=()=>{
+        store.get(key).onsuccess=()=>{
+          if(announce){announce=false;held();}
+          if(!released)keepAlive();
+        };
+      };
+      keepAlive();
+    };
+  }),SAVE);
+  await page.evaluate(()=>{
+    const transaction=IDBDatabase.prototype.transaction;
+    IDBDatabase.prototype.transaction=function(stores,mode,...rest){
+      const result=transaction.call(this,stores,mode,...rest);
+      if(this.name==='angouri:device:v1'&&mode==='readwrite'&&(stores==='records'||Array.from(stores).includes('records')))window.progressTransactionQueued=true;
+      return result;
+    };
+  });
   await page.locator('#leave-discard').click();
-  await page.waitForFunction(async key=>(await navigator.locks.query()).pending.some(lock=>lock.name===key),SAVE);
-  await hash(page,'#level=5&view=flight');await blocker.evaluate(()=>window.releaseProgressLock());
+  await page.waitForFunction(()=>window.progressTransactionQueued===true);
+  await hash(page,'#level=5&view=flight');await blocker.evaluate(()=>window.releaseProgressTransaction());
   await expect(page.locator('#leave-dialog')).toBeVisible();
   const waiting=await snapshot(page);
   expect(waiting.state).toEqual(before.state);expect(waiting.history).toEqual(before.history);expect(waiting.saved).toBe(before.saved);
@@ -220,7 +251,7 @@ for(const action of ['award','reset'])test(`a delayed startup restore retains an
     await other.locator('#menu-open').click();await other.locator('#settings-open').click();await other.locator('#reset-progress-open').click();
     await other.locator('#reset-progress-confirm').click();await idle(other);
   }
-  const durable=await other.evaluate(key=>localStorage.getItem(key),SAVE);
+  const durable=await readStorage(other,SAVE);
   expect(JSON.parse(durable).completed).toEqual(action==='award'?[1,2]:[]);
   await page.evaluate(()=>window.releaseStartup());await page.waitForFunction(()=>window.angouri?.state?.sourceId===1);await idle(page);
   expect((await snapshot(page)).saved).toBe(durable);

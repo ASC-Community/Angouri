@@ -1,13 +1,14 @@
 import {test,expect} from '@playwright/test';
+import {STORAGE_KEYS,readStoredJSON,writeStoredJSON} from './storage-fixtures.mjs';
 
-const progressKey='angouri:vine:v1:progress';
+const progressKey=STORAGE_KEYS.progress;
 const idle=page=>page.evaluate(()=>window.angouri.whenIdle());
 const loaded=page=>page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
 async function ready(page,source=1) {await page.goto(`/#level=${source}&view=flight`);await loaded(page);}
 async function choose(page,op) {await page.locator(`[data-op="${op}"]`).click();await idle(page);}
-async function throwIt(page) {await page.locator('#launch').click();await page.waitForFunction(()=>window.angouri.flight.phase==='landed');}
+async function throwIt(page) {await page.locator('#launch').click();await page.waitForFunction(()=>window.angouri.flight.phase==='landed');await idle(page);}
 const snapshot=page=>page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history,flight:window.angouri.flight}));
-const completed=page=>page.evaluate(key=>JSON.parse(localStorage.getItem(key)).completed,progressKey);
+const completed=async page=>(await readStoredJSON(page,progressKey)).completed;
 async function puzzles(page) {await page.locator('#menu-open').click();await page.locator('#puzzles-open').click();}
 
 test('reselecting the current puzzle returns to the unchanged recipe and history',async({page})=>{
@@ -84,14 +85,13 @@ test('reload requires Throw for a green preview, including an edited previously 
 
 test('resume validates the saved confirmation against completion and the exact current result',async({page})=>{
   await ready(page);await choose(page,'H');await throwIt(page);
-  const confirmed=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)),progressKey);
+  const confirmed=await readStoredJSON(page,progressKey);
   for(const variant of ['legacy','uncompleted','changed']) {
-    await page.evaluate(({key,saved,variant})=>{
-      if(variant==='legacy')delete saved.confirmed;
-      if(variant==='uncompleted')saved.completed=[];
-      if(variant==='changed')saved.state.nodes[0].op='A';
-      localStorage.setItem(key,JSON.stringify(saved));
-    },{key:progressKey,saved:confirmed,variant});
+    const saved=structuredClone(confirmed);
+    if(variant==='legacy')delete saved.confirmed;
+    if(variant==='uncompleted')saved.completed=[];
+    if(variant==='changed')saved.state.nodes[0].op='A';
+    await writeStoredJSON(page,progressKey,saved);
     await page.reload();await loaded(page);
     await expect(page.locator('#launch')).toHaveAccessibleName('Throw');
     await expect(page.locator('#rethrow')).toBeHidden();

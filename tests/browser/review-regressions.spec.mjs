@@ -1,8 +1,10 @@
 import {test,expect} from '@playwright/test';
+import {STORAGE_KEYS,clearStorage,readStorage,readStoredJSON,failStorageWrites,restoreStorageWrites} from './storage-fixtures.mjs';
 
 const idle=page=>page.evaluate(()=>window.angouri.whenIdle());
+const mirror=(page,key)=>page.evaluate(key=>localStorage.getItem(key),key);
 async function ready(page,level,view='flight') {
-  await page.goto('/about/');await page.evaluate(()=>localStorage.clear());await page.goto(`/#level=${level}&view=${view}`);
+  await page.goto('/about/');await clearStorage(page);await page.goto(`/#level=${level}&view=${view}`);
   await page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
   expect(await page.evaluate(()=>window.angouri.state.sourceId)).toBe(level);
 }
@@ -53,16 +55,14 @@ test('normal-motion keyboard Throw and Rethrow keep an action focus without taki
 test('library failures stay visible, preserve data, and clear after recovery',async({page})=>{
   await ready(page,3);await place(page,'H');await page.locator('#menu-open').click();await page.locator('#library-open').click();
   await page.locator('#seed-name').fill('Kept recipe');await page.keyboard.press('Enter');await idle(page);
-  const original=await page.evaluate(()=>localStorage.getItem('angouri:vine:v1:seeds'));
-  await page.evaluate(()=>{window.nativeStorageWrite=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){
-    if(key.endsWith(':seeds'))throw new DOMException('test quota','QuotaExceededError');return window.nativeStorageWrite.call(this,key,value);
-  };});
+  const original=await readStorage(page,STORAGE_KEYS.seeds);
+  await failStorageWrites(page,STORAGE_KEYS.seeds);
   await page.locator('#seed-name').fill('Recovered recipe');await page.locator('#favorite-save').focus();await page.keyboard.press('Enter');await idle(page);
   await expect(page.locator('#library-error')).toBeVisible();await expect(page.locator('#favorite-save')).toBeFocused();
   await expect(page.locator('#seed-name')).toHaveValue('Recovered recipe');
   await page.locator('[data-delete-seed="0"]').click();await expect(page.locator('.favorite-error')).toBeVisible();
-  expect(await page.evaluate(()=>localStorage.getItem('angouri:vine:v1:seeds'))).toBe(original);
-  await page.evaluate(()=>Storage.prototype.setItem=window.nativeStorageWrite);
+  expect(await readStorage(page,STORAGE_KEYS.seeds)).toBe(original);
+  await restoreStorageWrites(page);
   await page.locator('#favorite-save').click();await idle(page);await expect(page.locator('.favorite-name')).toHaveCount(2);
   await expect(page.locator('#library-error')).toBeHidden();await page.keyboard.press('Escape');
   await expect(page.locator('#feedback')).not.toHaveClass(/error/);
@@ -73,6 +73,32 @@ test('library failures stay visible, preserve data, and clear after recovery',as
   await page.locator('[data-delete-seed="0"]').click();await expect(page.locator('.favorite-name')).toHaveCount(11);
   await expect(page.locator('#library-error')).toBeHidden();await page.keyboard.press('Escape');
   await expect(page.locator('#feedback')).not.toHaveClass(/error/);
+});
+
+test('a failed local-storage mirror keeps a committed library save available after reload',async({page})=>{
+  await ready(page,3);await place(page,'H');await page.locator('#menu-open').click();await page.locator('#library-open').click();
+  await page.locator('#seed-name').fill('Original recipe');await page.locator('#favorite-save').click();await idle(page);
+  const originalMirror=await mirror(page,STORAGE_KEYS.seeds);
+  const workspace=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,view:window.angouri.view}));
+  await page.evaluate(key=>{
+    const write=Storage.prototype.setItem;
+    Storage.prototype.setItem=function(name,value){
+      if(name===key)throw new DOMException('Test mirror failure','QuotaExceededError');
+      return write.call(this,name,value);
+    };
+  },STORAGE_KEYS.seeds);
+  await page.locator('#seed-name').fill('Durable recipe');await page.locator('#favorite-save').click();await idle(page);
+  await expect(page.locator('#library-error')).toBeHidden();await expect(page.locator('#seed-name')).toHaveValue('');
+  await expect(page.getByRole('button',{name:'Open Durable recipe',exact:true})).toBeVisible();
+  const durable=await readStorage(page,STORAGE_KEYS.seeds);
+  expect(JSON.parse(durable).map(seed=>seed.name)).toEqual(['Original recipe','Durable recipe']);
+  expect(await mirror(page,STORAGE_KEYS.seeds)).toBe(originalMirror);
+  expect(await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,view:window.angouri.view}))).toEqual(workspace);
+  await page.reload();await page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
+  await page.locator('#menu-open').click();await page.locator('#library-open').click();
+  await expect(page.getByRole('button',{name:'Open Original recipe',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Open Durable recipe',exact:true})).toBeVisible();
+  expect(await readStorage(page,STORAGE_KEYS.seeds)).toBe(durable);
 });
 
 test('nonlinear-phase discovery distinguishes input spacing from output folding',async({page})=>{
@@ -182,8 +208,8 @@ test('Flow zero glyphs stay on their own baselines after compact reflow and scro
 
 test('a failed known puzzle load preserves the link and prior progress for Retry',async({page})=>{
   await ready(page,1);await place(page,'H');await page.locator('#launch').click();
-  await page.waitForFunction(()=>window.angouri.flight.phase==='landed');
-  const saved=await page.evaluate(()=>localStorage.getItem('angouri:vine:v1:progress'));
+  await page.waitForFunction(()=>window.angouri.flight.phase==='landed');await idle(page);
+  const saved=await readStorage(page,STORAGE_KEYS.progress),originalMirror=await mirror(page,STORAGE_KEYS.progress);
   await page.addInitScript(()=>{
     const post=Worker.prototype.postMessage;let failed=false;
     Worker.prototype.postMessage=function(message,...rest){
@@ -196,17 +222,17 @@ test('a failed known puzzle load preserves the link and prior progress for Retry
   await page.goto('/about/');await page.goto('/#level=84&view=flight');
   await expect(page.locator('#retry-engine')).toBeVisible();
   expect(await page.evaluate(()=>window.angouri.state)).toBeUndefined();
-  expect(await page.evaluate(()=>localStorage.getItem('angouri:vine:v1:progress'))).toBe(saved);
+  expect(await readStorage(page,STORAGE_KEYS.progress)).toBe(saved);expect(await mirror(page,STORAGE_KEYS.progress)).toBe(originalMirror);
   expect(new URL(page.url()).hash).toBe('#level=84&view=flight');
   await page.locator('#retry-engine').click();
   await page.waitForFunction(()=>window.angouri?.state?.sourceId===84&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([1]);
+  expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual([1]);
   await expect(page.locator('#retry-engine')).toHaveCount(0);
 });
 
 test('a failed matching workspace restore retries its placed blocks instead of the bare level',async({page})=>{
   await ready(page,3,'flow');await place(page,'A');
-  const saved=await page.evaluate(()=>localStorage.getItem('angouri:vine:v1:progress'));
+  const saved=await readStorage(page,STORAGE_KEYS.progress),originalMirror=await mirror(page,STORAGE_KEYS.progress);
   const snapshot=JSON.parse(saved);
   expect(snapshot.state.nodes).toHaveLength(1);
   expect(snapshot.entry).toBe(new URL(page.url()).hash);
@@ -221,13 +247,13 @@ test('a failed matching workspace restore retries its placed blocks instead of t
   });
   await page.reload();await expect(page.locator('#retry-engine')).toBeVisible();
   expect(await page.evaluate(()=>window.angouri.state)).toBeUndefined();
-  expect(await page.evaluate(()=>localStorage.getItem('angouri:vine:v1:progress'))).toBe(saved);
+  expect(await readStorage(page,STORAGE_KEYS.progress)).toBe(saved);expect(await mirror(page,STORAGE_KEYS.progress)).toBe(originalMirror);
   expect(new URL(page.url()).hash).toBe(snapshot.entry);
   await page.locator('#retry-engine').click();
   await page.waitForFunction(()=>window.angouri?.state?.sourceId===3&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
   expect(await page.evaluate(()=>window.angouri.state)).toEqual(snapshot.state);
   expect(await page.evaluate(()=>window.angouri.slots)).toEqual(snapshot.slots);
   expect(await page.evaluate(()=>window.angouri.view)).toBe(snapshot.view);
-  expect(await page.evaluate(()=>localStorage.getItem('angouri:vine:v1:progress'))).toBe(saved);
+  expect(await readStorage(page,STORAGE_KEYS.progress)).toBe(saved);expect(await mirror(page,STORAGE_KEYS.progress)).toBe(originalMirror);
   await expect(page.locator('#retry-engine')).toHaveCount(0);
 });
