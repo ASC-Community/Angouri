@@ -173,3 +173,24 @@ test('an idle worker failure is retired and the next action joins a fresh worker
   assert.deepEqual(await Promise.all(jobs),expected(2));
   assert.equal(clock.pending,0);
 });
+
+test('timing diagnostics retain the latest 1024 samples while restart counts remain cumulative',async()=>{
+  const {kernel,workers,clock}=harness();
+  const measurements=kernel.measurements,{ready,edits}=measurements;
+  for(let index=0;index<1030;index++){
+    if(index)kernel.restart();
+    workers.at(-1).message({type:'ready',milliseconds:index});
+  }
+  const jobs=calls(kernel,1030);await flush();
+  const worker=workers.at(-1);
+  for(const [index,request] of worker.requests.entries())worker.message({type:'result',id:request.id,milliseconds:index,response:{status:'ok'}});
+  assert.ok((await Promise.all(jobs)).every(response=>response.status==='ok'));
+  const retained=Array.from({length:1024},(_,index)=>index+6);
+  assert.equal(kernel.measurements,measurements);
+  assert.equal(kernel.measurements.ready,ready);
+  assert.equal(kernel.measurements.edits,edits);
+  assert.deepEqual([...ready],retained);
+  assert.deepEqual([...edits],retained);
+  assert.equal(measurements.restarts,1029);
+  assert.equal(clock.pending,0);
+});

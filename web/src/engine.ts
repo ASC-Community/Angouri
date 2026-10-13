@@ -22,6 +22,12 @@ export class Kernel {
 
   constructor(private status: (message: string, recovering: boolean) => void) { this.start(false); }
 
+  private recordTiming(kind: 'ready' | 'edits', milliseconds: number) {
+    const samples = this.measurements[kind];
+    samples.push(milliseconds);
+    if (samples.length > 1024) samples.splice(0, samples.length - 1024);
+  }
+
   private start(recovering: boolean): Epoch {
     let resolveReady!: () => void, rejectReady!: (error: Error) => void;
     const ready = new Promise<void>((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
@@ -37,14 +43,14 @@ export class Kernel {
         if (epoch.failure || epoch !== this.current) return;
         if (data.type === 'ready' && !epoch.booted) {
           clearTimeout(epoch.bootTimer); epoch.bootTimer = undefined; epoch.booted = true;
-          this.measurements.ready.push(data.milliseconds); epoch.resolveReady();
+          this.recordTiming('ready', data.milliseconds); epoch.resolveReady();
         }
         if (data.type === 'boot-error') this.retire(epoch, new Error('The math engine could not start. Try reloading the page.'));
         if (data.type === 'result') {
           const job = epoch.pending.get(data.id);
           if (!job) return;
           clearTimeout(job.timer); epoch.pending.delete(data.id);
-          this.measurements.edits.push(data.milliseconds);
+          this.recordTiming('edits', data.milliseconds);
           job.resolve(data.response);
         }
       };
