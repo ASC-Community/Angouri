@@ -224,14 +224,20 @@ function recordCompletion(id:number) {
   // reset counts, while the old tab's previously completed set never returns.
   refreshCompletions();pendingWins.set(id,progressEpoch);completed.add(id);progress();
 }
-async function replaceProgress(reply:Response,slots:RailSlots|undefined,nextView:View,ids:number[],entry:string) {
+async function replaceProgress(reply:Response,slots:RailSlots|undefined,nextView:View,ids:number[],entry:string,owns=()=>true) {
   requireOk(reply);
   const record={progressEpoch:crypto.randomUUID(),completed:[...new Set(ids)]};
   const snapshot={schema:1,type:'save',state:reply.state,slots:normalizeSlots(reply.state,slots),view:nextView,entry,confirmed:false,...record};
-  await storageTransactions.run(SAVE,()=>{
+  const written=await storageTransactions.run(SAVE,()=>{
+    // Acquiring the cross-tab lock can outlive the navigation that requested it.
+    if(!owns())return false;
     if(!write(SAVE,snapshot))throw new Error('Could not save the new progress on this device. Your current recipe and completions are unchanged. Try again.');
+    return true;
   });
-  pendingWins.clear();adoptCompletions(record);
+  if(!written||!owns())return false;
+  pendingWins.clear();
+  if(!refreshCompletions())adoptCompletions(record);
+  return true;
 }
 let feedbackContent:string|undefined;
 function showNotice() {
@@ -1646,8 +1652,10 @@ function prepareImport(value:unknown,origin:ImportOrigin,intent:WorkspaceIntent)
 function acceptPreparedImport(prepared:PreparedImport,intent:WorkspaceIntent,persist=true) {
   return serial(async()=>{
     if(!currentIntent(intent))return false;
-    if(prepared.completed&&prepared.origin==='file')await replaceProgress(prepared.reply,prepared.slots,prepared.view??view,prepared.completed,intent.entry);
-    else if(prepared.completed&&prepared.origin==='restore')completed=new Set(prepared.completed);
+    if(prepared.completed&&prepared.origin==='file') {
+      if(!await replaceProgress(prepared.reply,prepared.slots,prepared.view??view,prepared.completed,intent.entry,()=>currentIntent(intent)))return false;
+    } else if(prepared.origin==='restore')refreshCompletions();
+    if(!currentIntent(intent))return false;
     acknowledgedEntry=intent.entry;replaceEntry(acknowledgedEntry);
     accept(prepared.reply,'clear',prepared.slots,prepared.view,true,undefined,undefined,false,undefined,{persist,confirmed:prepared.confirmed});
     preferences();return true;
@@ -1689,7 +1697,7 @@ async function start(intent=beginWorkspaceChange(location.hash)) {
   palette();
   const saved=read(SAVE);
   // A new deep link replaces the open workspace, not the chapter record.
-  if(saved)try {completed=new Set(parseSave(saved).completed);}catch {/* Invalid saves are handled below. */}
+  refreshCompletions();
   const savedEntry=saved&&typeof saved==='object'&&(saved as {entry?:unknown}).entry;
   const restoreEntry=typeof savedEntry==='string'&&(!savedEntry||savedEntry.startsWith('#'))?savedEntry:'';
   let invalidMessage='',triedSaved=false;

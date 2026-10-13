@@ -174,3 +174,63 @@ for(const response of ['success','invalid','error'])test(`newer hash owns startu
   const final=await snapshot(page);expect(final.state.sourceId).toBe(4);expect(final.entry).toBe('#level=4&view=flight');expect(JSON.parse(final.saved).entry).toBe(final.entry);
   await expect(page.locator('#retry-engine')).toHaveCount(0);
 });
+
+
+test('a newer link cancels a progress file waiting for the cross-tab storage lock',async({context,page})=>{
+  await ready(page);await place(page);
+  await page.evaluate(key=>{const save=JSON.parse(localStorage.getItem(key));save.completed=[1,2,3];localStorage.setItem(key,JSON.stringify(save));},SAVE);
+  await page.reload();await page.waitForFunction(()=>window.angouri?.state);await idle(page);
+  const before=await snapshot(page),blocker=await context.newPage();await blocker.goto('/about/');
+  await blocker.evaluate(key=>new Promise(held=>{
+    const gate=new Promise(resolve=>{window.releaseProgressLock=resolve;});
+    void navigator.locks.request(key,async()=>{held();await gate;});
+  }),SAVE);
+  await importFile(page,{...JSON.parse(before.saved),completed:[]});
+  await page.locator('#leave-discard').click();
+  await page.waitForFunction(async key=>(await navigator.locks.query()).pending.some(lock=>lock.name===key),SAVE);
+  await hash(page,'#level=5&view=flight');await blocker.evaluate(()=>window.releaseProgressLock());
+  await expect(page.locator('#leave-dialog')).toBeVisible();
+  const waiting=await snapshot(page);
+  expect(waiting.state).toEqual(before.state);expect(waiting.history).toEqual(before.history);expect(waiting.saved).toBe(before.saved);
+  await expect(page.locator('#feedback')).not.toHaveClass(/error/);
+  await page.locator('#leave-discard').click();await page.waitForFunction(()=>window.angouri.state.sourceId===5);await idle(page);
+  const final=await snapshot(page);expect(final.entry).toBe('#level=5&view=flight');expect(JSON.parse(final.saved).completed).toEqual([1,2,3]);
+  await blocker.close();
+});
+
+for(const action of ['award','reset'])test(`a delayed startup restore retains another tab's ${action}`,async({context,page})=>{
+  test.setTimeout(90000);
+  const other=await context.newPage();await ready(other,2,'flight');
+  await ready(page,1,'flight');await place(page);await page.locator('#launch').click();
+  await page.waitForFunction(()=>window.angouri.flight.phase==='landed');await idle(page);
+  await page.addInitScript(()=>{
+    const post=Worker.prototype.postMessage;let held=false;
+    Worker.prototype.postMessage=function(message,...rest){
+      if(!held&&message.request?.action?.type==='evaluate'&&message.request.state?.sourceId===1) {
+        held=true;const worker=this;window.releaseStartup=()=>post.call(worker,message,...rest);return;
+      }
+      return post.call(this,message,...rest);
+    };
+  });
+  await page.reload();await page.waitForFunction(()=>!!window.releaseStartup);
+  if(action==='award') {
+    await place(other,'A');await other.locator('#launch').click();
+    await other.waitForFunction(()=>window.angouri.flight.phase==='landed');await idle(other);
+  } else {
+    await other.locator('#menu-open').click();await other.locator('#settings-open').click();await other.locator('#reset-progress-open').click();
+    await other.locator('#reset-progress-confirm').click();await idle(other);
+  }
+  const durable=await other.evaluate(key=>localStorage.getItem(key),SAVE);
+  expect(JSON.parse(durable).completed).toEqual(action==='award'?[1,2]:[]);
+  await page.evaluate(()=>window.releaseStartup());await page.waitForFunction(()=>window.angouri?.state?.sourceId===1);await idle(page);
+  expect((await snapshot(page)).saved).toBe(durable);
+  if(action==='award') {
+    await expect(page.locator('#level-nav [data-level="2"]')).toHaveAttribute('aria-label',/, completed$/);
+    await expect(page.locator('#launch')).toHaveAccessibleName('Next puzzle');
+  } else {
+    await expect(page.locator('#level-nav [data-level="1"]')).not.toHaveAttribute('aria-label',/, completed$/);
+    await expect(page.locator('#rethrow')).toBeHidden();
+    expect(await page.evaluate(()=>window.angouri.flight.phase)).toBe('ready');
+  }
+  await other.close();
+});
