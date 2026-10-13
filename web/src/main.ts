@@ -121,6 +121,13 @@ function beginWorkspaceChange(entry=acknowledgedEntry):WorkspaceIntent {
   if(previous)$<HTMLDialogElement>('leave-dialog').close();
   return intent;
 }
+// Only the latest navigation becomes the acknowledged workspace and its URL.
+function acknowledge(intent:WorkspaceIntent){acknowledgedEntry=intent.entry;replaceEntry(acknowledgedEntry);}
+// Superseded work yields nothing, and its failures cannot replace newer feedback.
+async function owned<T>(intent:WorkspaceIntent,work:Promise<T>):Promise<T|undefined> {
+  try{const value=await work;return currentIntent(intent)?value:undefined;}
+  catch(failure){if(currentIntent(intent))throw failure;return undefined;}
+}
 let chain = Promise.resolve();
 let notice = {text:'Tap or drag a block.',kind:''};
 let morphFrame=0, displayedPoints: Result['points'] | undefined,displayedSlope:number|undefined;
@@ -131,11 +138,12 @@ function cancelCurveChange(settle=false) {
   if(settle&&state&&result&&displayedView()==='flight'){paintTrajectory(result.points);animatePosition();}
 }
 let seeds:Seed[]=[],deletedSeeds:DeletedSeed[]=[];
-async function refreshLibrary(paint=false) {
+async function refreshLibrary(paint=false,owns=()=>true) {
   try {
     const library=readLibrary(parseStored(await storageTransactions.read(SEEDS),seedStorageLimit));
+    if(!owns())return false;
     seeds=library.seeds;deletedSeeds=library.deleted;if(paint)renderSeeds();return true;
-  }catch{storageStatus(SEEDS,false);return false;}
+  }catch{if(owns())storageStatus(SEEDS,false);return false;}
 }
 async function changeLibrary(action:LibraryMutation) {
   let changed:Seed;
@@ -433,6 +441,15 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
   return true as const;
 }
 function perform(action: Action, history: 'push'|'keep'|'clear'='push',slots?:RailSlots,animateCurve=true) { return serial(async()=>accept(await kernel.run(state,action),history,slots,undefined,animateCurve,typeof action.id==='string'?action.id:undefined)); }
+// Menu, Next, Create and saved recipes do not come from the URL. They detach
+// the opening link once accepted, unless any newer navigation claimed the page.
+function navigate(action:Action,slots?:RailSlots,intent=beginWorkspaceChange('')) {
+  return serial(async()=>{
+    if(!currentIntent(intent))return false;
+    const reply=await owned(intent,kernel.run(state,action));if(!reply)return false;
+    requireOk(reply);acknowledge(intent);return accept(reply,'clear',slots);
+  });
+}
 function historyMove(back: boolean) {
   return serial(async()=> {
     const source=back?undo:redo, target=source.at(-1);
@@ -842,7 +859,7 @@ function launch() {
     if(state!.mode==='puzzle'&&next)goToPuzzle(next,false);
     else if(state!.mode==='puzzle'&&OPTIONAL_PUZZLES.includes(state!.sourceId)){renderLevels();open('puzzles-dialog','launch');}
     else if(state!.mode==='puzzle')showEnding();
-    else void perform({type:'remix'},'clear');
+    else void navigate({type:'remix'});
     return;
   }
   throwCucumber();
@@ -930,8 +947,9 @@ function goToPuzzle(sourceId:number,protect=true) {
   if(state?.mode==='puzzle'&&state.sourceId===sourceId) {
     closeDialogs();requestAnimationFrame(()=>focusGameControl());return;
   }
-  const next=()=>perform({type:'level',sourceId,mode:'puzzle'},'clear').then(ok=>{if(ok)focusGameControl();});
-  if(protect)changeWorkspace(next,LEVELS[sourceId-1].name);
+  const intent=beginWorkspaceChange('');
+  const next=()=>navigate({type:'level',sourceId,mode:'puzzle'},undefined,intent).then(ok=>{if(ok&&currentIntent(intent))focusGameControl();});
+  if(protect)changeWorkspace(next,LEVELS[sourceId-1].name,false,undefined,intent);
   else {closeDialogs();void next();}
 }
 function renderEnding() {
@@ -1139,7 +1157,11 @@ $('redo').onclick=()=>void historyMove(false);
 $('reset').onclick=()=>void resetRecipe();
 $('launch').onclick=launch;
 $('rethrow').onclick=()=>throwCucumber(true);
-$('nav-create').onclick=()=>{if(initialized&&state?.mode!=='remix')changeWorkspace(()=>perform({type:'remix'},'clear',railSlots).then(ok=>{if(ok)$('level-title').focus({preventScroll:true});}),'Create',true);};
+$('nav-create').onclick=()=>{
+  if(!initialized||state?.mode==='remix')return;
+  const intent=beginWorkspaceChange('');
+  changeWorkspace(()=>navigate({type:'remix'},railSlots,intent).then(ok=>{if(ok&&currentIntent(intent))$('level-title').focus({preventScroll:true});}),'Create',true,undefined,intent);
+};
 document.addEventListener('keydown',event=>{
   const target=event.target as HTMLElement;
   if(event.defaultPrevented||event.isComposing||event.altKey||event.ctrlKey&&event.metaKey||target.matches('input:not([type=range]):not([type=checkbox]):not([type=radio]),textarea,select')||target.isContentEditable||document.querySelector('dialog[open]'))return;
@@ -1419,14 +1441,20 @@ $('reset-progress-open').onclick=()=>{$('reset-progress-error').hidden=true;open
 $('reset-progress-confirm').onclick=async()=>{
   const confirm=$<HTMLButtonElement>('reset-progress-confirm'),cancel=$<HTMLButtonElement>('reset-progress-cancel');
   confirm.disabled=true;cancel.disabled=true;
+  // Reset opens a fresh first puzzle; any newer navigation supersedes it.
+  const intent=beginWorkspaceChange('');
   const reset=await serial(async()=>{
-    const reply=await kernel.run(undefined,{type:'level',sourceId:1,mode:'puzzle'});requireOk(reply);
-    await replaceProgress(reply,undefined,view,[],'');
+    if(!currentIntent(intent))return false;
+    const reply=await owned(intent,kernel.run(undefined,{type:'level',sourceId:1,mode:'puzzle'}));if(!reply)return false;
+    requireOk(reply);
+    if(!await owned(intent,replaceProgress(reply,undefined,view,[],'',()=>currentIntent(intent))))return false;
     acknowledgedEntry='';window.history.replaceState(null,'',location.pathname+location.search);
     accept(reply,'clear');return true;
   });
   confirm.disabled=false;cancel.disabled=false;
-  if(reset){closeDialogs();requestAnimationFrame(()=>focusGameControl());$('move-announcement').textContent='Puzzle progress reset. Chapter 1 is ready.';}
+  // A committed reset stays durable, but a newer navigation owns the page's UI.
+  if(!currentIntent(intent))return;
+  if(reset){closeDialogs();requestAnimationFrame(()=>{if(currentIntent(intent))focusGameControl();});$('move-announcement').textContent='Puzzle progress reset. Chapter 1 is ready.';}
   else {$('reset-progress-error').textContent=notice.text;$('reset-progress-error').hidden=false;}
 };
 $('leave-dialog').addEventListener('close',()=>{
@@ -1557,11 +1585,14 @@ $('seed-save').onsubmit=async event=>{
   if(saved)$<HTMLInputElement>('seed-name').value='';
   else {$('library-error').textContent=notice.text;$('library-error').hidden=false;}
 };
-function openSeed(seed:Seed) {
-  if(!seed.snapshot)return importData(seed.artifact);
+// A saved recipe is local work; the link that opened earlier work stays behind.
+function openSeed(seed:Seed,intent=beginWorkspaceChange('')) {
+  if(!seed.snapshot)return importData(seed.artifact,'library',intent);
   return serial(async()=>{
+    if(!currentIntent(intent))return false;
     const saved=parseSave({schema:1,type:'save',state:seed.snapshot!.state,slots:seed.snapshot!.slots,view:seed.view||view,completed:[...completed]});
-    const reply=await kernel.run(saved.state,{type:'evaluate'});requireOk(reply);
+    const reply=await owned(intent,kernel.run(saved.state,{type:'evaluate'}));if(!reply)return false;
+    requireOk(reply);acknowledge(intent);
     accept(reply,'clear',saved.slots,saved.view);preferences();return true;
   });
 }
@@ -1605,7 +1636,10 @@ $('favorites-list').onclick=async event=>{
     }finally{b.removeAttribute('aria-disabled');}
   }
   if(b.dataset.seed!==undefined){
-    await refreshLibrary();if(!$<HTMLDialogElement>('library-dialog').open)return;const seed=seeds.find(seed=>seed.id===id);if(seed)changeWorkspace(()=>openSeed(seed).then(ok=>{if(ok)closeDialogs();}),seed.name);else renderSeeds();
+    // Open claims the page at the click, so a newer navigation during the read wins.
+    const intent=beginWorkspaceChange(''),owns=()=>currentIntent(intent);
+    await refreshLibrary(false,owns);if(!owns()||!$<HTMLDialogElement>('library-dialog').open)return;const seed=seeds.find(seed=>seed.id===id);
+    if(seed)changeWorkspace(()=>openSeed(seed,intent).then(ok=>{if(ok&&owns())closeDialogs();}),seed.name,false,undefined,intent);else renderSeeds();
   }
 };
 $('favorites-list').addEventListener('submit',async event=>{
@@ -1694,10 +1728,10 @@ function acceptPreparedImport(prepared:PreparedImport,intent:WorkspaceIntent,per
   return serial(async()=>{
     if(!currentIntent(intent))return false;
     if(prepared.completed&&prepared.origin==='file') {
-      if(!await replaceProgress(prepared.reply,prepared.slots,prepared.view??view,prepared.completed,intent.entry,()=>currentIntent(intent)))return false;
+      if(!await owned(intent,replaceProgress(prepared.reply,prepared.slots,prepared.view??view,prepared.completed,intent.entry,()=>currentIntent(intent))))return false;
     } else if(prepared.origin==='restore')await refreshCompletions();
     if(!currentIntent(intent))return false;
-    acknowledgedEntry=intent.entry;replaceEntry(acknowledgedEntry);
+    acknowledge(intent);
     accept(prepared.reply,'clear',prepared.slots,prepared.view,true,undefined,undefined,false,undefined,{persist,confirmed:prepared.confirmed});
     preferences();return true;
   });
@@ -1708,7 +1742,8 @@ async function importData(value:unknown,origin:'library'|'file'|'link'='library'
   if(attempt.kind!=='ready'){replaceEntry(acknowledgedEntry);error(attempt.message);return false;}
   // Invalid files do not cancel an initial load. Claim navigation only after
   // validation, provided no newer navigation arrived while the file was read.
-  const transition=origin==='file'?beginWorkspaceChange(intent.entry):intent;
+  // An accepted file is local work, so it detaches the link that opened the page.
+  const transition=origin==='file'?beginWorkspaceChange(''):intent;
   const commit=()=>acceptPreparedImport(attempt.prepared,transition);
   if(origin==='library')return commit();
   return changeWorkspace(commit,origin==='file'?'this file':'this shared link',false,undefined,transition);
@@ -1791,7 +1826,7 @@ window.addEventListener('hashchange',event=>{
   try {
     const value=linkValue(intent.entry);
     if(value!==undefined)void importData(value,'link',intent);
-    else {acknowledgedEntry=intent.entry;replaceEntry(acknowledgedEntry);}
+    else acknowledge(intent);
   }catch(failure){replaceEntry(acknowledgedEntry);error(failureMessage(failure));}
 });
 // Read-only diagnostics for reproducible loading/latency/recovery checks.
