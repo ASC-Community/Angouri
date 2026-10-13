@@ -5,6 +5,7 @@ import learningPath from '../../content/learning-path.json';
 import { heightAtFormula, rationalTex, tex } from './views';
 import { chapterArt, lesson, move, viewButton, recall, strip, compare, circleSketch, diagramChoices, relationSketch, connectComparisonPanels } from './note-diagrams';
 import { renderReference } from './reference';
+import { NoteExamples, type NoteExampleReader } from './note-examples';
 export { chapterArt } from './note-diagrams';
 
 const knownLessons=(source:number)=>new Set(source===0||EXTRA_PUZZLES.includes(source)||MIXED_PUZZLES.includes(source)
@@ -16,8 +17,9 @@ const knownLessons=(source:number)=>new Set(source===0||EXTRA_PUZZLES.includes(s
 // These are reference examples evaluated by the same stateless kernel as play.
 // No note may accept a response into the player's state, history or progress.
 export class ShapeNotes {
-  private examples=new Map<string,Promise<Result>>();
+  private examples:NoteExamples;
   private version=0;
+  private hintVersion=0;
   private source=0;
   private topic=0;
   private known=new Set<number>();
@@ -28,7 +30,8 @@ export class ShapeNotes {
   private content=document.getElementById('notes-content')!;
   private index=document.getElementById('notes-index')!;
 
-  constructor(private kernel:Kernel) {
+  constructor(kernel:Kernel) {
+    this.examples=new NoteExamples(kernel);
     this.index.addEventListener('click',event=>{
       const reference=(event.target as Element).closest<HTMLElement>('[data-note-lesson]');
       if(reference){void this.selectLesson(Number(reference.dataset.noteLesson));return;}
@@ -58,6 +61,7 @@ export class ShapeNotes {
     });
     for(const content of [this.index,...referenceContents])resized.observe(content);
     document.getElementById('ideas-dialog')!.addEventListener('close',()=>this.version++);
+    document.getElementById('hints-dialog')!.addEventListener('close',()=>this.hintVersion++);
   }
 
   private navigateTabs(event:KeyboardEvent,index:HTMLElement) {
@@ -142,7 +146,8 @@ export class ShapeNotes {
   private async select(topic:number) {
     if(!this.topics.has(topic))return;
     const version=++this.version;this.topic=topic;
-    const focused=this.source&&!OPTIONAL_PUZZLES.includes(this.source);
+    const active=()=>version===this.version&&(document.getElementById('ideas-dialog') as HTMLDialogElement).open;
+    const focused=!!this.source&&!OPTIONAL_PUZZLES.includes(this.source);
     const referenceSource=focused?this.referenceSource:this.source;
     if(!focused)this.selectTab('data-note',String(topic));
     this.heading.innerHTML='<h3 id="notes-concept">Opening notes…</h3>';
@@ -151,14 +156,10 @@ export class ShapeNotes {
     this.content.innerHTML='<p class="notes-loading">Opening the sketches…</p>';
     try {
       const known=focused?knownLessons(referenceSource):this.known;
-      const sketches=new LessonSketches(this.kernel,referenceSource,known,this.examples);
-      const reference=await renderReference(topic,known,{example:(source,ops)=>sketches.example(source,ops),circleExample:(x,y,radius,goals)=>sketches.circleExample(x,y,radius,goals)});
-      if(version!==this.version)return;
+      const reference=await renderReference(topic,known,this.examples.forReader(active),{focused});
+      if(!active())return;
       const template=document.createElement('template');template.innerHTML=reference;
       if(focused) {
-        // Earlier lessons already have their own navigation entries. A lesson
-        // page contains its relationship once; the complete book keeps recalls.
-        template.content.querySelectorAll('.note-recall').forEach(section=>section.remove());
         template.content.querySelectorAll<HTMLElement>('.note-reference').forEach(credit=>credit.hidden=true);
         if(!template.content.querySelector(`[data-reference-lesson="${referenceSource}"]`)) {
           const marker=document.createElement('span');marker.dataset.referenceLesson=String(referenceSource);marker.hidden=true;
@@ -172,16 +173,18 @@ export class ShapeNotes {
       connectComparisonPanels(template.content);
       this.content.innerHTML=template.innerHTML;
     } catch {
-      if(version!==this.version)return;
+      if(!active())return;
       this.heading.innerHTML='<h3 id="notes-concept">Notes unavailable</h3>';
       this.content.innerHTML='<p>The sketches could not load.</p><button class="button" data-retry-notes>Try again</button>';
-    } finally {if(version===this.version)this.content.setAttribute('aria-busy','false');}
+    } finally {if(active())this.content.setAttribute('aria-busy','false');}
   }
 
   async hintSketch(source:number) {
+    const version=++this.hintVersion;
+    const active=()=>version===this.hintVersion&&(document.getElementById('hints-dialog') as HTMLDialogElement).open;
     const known=knownLessons(source);
     const topic=MIXED_PUZZLES.includes(source)?9:GEOMETRY_PUZZLES.includes(source)?6:EXTRA_PUZZLES.includes(source)?EXTRA_PUZZLES.indexOf(source)<4?4:5:Math.max(0,chapterIndex(source));
-    const sketches=new LessonSketches(this.kernel,source,known,this.examples);
+    const sketches=new LessonSketches(source,known,this.examples.forReader(active));
     if(EXTRA_PUZZLES.includes(source)) {
       const op:Op=EXTRA_PUZZLES.indexOf(source)<4?'D':'I',reading=await sketches.example(source,op);
       const name=op==='D'?'slope':'accumulated area';
@@ -197,23 +200,9 @@ export class ShapeNotes {
 
 /** Targeted worked sketches belong to explicit hint disclosures. */
 class LessonSketches {
-  constructor(private kernel:Kernel,private source:number,private known:Set<number>,private examples:Map<string,Promise<Result>>) {}
+  constructor(private source:number,private known:Set<number>,private examples:NoteExampleReader) {}
   example(sourceId:number,ops:string) {
-    const key=`${sourceId}:${ops}`;
-    let cached=this.examples.get(key);
-    if(!cached) {
-      cached=(async()=>{
-        const initial=await this.kernel.run(undefined,{type:'level',sourceId,mode:'remix'});
-        if(initial.status!=='ok'||!initial.state)throw new Error('Example unavailable');
-        const state={...initial.state,nodes:[...ops].map((op,i)=>({id:`note-${i}`,op:op as Op}))};
-        const reply=await this.kernel.run(state,{type:'evaluate'});
-        if(reply.status!=='ok'||!reply.result)throw new Error('Example unavailable');
-        return reply.result;
-      })();
-      this.examples.set(key,cached);
-      void cached.catch(()=>this.examples.delete(key));
-    }
-    return cached;
+    return this.examples.example(sourceId,ops);
   }
 
   async render(topic:number):Promise<string> {
@@ -363,9 +352,8 @@ class LessonSketches {
     ]);
     const chord=`<h3>Equal distances narrow the search.</h3><p>Two targets need not be opposite. Their midpoint alone is <em>not</em> the centre. All possible centres lie on the perpendicular line through that midpoint.</p>${intersection}<p>Choose a pair in ${viewButton('flow')}, then compare another pair. The lines meet at a centre equally far from all three targets. Choose the radius afterward.</p>`;
     if(!this.known.has(47))return chord+recall([45],'Diameter and squared distance',diameter)+recall([44],'Move the centre',centre);
-    const final=await this.kernel.run(undefined,{type:'level',sourceId:47,mode:'puzzle'});
-    if(!final.result)throw new Error('Circle targets unavailable');
-    const finalTargets=final.result.checkpoints.map(point=>[fraction(point.x),targetHeight(point)] as [number,number]);
+    const final=await this.examples.puzzle(47);
+    const finalTargets=final.checkpoints.map(point=>[fraction(point.x),targetHeight(point)] as [number,number]);
     const locating='<h3>Find the second line.</h3><p>The target arrangement has changed. Here is one pair and its line of possible centres. Which other pair could narrow it to a single point?</p>'+circleSketch([],{targets:finalTargets,pairs:[[0,1]],bounds:[-2,4,-4,3]})+'<p class="note-takeaway">Compare another pair in '+viewButton('flow')+'. Locate the common centre, then fit the distance. The centre and radius are still yours to find.</p>';
     return locating+recall([46],'How two pairs locate a centre',chord)+recall([45],'Diameter and squared distance',diameter)+recall([44],'Move the centre',centre);
   }
@@ -390,9 +378,8 @@ class LessonSketches {
     if(!this.known.has(66))return '<h3>Build an equation with two heights.</h3>'+roof+recall([43,44],'From centre and radius to a roof',await this.geometryEquationConnection());
     const paired=await this.pairedRoofLesson();
     if(!this.known.has(49))return '<h3>The right side chooses rounded or pointed ends.</h3>'+paired+recall([48],'A roof becomes a loop',roof)+recall([43,44],'Geometry behind the equation',await this.geometryEquationConnection());
-    const final=await this.kernel.run(undefined,{type:'level',sourceId:49,mode:'puzzle'});
-    if(!final.result)throw new Error('Two-height targets unavailable');
-    const targets=final.result.checkpoints.map(point=>[fraction(point.x),targetHeight(point)] as [number,number]);
+    const final=await this.examples.puzzle(49);
+    const targets=final.checkpoints.map(point=>[fraction(point.x),targetHeight(point)] as [number,number]);
     const geometry=circleSketch([],{targets,bounds:[-2,4,-3,3]});
     return '<h3>Infer the loop. Then build its equation.</h3><p>The matching heights above and below zero share a horizontal position. That widest pair locates the circle\u2019s centre and radius. A target on zero locates one horizontal edge.</p>'+geometry+'<p class="note-takeaway">Use '+viewButton('function')+' to compare squared heights. In '+viewButton('flow')+', build a roof whose maximum is the squared radius and whose zeros are the circle\u2019s edges. Its scale and block order remain yours to find.</p>'+recall([66],'Rounded or pointed ends',paired)+recall([48],'How one roof supplies two heights',roof);
   }
@@ -563,20 +550,7 @@ class LessonSketches {
   }
 
   circleExample(x:string,y:string,radius:string,goals:string[][]=[]) {
-    const key=`circle:${x}:${y}:${radius}:${JSON.stringify(goals)}`;
-    let cached=this.examples.get(key);
-    if(!cached) {
-      cached=(async()=>{
-        const initial=await this.kernel.run(undefined,{type:'level',sourceId:43,mode:'remix'});
-        if(!initial.state)throw new Error('Circle example unavailable');
-        const state={...initial.state,circle:{x,y,radius},mode:goals.length?'challenge' as const:'remix' as const,goals:goals.map(([x,y])=>({x,y}))};
-        const reply=await this.kernel.run(state,{type:'evaluate'});
-        if(!reply.result?.circle)throw new Error('Circle example unavailable');
-        return reply.result;
-      })();
-      this.examples.set(key,cached);void cached.catch(()=>this.examples.delete(key));
-    }
-    return cached;
+    return this.examples.circleExample(x,y,radius,goals);
   }
 
   private async areaNotes():Promise<string> {

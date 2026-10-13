@@ -66,7 +66,7 @@ for(const source of [12,29,66])test(`discovery Notes ${source} use mathematicall
     }
   }
   if(source===29) {
-    const comparison=page.getByRole('region',{name:'Same input. Different powers.'});
+    const comparison=page.getByRole('region',{name:'Same zero and unit height. Different powers.'});
     const axes=await comparison.locator('[data-zero-line]').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('d')));
     expect(new Set(axes).size).toBe(1);
     await expect(comparison.getByRole('tab')).toHaveText(['Second power','Fourth power','Sixth power']);
