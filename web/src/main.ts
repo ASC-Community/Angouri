@@ -190,7 +190,8 @@ function showNotice() {
   $('feedback').className=`feedback ${notice.kind}`;
   const unavailable=notice.kind!=='error'?emptyPathMessage(result):'';
   const text=unavailable||(insertionIndex!==undefined&&notice.kind!=='error'?'Choose a block.':notice.text);
-  const finding=state&&result&&!unavailable&&notice.kind!=='error'?discoveryObservation(state,result,discoveryStage):'';
+  const retryIntro=introActive()&&flight.phase==='landed'&&!result?.solved;
+  const finding=state&&result&&!unavailable&&notice.kind!=='error'&&!retryIntro?discoveryObservation(state,result,discoveryStage):'';
   $('feedback').classList.toggle('discovery-feedback',!!finding);
   const content=finding||`${notice.kind==='error'?'':icon('hand',16)}<span>${escape(text)}</span>`;
   if(content!==feedbackContent){$('feedback').innerHTML=content;feedbackContent=content;}
@@ -243,7 +244,15 @@ function updateHintCue(history:'push'|'keep'|'clear') {
   hintOffered=true;hintCue=true;return true;
 }
 type CellMove={from:number;to:number};
-function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:RailSlots,requestedView?:View,animateCurve=true,editedId?:string,emptySelection?:number,completeSelection=false,move?:CellMove) {
+function restoreConfirmedThrow(confirmed:boolean) {
+  // A solved preview alone cannot stand in for a deliberate Throw. The saved
+  // confirmation belongs to this workspace and is rechecked by the kernel.
+  if(!confirmed||state?.mode!=='puzzle'||!completed.has(state.sourceId)||!result?.solved)return;
+  flight={phase:'landed',position:1};throwWon=true;
+  // Resuming a finished flight must not replay a picture reward or award it again.
+  pictureCelebrated=true;pictureCollecting=false;
+}
+function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:RailSlots,requestedView?:View,animateCurve=true,editedId?:string,emptySelection?:number,completeSelection=false,move?:CellMove,options:{confirmed?:boolean}={}) {
   requireOk(reply);
   const firstArrival=!state;
   const previousState=state,previousResult=result,previousPoints=displayedPoints||result?.points,previousSlope=displayedSlope??result?.startSlope,previousProbeX=result?probePoints(result)[probeIndex]?.[0]:undefined;
@@ -306,7 +315,7 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
     }
   }
   if(!newSource&&previousProbeX!==undefined&&!state.circle)probeIndex=nearestIndex(probePoints(result),previousProbeX);
-  if(changed||newSource||history==='clear') {
+  if(changed||layoutChanged||newSource||history==='clear') {
     // An edit cancels the flight's pending garden handoff. An open collection
     // owns its gate until the reveal finishes or the dialog closes.
     if(!pictureCelebrated)pictureCollecting=false;
@@ -332,6 +341,7 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
   if(completeSelection||!result.stages.some(s=>s.id===selectedStage)) selectedStage='';
   insertionIndex=completeSelection?undefined:emptySelection;
   notice={text:emptyPathMessage(result)||(state.circle?'':state.nodes.length?'':choiceActive()?'Choose a block.':'Tap or drag a block.'),kind:''};
+  if(history==='clear')restoreConfirmedThrow(options.confirmed===true);
   progress();render(move&&(completeSelection||movingEmpty)?move.to:emptySelection);
   if(repeatHint&&hintCue)for(const animation of $('hints-open').getAnimations()) {
     if(animation instanceof CSSAnimation&&animation.animationName==='hint-invite')animation.currentTime=0;
@@ -831,6 +841,9 @@ function changeWorkspace(action:()=>Promise<unknown>,destination:string,carry=fa
   open('leave-dialog');leaveAction=action;
 }
 function goToPuzzle(sourceId:number,protect=true) {
+  if(state?.mode==='puzzle'&&state.sourceId===sourceId) {
+    closeDialogs();requestAnimationFrame(()=>focusGameControl());return;
+  }
   const next=()=>perform({type:'level',sourceId,mode:'puzzle'},'clear').then(ok=>{if(ok)focusGameControl();});
   if(protect)changeWorkspace(next,LEVELS[sourceId-1].name);
   else {closeDialogs();void next();}
@@ -977,7 +990,7 @@ document.addEventListener('click',event=>{
   const d=button.dataset;
   if(d.openGarden!==undefined){event.preventDefault();showGarden('menu-picture-open',undefined,'puzzles-dialog');return;}
   if(d.back){
-    const returnTo=d.back,dialog=d.backDialog||'menu-dialog';open(dialog);
+    const returnTo=d.back,dialog=d.backDialog||'menu-dialog';open(dialog,dialog==='ending-dialog'?'launch':'menu-open');
     // WebKit finishes removing dialog inertness after showModal returns.
     requestAnimationFrame(()=>{if($<HTMLDialogElement>(dialog).open)$(returnTo).focus({preventScroll:true});});
     return;
@@ -1294,18 +1307,19 @@ $('hints-content').onclick=event=>{
 };
 $('menu-version').onclick=()=>open('releases-dialog','menu-version');
 $('ending-create').onclick=()=>$('nav-create').click();
-function showGarden(returnId:string,revealSource?:number,parent?:string,focusDone=false) {
+function showGarden(returnId:string,revealSource?:number,parent?:'puzzles-dialog'|'ending-dialog',focusDone=false) {
   const origin=revealSource&&!reduced?gardenOrigin($('scene').querySelector<SVGPathElement>('#flight-trail,.flow-machine:last-child .flow-curve')):undefined;
   const back=$<HTMLButtonElement>('garden-back');
   back.type=parent?'button':'submit';
-  back.setAttribute('aria-label',parent?'Back to puzzle list':'Back to game');back.title=parent?'Back to puzzle list':'Back to game';
+  const backLabel=parent==='ending-dialog'?'Back to ending':parent?'Back to puzzle list':'Back to game';
+  back.setAttribute('aria-label',backLabel);back.title=backLabel;
   if(parent){back.dataset.back=returnId;back.dataset.backDialog=parent;}
   else {delete back.dataset.back;delete back.dataset.backDialog;}
-  open('garden-dialog',parent?'menu-open':returnId);
+  open('garden-dialog',parent==='ending-dialog'?'launch':parent?'menu-open':returnId);
   gardenDoneFocus=focusDone;gardenReturnSource=revealSource;
   void garden.open(completed,revealSource,origin);
 }
-$('ending-garden').onclick=()=>showGarden('ending-garden');
+$('ending-garden').onclick=()=>showGarden('ending-garden',undefined,'ending-dialog');
 $('picture-open').onclick=()=>showGarden('picture-open');
 $('garden-dialog').addEventListener('close',()=>{
   if($<HTMLDialogElement>('garden-dialog').open)return;
