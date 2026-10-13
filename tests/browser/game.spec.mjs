@@ -784,9 +784,9 @@ test('workspace changes can cancel, save the exact puzzle or creation, or explic
     await expect(row.locator('.favorite-meta')).toContainText('·');
   }
   await page.locator('[data-seed="0"]').click();await idle(page);
-  expect(await snapshot(page)).toEqual(puzzle);expect(await page.evaluate(()=>window.angouri.slots)).toEqual(slots);expect(await page.evaluate(()=>window.angouri.view)).toBe('flow');
+  await expect.poll(()=>snapshot(page)).toEqual(puzzle);await idle(page);expect(await page.evaluate(()=>window.angouri.slots)).toEqual(slots);expect(await page.evaluate(()=>window.angouri.view)).toBe('flow');
   await menu(page,'library-open');await page.locator('[data-seed="1"]').click();await idle(page);await expect(page.locator('#leave-dialog')).not.toBeVisible();
-  expect(await snapshot(page)).toEqual(creation);expect(await page.evaluate(()=>window.angouri.slots)).toEqual(creationSlots);
+  await expect.poll(()=>snapshot(page)).toEqual(creation);await idle(page);expect(await page.evaluate(()=>window.angouri.slots)).toEqual(creationSlots);
   await place(page,'A');await selectThird();await expect(page.locator('#leave-dialog')).toBeVisible();await page.locator('#leave-discard').click();await idle(page);
   expect((await snapshot(page)).sourceId).toBe(3);expect((await snapshot(page)).nodes).toEqual([]);
   expect((await readStoredJSON(page,STORAGE_KEYS.seeds)).length).toBe(2);

@@ -131,14 +131,14 @@ test('circle and crop-only work receive the same import guard',async({page})=>{
   await ready(page,43,'function');
   const radius=page.locator('[data-circle-value="radius"]');await radius.fill('3');await radius.press('Enter');await idle(page);
   const circle=await snapshot(page);await hash(page,'#level=3&view=flight');await expect(page.locator('#leave-dialog')).toBeVisible();
-  await page.locator('#leave-cancel').click();expect(await snapshot(page)).toEqual(circle);
+  await page.locator('#leave-cancel').click();await expect.poll(()=>snapshot(page)).toEqual(circle);
   await page.goto('/about/');await clearStorage(page);await ready(page,1,'flight');
   await page.locator('#menu-open').click();await page.locator('#nav-create').click();await idle(page);
   await page.locator('[data-crop-add]').click();await idle(page);
   const bound=page.locator('[data-crop-exact="to"]');await bound.fill('2');await bound.press('Enter');await idle(page);
   const crop=await snapshot(page);expect(crop.state.nodes).toEqual([]);
   await importFile(page,{schema:1,type:'level',sourceId:3,view:'flight'});await expect(page.locator('#leave-dialog')).toBeVisible();
-  await page.locator('#leave-cancel').click();expect(await snapshot(page)).toEqual(crop);
+  await page.locator('#leave-cancel').click();await expect.poll(()=>snapshot(page)).toEqual(crop);
 });
 
 test('an invalid file chosen during loading does not cancel the initial workspace',async({page})=>{
