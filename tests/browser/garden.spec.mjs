@@ -67,6 +67,44 @@ test('a keyboard picture completion waits for collection then focuses Done befor
   await page.keyboard.press('Space');await idle(page);expect(await page.evaluate(()=>window.angouri.state.sourceId)).toBe(72);
 });
 
+for(const [edit,cancel,restore,remaining] of [['Undo','Control+z','Control+Shift+z','NAH'],['Restart','Shift+Backspace','Control+z','']]) {
+  test(`${edit} after the final picture checkpoint releases the pending collection`,async({page})=>{
+    await page.emulateMedia({reducedMotion:'no-preference'});await page.clock.install();await ready(page,74);
+    for(const op of 'NAHH'){await page.locator(`[data-op="${op}"]`).click();await idle(page);}
+    const solved=await page.evaluate(()=>window.angouri.state);
+    // Hold the animation after the moon's final checkpoint but before the
+    // flight ends, so worker/protocol latency cannot skip the cancellation.
+    await page.clock.pauseAt(await page.evaluate(()=>Date.now()+60_000));
+    await page.keyboard.press('Enter');await page.clock.runFor(2440);
+    const flight=await page.evaluate(()=>window.angouri.flight);
+    expect(flight.phase).toBe('flying');expect(flight.position).toBeLessThan(1);
+    await expect(page.locator('.ring[data-status="hit"]')).toHaveCount(6);
+    await expect(page.locator('#launch')).toBeDisabled();await expect(page.locator('#garden-dialog')).toBeHidden();
+    await page.keyboard.press(cancel);await idle(page);
+    expect(await page.evaluate(()=>window.angouri.state.nodes.map(node=>node.op).join(''))).toBe(remaining);
+    expect(await page.evaluate(()=>window.angouri.flight)).toEqual({phase:'ready',position:0});
+    await expect(page.locator('#launch')).toBeEnabled();await expect(page.locator('#launch')).toHaveAttribute('data-action','throw');
+    await page.locator('#menu-open').focus();await page.clock.runFor(3500);
+    await expect(page.locator('#menu-open')).toBeFocused();await expect(page.locator('#garden-dialog')).toBeHidden();
+    await expect(page.locator('.garden-collection,.curve-change-ghost,.slot-underlay')).toHaveCount(0);
+    expect(await page.locator('#scene').getAttribute('data-curve-transition')).toBeNull();
+    expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([74]);
+    await page.keyboard.press(restore);await idle(page);
+    expect(await page.evaluate(()=>window.angouri.state)).toEqual(solved);
+    await page.clock.resume();await page.keyboard.press('Enter');
+    await expect(page.locator('#garden-dialog')).toBeVisible();await expect(page.locator('[data-garden-done]')).toBeDisabled();
+    await expect(page.locator('#launch')).toBeDisabled();
+    await expect(page.locator('.garden-piece.is-new-piece')).toHaveAttribute('data-garden-piece','74');
+    await expect(page.locator('[data-garden-done]')).toBeEnabled();await expect(page.locator('[data-garden-done]')).toBeFocused();
+    await expect(page.locator('.garden-collection')).toHaveCount(0);
+    await page.keyboard.press('Space');await expect(page.locator('#garden-dialog')).toBeHidden();await expect(page.locator('#launch')).toBeFocused();
+    await page.keyboard.press('Enter');await page.waitForFunction(()=>window.angouri.flight.phase==='landed');
+    await expect(page.locator('#garden-dialog')).toBeHidden();await expect(page.locator('#launch')).toHaveAttribute('data-action','continue');
+    expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([74]);
+    await page.keyboard.press('Space');await idle(page);expect(await page.evaluate(()=>window.angouri.state.sourceId)).toBe(75);
+  });
+}
+
 test('garden completion honors deliberate focus navigation and reduced motion',async({page})=>{
   await page.emulateMedia({reducedMotion:'no-preference'});await ready(page,82);await page.locator('[data-op="H"]').click();await idle(page);await page.keyboard.press('Enter');
   await expect(page.locator('[data-garden-piece]')).toHaveCount(8);await page.keyboard.press('Tab');const moon=page.locator('[data-garden-piece="74"]');await expect(moon).toBeFocused();

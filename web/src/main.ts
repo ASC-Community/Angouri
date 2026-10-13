@@ -293,6 +293,9 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
   }
   if(!newSource&&previousProbeX!==undefined&&!state.circle)probeIndex=nearestIndex(probePoints(result),previousProbeX);
   if(changed||newSource||history==='clear') {
+    // An edit cancels the flight's pending garden handoff. An open collection
+    // owns its gate until the reveal finishes or the dialog closes.
+    if(!pictureCelebrated)pictureCollecting=false;
     flight={phase:'ready',position:0};throwWon=false;
     if(result.circle||result.relation) {
       // Geometry edits keep their frame. Refitting on every radius change made
