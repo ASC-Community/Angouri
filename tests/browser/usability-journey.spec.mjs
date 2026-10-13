@@ -43,7 +43,7 @@ test('an introductory miss asks for another choice and the next edit restores it
   await expect(page.locator('#feedback')).toContainText('Every height rises equally');
   await throwIt(page);
   await expect(page.locator('#feedback')).toHaveText('Pick another block and try again.');
-  await expect(page.locator('[data-target][data-status="miss"]')).toHaveCount(3);
+  await expect(page.locator('[data-target-kind="target"][data-status="miss"]')).toHaveCount(3);
   await expect(page.locator('#launch')).toHaveAccessibleName('Throw again');
   await page.screenshot({path:testInfo.outputPath('first-miss-guidance.png')});
   await page.locator('[data-op="H"]').focus();await page.keyboard.press('Space');await idle(page);
@@ -60,7 +60,7 @@ test('reload keeps a confirmed successful throw and its Next and Rethrow actions
   await page.reload();await loaded(page);
   await expect(page.locator('#launch')).toHaveAccessibleName('Next puzzle');
   await expect(page.locator('#rethrow')).toBeVisible();
-  await expect(page.locator('[data-target][data-status="hit"]')).toHaveCount(3);
+  await expect(page.locator('[data-target-kind="target"][data-status="hit"]')).toHaveCount(3);
   const restored=await snapshot(page);
   expect(restored.state).toEqual(before.state);expect(restored.slots).toEqual(before.slots);
   expect(restored.flight).toEqual({phase:'landed',position:1});expect(await completed(page)).toEqual([1]);
@@ -79,7 +79,7 @@ test('reload requires Throw for a green preview, including an edited previously 
   expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(true);
   await expect(page.locator('#launch')).toHaveAccessibleName('Throw');
   await expect(page.locator('#rethrow')).toBeHidden();
-  await expect(page.locator('[data-target][data-status="waiting"]')).toHaveCount(3);
+  await expect(page.locator('[data-target-kind="target"][data-status="waiting"]')).toHaveCount(3);
   expect(await completed(page)).toEqual([1]);
 });
 
@@ -95,7 +95,7 @@ test('resume validates the saved confirmation against completion and the exact c
     await page.reload();await loaded(page);
     await expect(page.locator('#launch')).toHaveAccessibleName('Throw');
     await expect(page.locator('#rethrow')).toBeHidden();
-    await expect(page.locator('[data-target][data-status="waiting"]')).toHaveCount(3);
+    await expect(page.locator('[data-target-kind="target"][data-status="waiting"]')).toHaveCount(3);
     expect(await completed(page)).toEqual(variant==='uncompleted'?[]:[1]);
   }
 });
