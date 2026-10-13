@@ -212,6 +212,7 @@ function emptyPathMessage(value:Result|undefined) {
     : 'No real heights in this interval. Make the right side zero or positive.';
 }
 function serial<T>(work: ()=>Promise<T>,retainCirclePreview=false): Promise<T | undefined> {
+  if(pointer)finishPointer(undefined,true);
   cropEditor.cancel();
   if(!retainCirclePreview)cancelCirclePickup();
   pending++; $('playground').setAttribute('aria-busy','true');updatePrimary();
@@ -912,9 +913,9 @@ function insertIntoSlot(op:Op,index=nextInsertionSlot(),advance=false) {
   // the right; a hole to the left still lets the new block land where dropped.
   const id=crypto.randomUUID(),slots=insertedSlots(railSlots,state,id,index);
   if(!slots)return;
-  selectedStage='';
   const place=(reply:Response)=>{
     requireOk(reply);
+    selectedStage='';
     const acceptedSlots=normalizeSlots(reply.state,slots);
     const next=advance?[...acceptedSlots.keys()].find(i=>i>index&&acceptedSlots[i]===null)??acceptedSlots.indexOf(null):-1;
     const accepted=accept(reply,'push',acceptedSlots,undefined,true,id,next>=0?next:undefined);
@@ -1126,11 +1127,11 @@ document.addEventListener('keydown',event=>{
 
 let drag: {op?:Op;id?:string;empty?:number} | undefined, suppressClick=false;
 let pointer: {x:number;y:number;pointerId:number;element:HTMLElement;active:boolean} | undefined, ghost:HTMLElement|undefined, cancelledPointer:number|undefined;
-function drop(index: number) {
-  if(!drag||!state)return;
-  if(drag.op)return insertIntoSlot(drag.op,index);
-  if(drag.id)return {id:drag.id,work:moveCell(railSlots.indexOf(drag.id),index)};
-  if(drag.empty!==undefined)return {id:'',cell:index,work:moveCell(drag.empty,index)};
+function drop(index: number,pickup:typeof drag) {
+  if(!pickup||!state)return;
+  if(pickup.op)return insertIntoSlot(pickup.op,index);
+  if(pickup.id)return {id:pickup.id,work:moveCell(railSlots.indexOf(pickup.id),index)};
+  if(pickup.empty!==undefined)return {id:'',cell:index,work:moveCell(pickup.empty,index)};
 }
 function clearDropHints() {document.querySelectorAll('.drop-target,.suggested-slot,.return-target').forEach(el=>el.classList.remove('drop-target','suggested-slot','return-target'));}
 function suggestSlot(event:Event) {
@@ -1209,13 +1210,17 @@ function settleGhost(floating:HTMLElement,rect:DOMRect,accepted:boolean,target?:
 function finishPointer(event?:PointerEvent,cancel=false){
   if(!pointer){if(event?.pointerId===cancelledPointer){cancelledPointer=undefined;setTimeout(()=>suppressClick=false,0);}return;}
   if(event&&event.pointerId!==pointer.pointerId)return;
-  if(cancel&&!event&&pointer.active)cancelledPointer=pointer.pointerId;
-  const slot=pointer.active&&!cancel&&event?dropSlotAt(event.clientX,event.clientY):undefined;
-  const returning=pointer.active&&!cancel&&event&&drag?.id&&!overRail(event.clientX,event.clientY);
-  const op=drag?.op||state?.nodes.find(n=>n.id===drag?.id)?.op;
-  const transfer=returning?{id:'',work:perform({type:'remove',id:drag!.id},'push',railSlots.map(id=>id===drag!.id?null:id))}:slot?drop(Number(slot.dataset.cell)):undefined;
-  const floating=ghost,origin=pointer.element.getBoundingClientRect();
-  if(floating&&pointer.active){
+  const held=pointer,pickup=drag,floating=ghost,origin=held.element.getBoundingClientRect();
+  if(cancel&&!event&&held.active)cancelledPointer=held.pointerId;
+  const slot=held.active&&!cancel&&event?dropSlotAt(event.clientX,event.clientY):undefined;
+  const returning=held.active&&!cancel&&event&&pickup?.id&&!overRail(event.clientX,event.clientY);
+  const op=pickup?.op||state?.nodes.find(n=>n.id===pickup?.id)?.op;
+  // Detach this pickup before committing its drop. serial() cancels any still
+  // held pickup synchronously, including while its kernel reply is pending.
+  pointer=undefined;drag=undefined;ghost=undefined;
+  held.element.classList.remove('dragging');$('playground').classList.remove('is-dragging');clearDropHints();
+  const transfer=returning?{id:'',work:perform({type:'remove',id:pickup!.id},'push',railSlots.map(id=>id===pickup!.id?null:id))}:slot?drop(Number(slot.dataset.cell),pickup):undefined;
+  if(floating&&held.active){
     if(transfer?.work){
       floating.classList.add('awaiting-acceptance');
       void transfer.work.then(accepted=>{
@@ -1229,11 +1234,9 @@ function finishPointer(event?:PointerEvent,cancel=false){
       });
     }else settleGhost(floating,origin,false);
   }else floating?.remove();
-  if(pointer.active&&!transfer?.work)$('move-announcement').textContent='Move cancelled.';
-  const hadPlacedBlock=!!drag?.id;
-  pointer.element.classList.remove('dragging');ghost=undefined;pointer=undefined;drag=undefined;
-  if(hadPlacedBlock)palette();
-  $('playground').classList.remove('is-dragging');clearDropHints();if(cancelledPointer===undefined)setTimeout(()=>suppressClick=false,0);
+  if(held.active&&!transfer?.work)$('move-announcement').textContent='Move cancelled.';
+  if(pickup?.id)palette();
+  if(cancelledPointer===undefined)setTimeout(()=>suppressClick=false,0);
 }
 document.addEventListener('pointerup',event=>finishPointer(event));document.addEventListener('pointercancel',event=>finishPointer(event,true));
 window.addEventListener('blur',()=>finishPointer(undefined,true));
