@@ -71,7 +71,9 @@ function calloutRows(entries:Callout[],available:number) {
   return rows;
 }
 const calloutSpace=(rows:ReturnType<typeof calloutRows>,side:'top'|'bottom')=>rows.filter(row=>row.side===side).reduce((sum,row)=>sum+Math.max(...row.entries.map(entry=>entry.height))+14,12);
-const calloutPlotHeight=(width:number)=>innerHeight<=560&&innerWidth>innerHeight?190:Math.max(190,Math.min(320,width*414/760));
+// The diagram fills its scene; this only sets the smallest usable plot, below
+// which the scene scrolls locally instead of shrinking the curve further.
+const CALLOUT_PLOT_MIN=190;
 export function sizeFlightAnnotations(root:HTMLElement) {
   const svg=root.querySelector<SVGSVGElement>('#flight-svg');
   const overlay=root.querySelector<HTMLElement>('.flight-annotations');
@@ -86,7 +88,7 @@ export function sizeFlightAnnotations(root:HTMLElement) {
     const space=(side:'top'|'bottom')=>calloutSpace(rows,side);
     root.style.setProperty('--callout-top',`${space('top')}px`);
     root.style.setProperty('--callout-bottom',`${space('bottom')}px`);
-    root.style.setProperty('--flight-height',`${space('top')+space('bottom')+calloutPlotHeight(root.clientWidth)}px`);
+    root.style.setProperty('--flight-height',`${space('top')+space('bottom')+CALLOUT_PLOT_MIN}px`);
     // The positioned diagram cannot contribute an intrinsic SVG height to the
     // flex layout. Give its plot the actual remaining height explicitly:
     // Safari can resolve a 100% SVG against the wrong indefinite flex height.

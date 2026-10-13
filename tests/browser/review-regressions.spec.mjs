@@ -9,6 +9,35 @@ async function ready(page,level,view='flight') {
   expect(await page.evaluate(()=>window.angouri.state.sourceId)).toBe(level);
 }
 async function place(page,op) {await page.locator(`[data-op="${op}"]`).click();await idle(page);}
+// Dense Flight fills its scene. Only a scene shorter than the smallest usable
+// plot plus both callout rows may scroll, and then only within itself: every
+// whole coordinate must be visible at the top or bottom scroll position.
+async function denseFlightReach(page) {
+  const reach=await page.locator('#scene').evaluate(scene=>{
+    const diagram=scene.querySelector('.flight-diagram'),style=getComputedStyle(diagram),saved=scene.scrollTop;
+    const s=scene.getBoundingClientRect(),dock=document.querySelector('.play-dock').getBoundingClientRect();
+    const inside=r=>r.left>=s.left-1&&r.right<=s.right+1&&r.top>=s.top-1&&r.bottom<=s.bottom+1;
+    const labels=()=>[...scene.querySelectorAll('.target-label .katex-html')].map(label=>label.getBoundingClientRect());
+    const visible=labels().map(()=>false);
+    for(const top of [0,scene.scrollHeight]){scene.scrollTop=top;labels().forEach((r,i)=>{if(inside(r))visible[i]=true;});}
+    scene.scrollTop=saved;
+    return {
+      cramped:parseFloat(style.minHeight)>scene.clientHeight+1,scrolls:scene.scrollHeight>scene.clientHeight+1,
+      overflowY:getComputedStyle(scene).overflowY,diagramHeight:diagram.getBoundingClientRect().height,minHeight:parseFloat(style.minHeight),
+      plotHeight:scene.querySelector('#flight-svg').getBoundingClientRect().height,
+      reachable:visible.every(Boolean),labels:visible.length,
+      sceneOverlapsRecipe:Math.min(s.right,dock.right)-Math.max(s.left,dock.left)>1&&Math.min(s.bottom,dock.bottom)-Math.max(s.top,dock.top)>1,
+      page:[document.documentElement.scrollWidth-innerWidth,document.documentElement.scrollHeight-innerHeight]
+    };
+  });
+  expect(reach.labels).toBeGreaterThan(0);expect(reach.reachable).toBe(true);
+  expect(reach.plotHeight).toBeGreaterThanOrEqual(189);expect(reach.sceneOverlapsRecipe).toBe(false);
+  expect(reach.page[0]).toBeLessThanOrEqual(0);expect(reach.page[1]).toBeLessThanOrEqual(0);
+  // A fitting diagram never scrolls; a cramped one keeps only its minimum.
+  expect(reach.scrolls).toBe(reach.cramped);
+  if(reach.cramped){expect(reach.overflowY).toBe('auto');expect(Math.abs(reach.diagramHeight-reach.minHeight)).toBeLessThan(1);}
+  return reach;
+}
 
 test('compact Flow exposes a complete area relationship and preserves inspection after edits',async({page})=>{
   for(const viewport of [{width:320,height:568},{width:844,height:390}]) {
@@ -125,13 +154,16 @@ test('dense Flight coordinates fit whole and keep a stable target frame through 
       if(source===84)await page.locator('[data-empty="0"]').click();
       for(const op of source===64?'DSQHA':'Q')await place(page,op);
       expect(await page.locator('.ring-outer').evaluateAll(rings=>rings.map(ring=>[ring.getAttribute('cx'),ring.getAttribute('cy')]))).toEqual(frame);
+      const reach=await denseFlightReach(page);
+      expect(reach.cramped).toBe(viewport.width!==1365);
       const measured=await page.locator('#scene').evaluate(scene=>{
         const boundary=scene.getBoundingClientRect(),labels=[...scene.querySelectorAll('.target-label .katex-html')].map(el=>el.getBoundingClientRect());
         return {inside:labels.every(r=>r.left>=boundary.left&&r.right<=boundary.right&&r.top>=boundary.top&&r.bottom<=boundary.bottom),
           overlap:labels.some((a,i)=>labels.slice(i+1).some(b=>a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top)),
           pageWidth:document.documentElement.scrollWidth,viewport:innerWidth};
       });
-      expect(measured.inside).toBe(true);expect(measured.overlap).toBe(false);expect(measured.pageWidth).toBeLessThanOrEqual(measured.viewport);
+      if(!reach.cramped)expect(measured.inside).toBe(true);
+      expect(measured.overlap).toBe(false);expect(measured.pageWidth).toBeLessThanOrEqual(measured.viewport);
       await page.locator('#tab-flow').click();await expect(page.locator('#scene')).not.toHaveClass(/has-flight-callouts/);
     }
   }
@@ -162,8 +194,21 @@ test('dense wave Flight reserves the whole diagram above or beside its recipe th
         axisError:Math.max(...axisErrors),width:document.documentElement.scrollWidth,viewport:innerWidth
       };
     });
-    expect(layout.contained).toBe(true);expect(layout.plotFits).toBe(true);expect(layout.recipeOverlap).toBe(false);
-    expect(layout.labelsFit).toBe(true);expect(layout.axisError).toBeLessThan(1);expect(layout.width).toBeLessThanOrEqual(layout.viewport);
+    const reach=await denseFlightReach(page);
+    // Wide desktops have room for every coordinate; the short frames below
+    // cannot hold the minimum plot and both callout rows, so they scroll.
+    if([1440,1512].includes(width))expect(reach.cramped).toBe(false);
+    if([1146,844].includes(width))expect(reach.cramped).toBe(true);
+    if(!reach.cramped) {
+      expect(layout.contained).toBe(true);expect(layout.recipeOverlap).toBe(false);expect(layout.labelsFit).toBe(true);
+    } else {
+      const scene=page.locator('#scene'),top=()=>scene.evaluate(el=>el.scrollTop);
+      await scene.evaluate(el=>{el.scrollTop=0;});await scene.hover();await page.mouse.wheel(0,120);
+      await expect.poll(top).toBeGreaterThan(0);expect(await page.evaluate(()=>scrollY)).toBe(0);
+      await scene.evaluate(el=>{el.scrollTop=0;});await page.locator('#tab-flight').focus();await page.keyboard.press('PageDown');
+      await expect.poll(top).toBeGreaterThan(0);await scene.evaluate(el=>{el.scrollTop=0;});
+    }
+    expect(layout.plotFits).toBe(true);expect(layout.axisError).toBeLessThan(1);expect(layout.width).toBeLessThanOrEqual(layout.viewport);
   }
   for(const source of [54,80]) {
     await page.setViewportSize({width:1440,height:900});await ready(page,source);
