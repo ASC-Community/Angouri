@@ -39,7 +39,7 @@ const clues:Record<number,[string,string]> = {
 export function puzzleHints(state:State,result:Result) {
   const id=state.sourceId,chapter=chapterIndex(id),level=LEVELS[id-1];
   const [first,more]=clues[id]??[level.hint,'Compare the current construction with the required targets, one relationship at a time.'];
-  const view=[74,75,77,82,83].includes(id)?'function':id>=43||chapter>=4||[24,14,5,15,22,16,17,18,19,20,21,23].includes(id)?'flow':'function';
+  const view=[74,75,77].includes(id)?'function':id>=43||chapter>=4||[24,14,5,15,22,16,17,18,19,20,21,23].includes(id)?'flow':'function';
   const label=view==='function'?'Equation':'Flow',guide=result.heightGuide;
   const gap=guide&&[25,26,28,11].includes(id)?`<div class="hint-reading">${tex(`${heightGapFormula(guide)}=${rationalTex(guide.target)}`)}<span>Required height gap</span></div>`:'';
   const geometry=[45,46,47].includes(id),chapterName=chapter>=0?CHAPTERS[chapter].name:MIXED_PUZZLES.includes(id)?CHAPTERS[9].name:geometry?'Geometry':'Calculus';
@@ -55,7 +55,7 @@ function viewPurpose(id:number,view:string,hasGuide:boolean) {
   if(id===25)return 'Compare the current gap with the required gap.';
   if(hasGuide)return 'Compare the current signed gap with the required gap.';
   if([45,46,47].includes(id))return 'Check the exact centre and distance conditions.';
-  if([74,75,77,82,83].includes(id))return 'Inspect the exact squared-height relation.';
+  if([74,75,77].includes(id))return 'Inspect the exact squared-height relation.';
   if(view==='flow'&&id>=32&&id<=42)return 'Trace what changes before and after the fixed station.';
   if(view==='flow')return 'Trace how each operation changes the curve.';
   return 'Compare the current exact readings with the targets.';

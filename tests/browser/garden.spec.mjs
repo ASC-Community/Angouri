@@ -59,6 +59,102 @@ test('garden Tab order follows labels across the top and bottom without changing
   }
 });
 
+// Top label row left to right, then the bottom row. This differs from paint order.
+const LABEL_ORDER=[74,77,83,73,75,76,72,82].map(id=>`[data-garden-piece="${id}"]`);
+async function tabThrough(page,key,selectors) {
+  for(const selector of selectors){await page.keyboard.press(key);await expect(page.locator(selector)).toBeFocused();}
+}
+
+test('garden Tab keeps the label order while a reveal holds Done disabled',async({page})=>{
+  // Hold the real reveal at its first frame, so the walk cannot depend on
+  // finishing before the collection enables Done.
+  await page.emulateMedia({reducedMotion:'no-preference'});await page.clock.install();await ready(page,82);
+  await page.locator('[data-op="H"]').click();await idle(page);
+  let releaseArtwork,artworkRequested;
+  const artworkGate=new Promise(resolve=>releaseArtwork=resolve),requested=new Promise(resolve=>artworkRequested=resolve);
+  await page.route('**/cucumber.svg',async route=>{
+    if(route.request().resourceType()==='fetch'){artworkRequested();await artworkGate;}
+    await route.continue();
+  });
+  // A pointer throw keeps the opened garden's focus neutral.
+  await page.locator('#launch').click();await requested;await expect(page.locator('.garden-loading')).toBeVisible();
+  await page.clock.pauseAt(await page.evaluate(()=>Date.now()+250));releaseArtwork();
+  const done=page.locator('[data-garden-done]');
+  await expect(page.locator('[data-garden-piece]')).toHaveCount(8);await expect(done).toBeDisabled();
+  await expect(page.locator('#garden-dialog')).toBeFocused();
+  // The last DOM-order piece is the cucumber; the last label is Bamboo.
+  await tabThrough(page,'Shift+Tab',[...LABEL_ORDER].reverse());
+  await tabThrough(page,'Shift+Tab',['#garden-back',LABEL_ORDER.at(-1)]);
+  await tabThrough(page,'Tab',['#garden-back',...LABEL_ORDER,'#garden-back']);
+  await expect(done).toBeDisabled();await expect(page.locator('.garden-collection')).toHaveCount(1);
+  await page.clock.resume();await expect(done).toBeEnabled();
+  await tabThrough(page,'Shift+Tab',['[data-garden-done]',LABEL_ORDER.at(-1)]);
+  await tabThrough(page,'Tab',['[data-garden-done]','#garden-back']);
+});
+
+test('a neutral garden arrival sends Tab to Back and Shift+Tab to the last control',async({page})=>{
+  await ready(page);
+  for(const [key,first] of [['Tab','#garden-back'],['Shift+Tab','[data-garden-done]']]) {
+    await page.locator('#picture-open').click();await expect(page.locator('[data-garden-piece]')).toHaveCount(8);
+    await expect(page.locator('#garden-dialog')).toBeFocused();await expect(page.locator('[data-garden-done]')).toBeEnabled();
+    await tabThrough(page,key,[first,key==='Tab'?LABEL_ORDER[0]:LABEL_ORDER.at(-1)]);
+    await page.keyboard.press('Escape');await expect(page.locator('#garden-dialog')).toBeHidden();
+  }
+});
+
+test('a garden load error keeps native Tab order through Try again',async({page})=>{
+  await page.route('**/cucumber.svg',route=>route.request().resourceType()==='fetch'?route.fulfill({status:503,body:''}):route.continue());
+  await ready(page);
+  for(const [key,first] of [['Tab','#garden-back'],['Shift+Tab','[data-garden-retry]']]) {
+    await page.locator('#picture-open').click();await expect(page.locator('[data-garden-retry]')).toBeVisible();
+    await expect(page.locator('[data-garden-piece]')).toHaveCount(0);await expect(page.locator('#garden-dialog')).toBeFocused();
+    const second=first==='#garden-back'?'[data-garden-retry]':'#garden-back';
+    await tabThrough(page,key,[first,second,first]);
+    await tabThrough(page,key==='Tab'?'Shift+Tab':'Tab',[second,first]);
+    await page.keyboard.press('Escape');await expect(page.locator('#garden-dialog')).toBeHidden();
+  }
+});
+
+test('focused garden pieces show a Space cue above their visible label',async({page},testInfo)=>{
+  const cue=page.locator('.keyboard-focus-cue');
+  // Zero when Space rests at the label's top-left focus edge, inside the
+  // dialog, without covering any part of the label's name.
+  const misplaced=piece=>piece.evaluate(element=>{
+    const space=document.querySelector('.keyboard-focus-cue:not([hidden]) .keyboard-activate:not([hidden])');
+    if(!space||!space.getClientRects().length)return 1000;
+    const cap=space.getBoundingClientRect(),label=element.querySelector('.garden-piece-label').getBoundingClientRect();
+    const name=element.querySelector('.garden-piece-label text').getBoundingClientRect(),dialog=element.closest('dialog').getBoundingClientRect();
+    const overlap=Math.max(0,Math.min(cap.right,name.right)-Math.max(cap.left,name.left))*Math.max(0,Math.min(cap.bottom,name.bottom)-Math.max(cap.top,name.top));
+    const outside=Math.max(0,dialog.left-cap.left,dialog.top-cap.top,cap.right-dialog.right,cap.bottom-dialog.bottom);
+    return Math.max(overlap*1000,outside*1000,Math.abs(cap.left+6-label.left),Math.abs(cap.bottom+1-label.top));
+  });
+  for(const size of [{width:1146,height:850},{width:320,height:568},{width:844,height:390}]) {
+    await page.setViewportSize(size);await ready(page);
+    await page.locator('#picture-open').focus();await page.keyboard.press('Space');await expect(page.locator('[data-garden-piece]')).toHaveCount(8);
+    await expect(page.locator('#garden-back')).toBeFocused();
+    for(const selector of LABEL_ORDER) {
+      const piece=page.locator(selector);await page.keyboard.press('Tab');await expect(piece).toBeFocused();
+      await expect(piece).toHaveAttribute('aria-keyshortcuts','Space Enter');
+      await expect(page.locator('.keyboard-activate:visible')).toHaveText('Space');
+      await expect(page.locator('.keyboard-direction-key:visible,.keyboard-delete:visible')).toHaveCount(0);
+      await expect.poll(()=>misplaced(piece)).toBeLessThan(1);
+      const id=await piece.getAttribute('data-garden-piece');
+      if(size.height>400&&['74','77'].includes(id))await page.screenshot({path:testInfo.outputPath(`garden-cue-${size.width}-${id}.png`)});
+    }
+    // The cue follows the label after the picture refits it, including a
+    // height-only change that rescales the picture.
+    const bamboo=page.locator(LABEL_ORDER.at(-1));
+    for(const next of [{width:size.width<600?700:420,height:size.height},{width:size.width,height:size.height+120},size]) {
+      await page.setViewportSize(next);await expect(bamboo).toBeFocused();await expect.poll(()=>misplaced(bamboo)).toBeLessThan(1);
+    }
+    // Shift hides and restores labels; a pointer action removes the cue.
+    await page.keyboard.press('Shift');await expect(cue).toBeHidden();
+    await page.keyboard.press('Shift');await expect.poll(()=>misplaced(bamboo)).toBeLessThan(1);
+    await page.locator('.garden-heading h2').click();await expect(cue).toBeHidden();
+    await page.keyboard.press('Escape');
+  }
+});
+
 test('a keyboard picture completion waits for collection then focuses Done before Next',async({page})=>{
   await page.emulateMedia({reducedMotion:'no-preference'});await ready(page,82);await page.locator('[data-op="H"]').click();await idle(page);
   await page.keyboard.press('Enter');await expect(page.locator('#garden-dialog')).toBeVisible();

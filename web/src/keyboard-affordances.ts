@@ -12,7 +12,7 @@ function scrollDirections(element:HTMLElement):Directions {
   return x?(y?'xy':'x'):(y?'y':'');
 }
 
-function anchorVisible(element:HTMLElement,rect:DOMRect,anchorY:number,anchorBottom=anchorY):boolean {
+function anchorVisible(element:Element,rect:DOMRect,anchorY:number,anchorBottom=anchorY):boolean {
   let left=0,right=innerWidth,top=0,bottom=innerHeight;
   for(let parent=element.parentElement;parent;parent=parent.parentElement) {
     const style=getComputedStyle(parent),clipsX=/auto|scroll|hidden|clip/.test(style.overflowX),clipsY=/auto|scroll|hidden|clip/.test(style.overflowY);
@@ -40,15 +40,19 @@ export function installKeyboardAffordances(documentRoot:Document) {
     documentRoot.querySelector<HTMLElement>(`#${id}`)?.setAttribute('title',`${id==='undo'?'Undo':'Redo'} (${label})`);
   }
   const showCue=()=>{
-    const active=documentRoot.activeElement;
-    if(documentRoot.documentElement.dataset.focusModality!=='keyboard'||!(active instanceof HTMLElement)||!active.getClientRects().length){cue.hidden=true;return;}
+    const focused=documentRoot.activeElement;
+    // Picture pieces are SVG buttons. Anchor their cue to the visible name
+    // label; the artwork's bounding box spans unrelated parts of the lake.
+    const label=focused instanceof SVGElement&&focused.matches('[data-garden-piece]')?focused.querySelector<SVGGElement>('.garden-piece-label'):null;
+    const active=label?focused as SVGElement:focused instanceof HTMLElement?focused:null;
+    if(documentRoot.documentElement.dataset.focusModality!=='keyboard'||!active||!active.getClientRects().length){cue.hidden=true;return;}
     let directions:Directions='',knob=false;
     if(active.matches('input[type=range]:not(:disabled)')){directions='x';knob=true;}
     else if(active.matches('[data-circle-handle]'))directions='xy';
     else if(active.matches('.part-body'))directions='xdown';
     else if(active.matches('[role=tab]'))directions=(active.closest<HTMLElement>('[role=tablist]')?.dataset.tabDirections as Directions|undefined)??'x';
     else if(active.matches('.empty-slot'))directions='x';
-    else if(active.matches(READERS))directions=scrollDirections(active);
+    else if(active instanceof HTMLElement&&active.matches(READERS))directions=scrollDirections(active);
     if(active.id==='tab-flight'&&scrollDirections(documentRoot.querySelector<HTMLElement>('#scene')!).includes('y'))directions='xy';
     if(documentRoot.documentElement.dataset.shortcutLabels==='hidden'&&!knob){cue.hidden=true;return;}
     const dedicated=active.matches('#launch,#rethrow,#undo,#redo,#reset');
@@ -70,7 +74,7 @@ export function installKeyboardAffordances(documentRoot:Document) {
     }
     const host=active.closest('dialog')??documentRoot.body;
     if(cue.parentElement!==host)host.append(cue);
-    const rect=(active.querySelector('.ingredient-surface')??active).getBoundingClientRect();
+    const rect=(label??active.querySelector('.ingredient-surface')??active).getBoundingClientRect();
     // Floating cues must disappear with their control when a reader is
     // scrolled manually. Clamping an offscreen control's badge to the viewport
     // would detach it from both the control and its focus ring.
@@ -88,9 +92,13 @@ export function installKeyboardAffordances(documentRoot:Document) {
       if(getComputedStyle(slider).direction==='rtl')progress=1-progress;
       width=60;height=34;left=rect.left+9.5+progress*(rect.width-19)-width/2;top=rect.top+(rect.height-height)/2;
     }
+    // Picture labels pad their names by only a few pixels. Rest Space on the
+    // label's outer focus edge instead of crossing the name, within the dialog.
+    if(label)top=rect.top-height-1;
+    const bounds=label?host.getBoundingClientRect():new DOMRect(0,0,window.innerWidth,window.innerHeight);
     cue.style.width=`${width}px`;cue.style.height=`${height}px`;
-    cue.style.left=`${Math.max(2,Math.min(window.innerWidth-width-2,left))}px`;
-    cue.style.top=`${Math.max(2,Math.min(window.innerHeight-height-2,top))}px`;
+    cue.style.left=`${Math.max(bounds.left+2,Math.min(bounds.right-width-2,left))}px`;
+    cue.style.top=`${Math.max(bounds.top+2,Math.min(bounds.bottom-height-2,top))}px`;
     cue.hidden=false;
   };
   const resize=new ResizeObserver(()=>schedule());
@@ -108,6 +116,10 @@ export function installKeyboardAffordances(documentRoot:Document) {
       if(reader.matches('.value-table tbody'))reader.setAttribute('aria-label','Comparison values');
       current.add(reader);for(const child of reader.children)current.add(child);
     }
+    // The garden refits a focused piece's label after the picture resizes.
+    // Observe that label so its cue follows the final responsive geometry.
+    const focused=documentRoot.activeElement,label=focused?.matches('[data-garden-piece]')?focused.querySelector('.garden-piece-label'):null;
+    if(label)current.add(label);
     // A div reports tabIndex=-1 even when Firefox implicitly makes its
     // overflow scrollable by Tab. Explicitly opt containers out of that stop.
     for(const element of documentRoot.querySelectorAll<HTMLElement>(CONTAINERS))if(element.getAttribute('tabindex')!=='-1')element.tabIndex=-1;
@@ -131,7 +143,7 @@ export function installKeyboardAffordances(documentRoot:Document) {
       // the next layout pass can leave them on a departing empty slot for
       // the first frame of a move that does not replace the rail markup.
       if(event.target.matches('.part-body,.empty-slot,.ingredient'))showCue();else cue.hidden=true;
-    }
+    } else cue.hidden=true;
     schedule();
   };
   const key=(event:KeyboardEvent)=>{

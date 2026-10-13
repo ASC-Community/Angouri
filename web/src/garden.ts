@@ -139,6 +139,9 @@ export class Garden {
   ) {
     root.addEventListener('click',this.click);
     (root.closest('dialog')??root).addEventListener('keydown',this.keydown);
+    // Capture before the generic dialog boundary, which wraps by DOM order.
+    // While Done is disabled, that order ends at the last painted piece.
+    window.addEventListener('keydown',this.tab,true);
     root.addEventListener('pointermove',this.point);
     root.addEventListener('pointerleave',this.clearPoint);
     root.addEventListener('pointercancel',this.clearPoint);
@@ -351,7 +354,7 @@ export class Garden {
     const contours=([74,77].includes(piece.sourceId)?[joinedClosed(paths)]:paths).map(points=>[74,77].includes(piece.sourceId)?silhouette:pathData(points));
     const curvePaths=contours.map(d=>`<path class="garden-art-path" pathLength="1" d="${d}"/>`).join('');
     const canonical=piece.sourceId===77?`<svg class="garden-canonical" x="${piece.box.x}" y="${piece.box.y}" width="${piece.box.width}" height="${piece.box.height}" viewBox="0 0 64 64" preserveAspectRatio="none" overflow="visible" aria-hidden="true">${this.canonicalMarkup}</svg>`:'';
-    return `<g class="garden-piece garden-piece-${piece.className} ${done?'is-earned':'is-missing'}${piece.sourceId===this.revealSource?' is-new-piece':''}" role="button" tabindex="0" data-garden-piece="${piece.sourceId}" data-garden-build="${piece.sourceId}" data-complete="${done}" data-garden-complete="${done}" aria-label="${action} ${name}"><g class="garden-piece-art">${flowerBase}${fill}${curvePaths}${details}${ties}${canonical}${pieceHighlight(piece,contours,silhouette)}</g><g class="garden-piece-label" data-label-row="${top?'top':'bottom'}" aria-hidden="true"><rect x="${labelX}" y="${labelY}" width="0" height="0" rx="4"/><text x="${labelX}" y="${labelY}">${label}${done?'<tspan class="garden-piece-check" dx="4">&#10003;</tspan>':''}</text></g></g>`;
+    return `<g class="garden-piece garden-piece-${piece.className} ${done?'is-earned':'is-missing'}${piece.sourceId===this.revealSource?' is-new-piece':''}" role="button" tabindex="0" aria-keyshortcuts="Space Enter" data-garden-piece="${piece.sourceId}" data-garden-build="${piece.sourceId}" data-complete="${done}" data-garden-complete="${done}" aria-label="${action} ${name}"><g class="garden-piece-art">${flowerBase}${fill}${curvePaths}${details}${ties}${canonical}${pieceHighlight(piece,contours,silhouette)}</g><g class="garden-piece-label" data-label-row="${top?'top':'bottom'}" aria-hidden="true"><rect x="${labelX}" y="${labelY}" width="0" height="0" rx="4"/><text x="${labelX}" y="${labelY}">${label}${done?'<tspan class="garden-piece-check" dx="4">&#10003;</tspan>':''}</text></g></g>`;
   }
 
   /** The outline and canonical body use the same piece box, including the reveal. */
@@ -528,19 +531,24 @@ export class Garden {
     this.root.querySelector('.garden-paper')?.classList.remove('is-pointing');
   };
 
+  private tab=(event:KeyboardEvent)=>{
+    const dialog=this.root.closest('dialog');
+    if(event.key!=='Tab'||event.defaultPrevented||event.altKey||event.ctrlKey||event.metaKey||!this.active||!dialog?.open)return;
+    // Loading and retry states keep native order, including Try again.
+    if(!(event.target instanceof Element)||!dialog.contains(event.target)||!this.root.querySelector('[data-garden-piece]'))return;
+    // Tab follows the two label rows, independently of SVG paint order.
+    // Reordering the artwork would bring water details above the bank.
+    const pieces=[...PIECES].sort((a,b)=>a.labelAt[1]-b.labelAt[1]||a.labelAt[0]-b.labelAt[0]);
+    const controls=[dialog.querySelector<HTMLElement>('#garden-back'),
+      ...pieces.map(piece=>this.root.querySelector<SVGGElement>(`[data-garden-piece="${piece.sourceId}"]`)),
+      this.root.querySelector<HTMLElement>('[data-garden-done]')].filter((control):control is HTMLElement|SVGGElement=>!!control&&!control.matches(':disabled'));
+    // From the neutral dialog container, Tab reaches Back and Shift+Tab the last control.
+    const at=event.target===dialog?(event.shiftKey?0:controls.length-1):controls.indexOf(event.target as HTMLElement|SVGGElement);
+    if(at>=0){event.preventDefault();controls[(at+(event.shiftKey?controls.length-1:1))%controls.length].focus({preventScroll:true});}
+  };
+
   private keydown=(event:KeyboardEvent)=>{
     if(event.defaultPrevented||event.altKey||event.ctrlKey||event.metaKey)return;
-    if(event.key==='Tab'&&this.active) {
-      // Tab follows the two label rows, independently of SVG paint order.
-      // Reordering the artwork would bring water details above the bank.
-      const pieces=[...PIECES].sort((a,b)=>a.labelAt[1]-b.labelAt[1]||a.labelAt[0]-b.labelAt[0]);
-      const controls=[this.root.closest('dialog')?.querySelector<HTMLElement>('#garden-back'),
-        ...pieces.map(piece=>this.root.querySelector<SVGGElement>(`[data-garden-piece="${piece.sourceId}"]`)),
-        this.root.querySelector<HTMLElement>('[data-garden-done]')].filter((control):control is HTMLElement|SVGGElement=>!!control&&!control.matches(':disabled'));
-      const at=controls.indexOf(event.target as HTMLElement|SVGGElement);
-      if(at>=0){event.preventDefault();controls[(at+(event.shiftKey?controls.length-1:1))%controls.length].focus({preventScroll:true});}
-      return;
-    }
     if(event.repeat||event.key!=='Enter'&&event.key!==' ')return;
     const source=(event.target as Element).closest<SVGGElement>('[data-garden-build]');
     if(!source||!this.root.contains(source))return;

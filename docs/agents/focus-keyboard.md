@@ -33,3 +33,5 @@ Dialog scroll wrappers do not acquire implicit Tab stops. How to play and the ve
 ## Critic review: phase, synthesis and compact play
 
 After a finite Throw/Rethrow disables its focused action, restore that action only if focus still rests on the document body. A deliberate focus change, pointer action or Tab cancels restoration. Library Save/full/Delete failures must be visible inside the open dialog and preserve drafts and stored data; successful recovery clears both dialog and global errors. Save accepts Enter without discarding focus during work.
+
+Garden Tab order follows the visible label rows even while collection disables Done. Neutral arrival reaches Back with Tab and the last available control with Shift+Tab; loading and retry states keep their actual available controls. Anchor a focused picture piece's Space cue above its visible name label, clear of the text and inside the dialog. Keep it attached through width and height reflow, with the same Shift and pointer visibility rules as other key labels.
