@@ -135,10 +135,32 @@ export const CURVES = [
   { id:49, name:'Paired steep line', latex:'h^2=2x-4', path:'M18 18Q20 3 30 1M18 18Q20 33 30 35' },
   { id:66, name:'A roof, both sides', latex:'h^2=\\frac{x(4-x)}4', path:'M3 18Q18-8 33 18Q18 44 3 18' },
   { id:67, name:'Paired bowl', latex:'h^2=\\frac{x^2}{2}', path:'M3 18L33 3M3 18L33 33' }
-];
+] as const;
+type CurveId=typeof CURVES[number]['id'];
+// Chooser equivalence includes the equation, representation and domain. The
+// four-unit cubic (64), for example, is not the two-unit Cubic option (5).
+// null explicitly records a starting construction with no chooser equivalent.
+const curveAliases:Readonly<Partial<Record<number,CurveId|null>>>={
+  1:1,2:2,3:1,4:4,5:5,6:6,7:4,8:8,9:9,10:4,
+  11:4,12:8,13:8,14:8,15:15,16:16,17:17,18:18,19:17,20:16,
+  21:21,22:15,23:23,24:1,25:1,26:26,27:4,28:4,29:29,30:29,
+  31:9,32:8,33:4,34:4,35:35,36:9,37:16,38:17,39:9,40:17,
+  41:21,42:42,43:43,44:43,45:43,46:43,47:43,48:48,49:49,50:50,
+  51:50,52:50,53:50,54:50,55:50,56:50,57:50,58:4,59:50,60:50,
+  61:50,62:50,63:50,64:null,65:50,66:66,67:67,68:null,69:null,70:null,
+  71:49,72:null,73:9,74:null,75:48,76:4,77:48,78:48,79:50,80:null,
+  81:4,82:50,83:66,84:50,85:67
+};
+const extendedSources=new Map(extensions.map(level=>[level.id,level]));
+// Earlier sources use [0,4], except for the original short cubic.
+const legacyEndpoints:Readonly<Partial<Record<number,number>>>={5:2};
+export const sourceInfo=(sourceId:number)=>({
+  endpoint:extendedSources.get(sourceId)?.endpoint??legacyEndpoints[sourceId]??4,
+  curveId:curveAliases[sourceId]??null
+});
 export const isCircleSource=(id:number)=>id>=43&&id<=47;
-export const isRelationSource=(id:number)=>extensions.some(level=>level.id===id&&level.relation==='height-squared');
-export const curveId=(sourceId:number)=>isCircleSource(sourceId)?43:[3,24,25].includes(sourceId)?1:[7,10,11,27,28,33,34,58].includes(sourceId)?4:[12,13,14,32].includes(sourceId)?8:[31,36,39].includes(sourceId)?9:[19,38,40].includes(sourceId)?17:[20,37].includes(sourceId)?16:sourceId===22?15:sourceId===30?29:sourceId===41?21:sourceId===85?67:sourceId===84?50:sourceId===64?5:sourceId>=50&&sourceId<=65?50:sourceId;
+export const isRelationSource=(id:number)=>extendedSources.get(id)?.relation==='height-squared';
+export const curveId=(sourceId:number)=>sourceInfo(sourceId).curveId;
 export const fraction = (s: string) => { const [n,d] = s.split('/').map(Number); return n / (d ?? 1); };
 /** Display decimal exponents as mathematical powers, never programming e notation. */
 export const decimalTex = (value:string|number) => {

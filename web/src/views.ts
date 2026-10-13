@@ -1,9 +1,10 @@
 import katex from 'katex';
-import { decimalTex, fraction, isRelationSource, targetHeight, OPS, type Checkpoint, type CurvePath, type Point, type Op, type Result, type State } from './types';
+import { decimalTex, fraction, isRelationSource, sourceInfo, targetHeight, OPS, type Checkpoint, type CurvePath, type Point, type Op, type Result, type State } from './types';
 import { icon } from './icons';
 import { curveEndpointMarks, drawnPaths, flightStrokes, heightsAt } from './geometry';
 import { stationScene, updateStationScene } from './station-scene';
 import { cropVerdict, cropWindow, updateCropWindow, probePoints } from './crop';
+import { targetAttributes, targetMark, targetStatus } from './target-presentation';
 export type Camera = { min: number; max: number; minX?:number; maxX?:number };
 export type Flight = { phase:'ready'|'releasing'|'flying'|'landed'; position:number; release?:number };
 const CUCUMBER_VIEWBOX=64,CUCUMBER_IMAGE_SIZE=58;
@@ -221,7 +222,7 @@ export function transform(state:State,camera:Camera,point:[number,number]) {
     const minX=camera.minX??-1,maxX=camera.maxX??5,relation=isRelationSource(state.sourceId),scale=Math.min((relation?460:322)/(maxX-minX),(relation?310:272)/(camera.max-camera.min));
     return [380+(point[0]-(minX+maxX)/2)*scale,200-(point[1]-(camera.min+camera.max)/2)*scale];
   }
-  const {width,top,bottom}=plotArea(),end=state.sourceId===5?2:4;
+  const {width,top,bottom}=plotArea(),end=sourceInfo(state.sourceId).endpoint;
   return [120+point[0]/end*(width-210),bottom-(point[1]-camera.min)/(camera.max-camera.min)*(bottom-top)];
 }
 export const path=(points:[number,number][],state:State,camera:Camera)=>points.map((v,i)=>`${i?'L':'M'}${transform(state,camera,v).map(n=>n.toFixed(2)).join(',')}`).join(' ');
@@ -229,9 +230,6 @@ export const path=(points:[number,number][],state:State,camera:Camera)=>points.m
 function pathEnds(paths:CurvePath[]|undefined,project:(p:Point)=>number[]) {
   return curveEndpointMarks(paths).map(({point,closed})=>{const [x,y]=project(point);return `<circle class="path-end ${closed?'closed':'open'}" cx="${x}" cy="${y}" r="2.6"/>`;}).join('');
 }
-export const targetStatus=(checkpoint:Checkpoint,state:State,flight:Flight)=>state.mode!=='remix'&&(flight.phase==='flying'||flight.phase==='landed')&&(checkpoint.phase??fraction(checkpoint.x)/(state.sourceId===5?2:4))<=flight.position+1e-8?(checkpoint.hit?'hit':'miss'):'waiting';
-export const targetDescription=(checkpoint:Checkpoint,index:number,status:string)=>`Target ${index+1}: ${status==='waiting'?(checkpoint.hit?'path matches, ready to throw':'path misses'):(checkpoint.hit?'hit confirmed':'miss confirmed')}`;
-export const targetMark=(status:string)=>status==='hit'?icon('check',13):status==='miss'?icon('close',13):'';
 export function flightView(state:State,result:Result,camera:Camera,flight:Flight) {
   const {width,height,top,bottom}=plotArea();
   const circular=!!state.circle||!!result.relation;
@@ -241,24 +239,24 @@ export function flightView(state:State,result:Result,camera:Camera,flight:Flight
   const rings=(state.mode==='remix'?[]:result.checkpoints).map((c,i)=>{
     const [x,y]=transform(state,camera,[fraction(c.x),targetHeight(c)]),status=targetStatus(c,state,flight);
     const radius=radii[i];
-    return `<g class="ring ${status}" data-ring="${i}" data-target="${i}" data-match="${c.hit?'hit':'miss'}" data-status="${status}" aria-label="${targetDescription(c,i,status)}"><circle class="ring-burst" cx="${x}" cy="${y}" r="${radius*1.1}"/><circle class="ring-outer" cx="${x}" cy="${y}" r="${radius}"/><circle class="ring-inner" cx="${x}" cy="${y}" r="${radius*.65}"/><g class="target-badge" transform="translate(${x} ${y}) scale(${radius/20})"><circle r="12"/><path class="hit-mark" d="m-7 0 5 5 9-10"/><path class="miss-mark" d="m-5-5 10 10m0-10-10 10"/></g></g>`;
+    return `<g class="ring ${status}" data-ring="${i}" ${targetAttributes(c,i,status,'target')}><circle class="ring-burst" cx="${x}" cy="${y}" r="${radius*1.1}"/><circle class="ring-outer" cx="${x}" cy="${y}" r="${radius}"/><circle class="ring-inner" cx="${x}" cy="${y}" r="${radius*.65}"/><g class="target-badge" transform="translate(${x} ${y}) scale(${radius/20})"><circle r="12"/><path class="hit-mark" d="m-7 0 5 5 9-10"/><path class="miss-mark" d="m-5-5 10 10m0-10-10 10"/></g></g>`;
   }).join('');
   const targetLabels=(state.mode==='remix'?[]:result.checkpoints).map((c,i)=>{
     const [x,y]=transform(state,camera,[fraction(c.x),targetHeight(c)]);
     // Put labels toward the open middle of the plot, clear of the launcher and
     // axis ticks. Their gap includes CSS pixels because the text does not shrink.
     const direction=circular?(y<200?-1:1):y<(top+bottom)/2?1:-1;
-    return `<span class="target-label" data-match="${c.hit?'hit':'miss'}" data-plot-x="${x}" data-plot-y="${y}" data-height="${targetHeight(c)}" data-radius="${radii[i]}">${flightMath(circular||callouts?`(${rationalTex(c.x)},${targetLatex(c)})`:`h = ${targetLatex(c)}`,x,y+20*direction,circular||callouts?96:70,'target-height',16*direction)}</span>`;
+    return `<span class="target-label" ${targetAttributes(c,i,targetStatus(c,state,flight))} data-plot-x="${x}" data-plot-y="${y}" data-height="${targetHeight(c)}" data-radius="${radii[i]}">${flightMath(circular||callouts?`(${rationalTex(c.x)},${targetLatex(c)})`:`h = ${targetLatex(c)}`,x,y+20*direction,circular||callouts?96:70,'target-height',16*direction)}</span>`;
   }).join('');
   const ticks=circular?Array.from({length:Math.min(25,Math.ceil(camera.maxX!)-Math.floor(camera.minX!)+1)},(_,i)=>{
     const [x]=transform(state,camera,[Math.floor(camera.minX!)+i,0]);
     return `<path class="flight-grid" d="M${x} 40V356" stroke="#dce6d0" stroke-dasharray="2 8"/>`;
-  }).join(''):Array.from({length:(state.sourceId===5?2:4)+1},(_,i)=>{
+  }).join(''):Array.from({length:sourceInfo(state.sourceId).endpoint+1},(_,i)=>{
     const [x]=transform(state,camera,[i,0]);
     return `<path class="flight-grid" d="M${x} ${top}V${bottom}" stroke="#dce6d0" stroke-dasharray="2 8"/>`;
   }).join('');
   const [zeroX,zeroY]=transform(state,camera,[0,0]);
-  const annotations=circular?`${flightMath('0',zeroX-13,zeroY,24,'zero-label',15)}${flightMath('h',zeroX,25,28)}${flightMath('x',575,zeroY,26,'',15)}`:`${Array.from({length:(state.sourceId===5?2:4)+1},(_,i)=>flightMath(String(i),transform(state,camera,[i,0])[0],height-25)).join('')}${flightMath('0',64,zeroY,24,'zero-label',callouts?16:0)}${flightMath('h',zeroX,Math.max(16,top-12),28)}${flightMath('x',width-20,height-25,26)}`;
+  const annotations=circular?`${flightMath('0',zeroX-13,zeroY,24,'zero-label',15)}${flightMath('h',zeroX,25,28)}${flightMath('x',575,zeroY,26,'',15)}`:`${Array.from({length:sourceInfo(state.sourceId).endpoint+1},(_,i)=>flightMath(String(i),transform(state,camera,[i,0])[0],height-25)).join('')}${flightMath('0',64,zeroY,24,'zero-label',callouts?16:0)}${flightMath('h',zeroX,Math.max(16,top-12),28)}${flightMath('x',width-20,height-25,26)}`;
   // A joined open relation can launch from its right-hand end. Reserve room on
   // both sides for the pulled-back rig without changing its mathematical frame.
   return `<div class="flight-diagram"><svg id="flight-svg" ${result.relation?'data-relation="true"':callouts?'data-callouts="true"':''} viewBox="${result.relation?'92 0 576 414':circular?'132 0 496 414':`0 0 ${width} ${height}`}" role="img" aria-label="${result.circle?'A complete circle, travelled counterclockwise from the rightmost point. ':result.relation?'Both real heights of the equation. ':''}${state.mode==='remix'?'Your cucumber’s flight path.':`Your cucumber's flight path through ${result.checkpoints.length} targets.`}">
@@ -323,7 +321,7 @@ export function functionView(state:State,result:Result,flight:Flight) {
   const puzzle=state.mode!=='remix';
   const guide=result.heightGuide;
   const gap=guide?`<tr class="gap-comparison" data-gap-match="${guide.hit}"><th scope="row"><span>Height gap</span><small title="Heights at the highest and lowest targets' positions" aria-label="Height at x=${guide.toX} minus height at x=${guide.fromX}, the positions of the highest and lowest targets">${tex(heightGapFormula(guide))}</small></th><td>${comparisonValue(guide.target,guide.targetLatex,guide.targetNumber)}</td><td>${comparisonValue(guide.actual,guide.actualLatex,guide.stages.at(-1)?.gapNumber)}</td><td><span class="gap-verdict" aria-label="${guide.hit?'Height gap matches':'Height gap does not match'}">${targetMark(guide.hit?'hit':'miss')}</span></td></tr>`:'';
-  const rows=result.checkpoints.map((c,i)=>{const status=c.hit?'hit':'miss',confirmed=targetStatus(c,state,flight);return `<tr data-status="${puzzle?status:'sample'}"><td>${result.relation?tex(`(${rationalTex(c.x)},${targetLatex(c)})`):comparisonValue(c.x)}</td>${puzzle?`<td>${result.relation?comparisonValue(c.lhs!,c.lhsLatex,c.lhsNumber):comparisonValue(c.target,c.targetLatex,c.targetNumber)}</td>`:''}<td>${comparisonValue(c.actual,c.actualLatex,c.actualNumber)}</td>${puzzle?`<td class="verdict-cell"><span class="equation-verdict" data-target="${i}" data-status="${confirmed}" aria-label="${targetDescription(c,i,confirmed)}">${targetMark(status)}</span></td>`:''}</tr>`;}).join('');
+  const rows=result.checkpoints.map((c,i)=>{const status=c.hit?'hit':'miss',confirmed=targetStatus(c,state,flight);return `<tr data-status="${puzzle?status:'sample'}"><td>${result.relation?tex(`(${rationalTex(c.x)},${targetLatex(c)})`):comparisonValue(c.x)}</td>${puzzle?`<td>${result.relation?comparisonValue(c.lhs!,c.lhsLatex,c.lhsNumber):comparisonValue(c.target,c.targetLatex,c.targetNumber)}</td>`:''}<td>${comparisonValue(c.actual,c.actualLatex,c.actualNumber)}</td>${puzzle?`<td class="verdict-cell"><span class="equation-verdict" ${targetAttributes(c,i,confirmed,'target')}>${targetMark(status)}</span></td>`:''}</tr>`;}).join('');
   return `<div class="equation-layout"><div class="equation-frame"><section class="final-equation" tabindex="0" aria-label="Final equation"><div class="equation-content">${equationForms(result)}${cropVerdict(result)}</div></section></div><div class="value-table"><table aria-label="${puzzle?'Compare your equation with the targets':'Sample heights'}"><thead><tr><th>${result.relation?'Target '+tex('(x,h)'):'Position '+tex('x')}</th>${puzzle?'<th>Expected '+(result.relation?tex('h^2'):'')+'</th>':''}<th>${result.relation?'Recipe '+tex('h^2'):puzzle?'Actual':'Height'}</th>${puzzle?`<th><span class="sr-only">Matches target</span>${icon('target',16)}</th>`:''}</tr></thead><tbody>${rows}${gap}</tbody></table></div></div>`;
 }
 
@@ -388,9 +386,9 @@ export function flow(state:State,result:Result,selectedStage:string,probeIndex:n
   const goals=state.mode==='remix'?[]:result.checkpoints;
   const targets=goals.map((c,i)=>{
     const [x,y]=flowPoint(result,[fraction(c.x),targetHeight(c)]),status=targetStatus(c,state,flight);
-    return `<circle class="flow-target" data-target="${i}" data-match="${c.hit?'hit':'miss'}" data-status="${status}" cx="${x}" cy="${y}" r="6"/>`;
+    return `<circle class="flow-target" ${targetAttributes(c,i,status)} cx="${x}" cy="${y}" r="6"/>`;
   }).join('');
-  const goalList=goals.map((c,i)=>{const status=targetStatus(c,state,flight);return `<span class="flow-goal" data-target="${i}" data-match="${c.hit?'hit':'miss'}" data-status="${status}" role="img" aria-label="${targetDescription(c,i,status)}">${tex(`(${rationalTex(c.x)},\\,${targetLatex(c)})`)}<span class="target-result" aria-hidden="true">${targetMark(c.hit?'hit':'miss')}</span></span>`;}).join('');
+  const goalList=goals.map((c,i)=>{const status=targetStatus(c,state,flight);return `<span class="flow-goal" ${targetAttributes(c,i,status,'target')} role="img">${tex(`(${rationalTex(c.x)},\\,${targetLatex(c)})`)}<span class="target-result" aria-hidden="true">${targetMark(c.hit?'hit':'miss')}</span></span>`;}).join('');
   const cards=result.stages.map((stage,i)=>{
     const op=i?state.nodes[i-1].op:undefined,previous=i&&op!=='D'&&op!=='I'?result.stages[i-1]:undefined;
     const tangent=state.nodes[i]?.op==='D',area=state.nodes[i]?.op==='I';

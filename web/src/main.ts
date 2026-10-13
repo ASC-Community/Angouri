@@ -18,8 +18,9 @@ import { captureFlightGeometry,curveMorph,fadeFlightGeometry } from './edit-tran
 import { gardenOrigin } from './garden-collection';
 import { installBlockTooltip } from './block-tooltip';
 import { along, drawnPaths, flightPoints, flightStrokes, nearestIndex, strokePosition, sampledPosition, travelledPaths } from './geometry';
-import { functionView, flow, cropFlowPath, cucumberPose, interpolate, launcherPose, operationTex, path, sizeFlightAnnotations, sizeFlowAnnotations, targetDescription, targetMark, targetStatus, tex, transform, updateFlowProbe, updateFlowCrop, flightView, type Camera, type Flight } from './views';
-import { CHAPTERS, chapterIndex, CURVES, curveId, escape, EXTRA_PUZZLES, GEOMETRY_PUZZLES, MIXED_PUZZLES, OPTIONAL_PUZZLES, fraction, targetHeight, isCapstone, isCircleSource, isMastery, isPicture, LEVELS, OPS, PUZZLE_ORDER, puzzleLabel, type Action, type Artifact, type Circle, type Op, type Response, type Result, type State, type View } from './types';
+import { functionView, flow, cropFlowPath, cucumberPose, interpolate, launcherPose, operationTex, path, sizeFlightAnnotations, sizeFlowAnnotations, tex, transform, updateFlowProbe, updateFlowCrop, flightView, type Camera, type Flight } from './views';
+import { targetStatus, updateTarget } from './target-presentation';
+import { CHAPTERS, chapterIndex, CURVES, curveId, sourceInfo, escape, EXTRA_PUZZLES, GEOMETRY_PUZZLES, MIXED_PUZZLES, OPTIONAL_PUZZLES, fraction, targetHeight, isCapstone, isCircleSource, isMastery, isPicture, LEVELS, OPS, PUZZLE_ORDER, puzzleLabel, type Action, type Artifact, type Circle, type Op, type Response, type Result, type State, type View } from './types';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 installTabStops();
@@ -146,13 +147,7 @@ const cropEditor=new CropEditor($('construction'),()=>state&&result&&pending===0
       updateFlowCrop($('scene'),preview,preview.crop!);
       updateFlowProbe($('scene'),state!,preview,probeIndex);
     }
-    preview.checkpoints.forEach((checkpoint,i)=>document.querySelectorAll<HTMLElement>(`[data-target="${i}"]`).forEach(el=>{
-      const match=checkpoint.hit?'hit':'miss',changed=el.dataset.match!==match;
-      el.dataset.match=match;el.dataset.status='waiting';el.classList.remove('hit','miss','just-hit');el.classList.add('waiting');
-      el.setAttribute('aria-label',targetDescription(checkpoint,i,'waiting'));
-      const mark=el.querySelector('.target-result');if(mark&&changed)mark.innerHTML=targetMark(match);
-    }));
-    $('scene').querySelectorAll<HTMLElement>('.target-label').forEach((label,i)=>label.dataset.match=preview.checkpoints[i].hit?'hit':'miss');
+    preview.checkpoints.forEach((checkpoint,i)=>updateTarget($('scene'),checkpoint,i,'waiting'));
     updateCropVerdict($('scene'),preview);
     updatePrimary();animatePosition();
   },
@@ -696,13 +691,7 @@ function updateTargets() {
   let hits=0;
   result.checkpoints.forEach((checkpoint,i)=>{
     const status=targetStatus(checkpoint,state!,flight);if(status==='hit')hits++;
-    document.querySelectorAll<HTMLElement>(`[data-target="${i}"]`).forEach(el=>{
-      if(el.dataset.status===status)return;
-      el.dataset.status=status;el.classList.remove('waiting','hit','miss','just-hit');el.classList.add(status);
-      if(status==='hit'&&!reduced)el.classList.add('just-hit');
-      if(el.matches('.ring,.equation-verdict,.flow-goal'))el.setAttribute('aria-label',targetDescription(checkpoint,i,status));
-      const mark=el.querySelector<HTMLElement>('.target-result');if(mark){mark.innerHTML=targetMark(checkpoint.hit?'hit':'miss');mark.setAttribute('aria-label',status);}
-    });
+    updateTarget($('scene'),checkpoint,i,status,!reduced);
   });
   if(!throwWon&&result.solved&&result.checkpoints.length>0&&hits===result.checkpoints.length) {
     throwWon=true;
@@ -1023,7 +1012,7 @@ document.addEventListener('click',event=>{
   if(d.circleTarget!==undefined){chooseCircleInspection(Number(d.circleTarget));renderScene();document.querySelector<HTMLElement>(`[data-circle-target="${d.circleTarget}"]`)?.focus({preventScroll:true});return;}
   if(d.level){goToPuzzle(Number(d.level));return;}
   if(pending)return;
-  if(d.cropAdd!==undefined){void perform({type:'crop',from:'0',to:state!.sourceId===5?'2':'4'});return;}
+  if(d.cropAdd!==undefined){void perform({type:'crop',from:'0',to:String(sourceInfo(state!.sourceId).endpoint)});return;}
   if(d.cropClear!==undefined){void perform({type:'crop',clear:true});return;}
   if(button.id==='source-choose'){renderCurves();open('curves-dialog','source-choose');return;}
   if(d.source){

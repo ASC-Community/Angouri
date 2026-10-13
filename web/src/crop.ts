@@ -1,5 +1,5 @@
 import { icon } from './icons';
-import { escape, fraction, type Crop, type Response, type Result, type State } from './types';
+import { escape, fraction, sourceInfo, type Crop, type Response, type Result, type State } from './types';
 import { rationalTex, tex } from './views';
 
 export const probePoints=(result:Result)=>result.crop?result.stages.at(-1)!.points:result.points;
@@ -11,7 +11,7 @@ export function cropControl(state:State,result:Result) {
   const crop=result.crop;
   if(!crop)return state.mode==='remix'?`<button class="crop-add button" data-crop-add title="Keep a horizontal interval">${icon('crop',17)}Crop</button>`:'';
   if(!crop.editable)return `<div class="crop-fixed" aria-label="Fixed drawing interval">${icon('crop',15)}<span>Frame</span>${tex(`${rationalTex(crop.from)}\\le x\\le ${rationalTex(crop.to)}`)}</div>`;
-  const end=state.sourceId===5?2:4;
+  const end=sourceInfo(state.sourceId).endpoint;
   return `<div class="crop-finish" role="group" aria-label="Crop the finished curve"><span class="crop-title">${icon('crop',14)} Crop ${state.mode==='remix'?`<button data-crop-clear aria-label="Remove Crop">${icon('close',14)}</button>`:''}</span>${(['from','to'] as const).map(key=>`<label class="crop-bound"><span>${key==='from'?'From':'To'}</span><input type="range" data-crop-range="${key}" min="0" max="${end}" step="0.25" value="${fraction(crop[key])}" aria-label="Crop ${key}" ${crop.editable?'':'disabled'}><input type="text" inputmode="text" data-crop-exact="${key}" value="${escape(crop[key])}" aria-label="Exact crop ${key}" spellcheck="false" ${crop.editable?'':'readonly'}></label>`).join('')}</div>`;
 }
 
