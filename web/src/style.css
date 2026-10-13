@@ -296,6 +296,8 @@ details { border-top: 1px solid var(--line); padding-top: 14px; margin: 16px 0; 
 }
 @media(max-width:370px) { .scene-toolbar { gap: 7px; }.view-tabs button { padding: 4px 7px; }.view-tabs button [data-icon] { display: none; } }
 @media(max-height:700px) { .game-shell { padding-bottom: 10px; }.site-header { padding-top: 10px; }.puzzle-heading h1 { font-size: 26px; margin-bottom: 3px; }.puzzle-heading>p:last-child { font-size: 11px; } }
+/* A short stacked Equation keeps its main construction whole in the reading row. */
+@media(max-height:620px) { @container inspection (max-width:650px) { .equation-formula { padding-block: 4px; } } }
 @media(max-height:620px) and (max-width:600px) { .puzzle-tip { display: none; }.site-header { gap: 6px 12px; padding-top: 8px; }.puzzle-heading h1 { font-size: 24px; } }
 @media(max-height:520px) and (min-width:481px) {
   .canvas-side { --toolbar-room: 46px; }
@@ -316,7 +318,7 @@ details { border-top: 1px solid var(--line); padding-top: 14px; margin: 16px 0; 
   .scene-toolbar { min-height: var(--toolbar-room); padding: 1px 0; }
   .view-tabs { padding-block: 0; }
   .view-tabs button { min-height: 28px; }
-  .equation-layout { padding: 8px; gap: 8px; }
+  .equation-layout { padding: 8px; gap: 8px; grid-template-rows: minmax(0,1fr) minmax(0,1fr); }
   .flow-controls { padding-block: 3px 0; }
   .flow-goals { padding-block: 0; }
   .flow-line { padding-block: 4px; }

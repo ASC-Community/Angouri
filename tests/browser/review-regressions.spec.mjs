@@ -221,6 +221,35 @@ test('dense wave Flight reserves the whole diagram above or beside its recipe th
   }
 });
 
+test('short stacked Equation shows the whole construction above a readable comparison row',async({page})=>{
+  for(const viewport of [{width:320,height:450},{width:844,height:390}]) {
+    await page.setViewportSize(viewport);
+    for(const [source,op] of [[80,'H'],[68,'A'],[85,'']]) {
+      await ready(page,source,'function');if(op)await place(page,op);
+      await page.evaluate(()=>document.fonts.ready);
+      const layout=await page.locator('#scene').evaluate(scene=>{
+        const pane=scene.querySelector('.final-equation'),p=pane.getBoundingClientRect(),top=p.top+pane.clientTop,bottom=top+pane.clientHeight;
+        // KaTeX struts span each formula row's full height and depth.
+        const struts=[...scene.querySelectorAll('.constructed-formula .strut')].map(strut=>strut.getBoundingClientRect());
+        const tbody=scene.querySelector('.value-table tbody'),b=tbody.getBoundingClientRect(),head=scene.querySelector('.value-table thead').getBoundingClientRect();
+        const row=tbody.querySelector('tr').getBoundingClientRect(),content=scene.querySelector('.equation-content').getBoundingClientRect();
+        const fits=pane.scrollHeight<=pane.clientHeight+1;
+        return {scrollTop:pane.scrollTop,formula:[Math.min(...struts.map(r=>r.top)),Math.max(...struts.map(r=>r.bottom))],view:[top,bottom],
+          headWhole:head.top>=scene.querySelector('.value-table').getBoundingClientRect().top-1&&head.bottom<=b.top+1,
+          rowWhole:row.top>=b.top-1&&row.bottom<=b.top+tbody.clientHeight+1,fits,overflowY:getComputedStyle(pane).overflowY,
+          centerError:Math.abs((content.top+content.bottom)/2-(top+bottom)/2),fontSize:parseFloat(getComputedStyle(scene.querySelector('.equation-formula')).fontSize),
+          page:[document.documentElement.scrollWidth-innerWidth,document.documentElement.scrollHeight-innerHeight]};
+      });
+      expect(layout.scrollTop).toBe(0);
+      expect(layout.formula[0]).toBeGreaterThanOrEqual(layout.view[0]-1);expect(layout.formula[1]).toBeLessThanOrEqual(layout.view[1]+1);
+      expect(layout.headWhole).toBe(true);expect(layout.rowWhole).toBe(true);expect(layout.fontSize).toBeGreaterThanOrEqual(20);
+      expect(layout.page[0]).toBeLessThanOrEqual(0);expect(layout.page[1]).toBeLessThanOrEqual(0);
+      // Longer solved forms stay in the section's own scroller; fitting ones are centered.
+      if(layout.fits)expect(layout.centerError).toBeLessThan(1);else expect(layout.overflowY).toBe('auto');
+    }
+  }
+});
+
 test('implicit calculus describes the incoming squared height before solving both branches',async({page})=>{
   await ready(page,85,'flow');await expect(page.locator('#chapter-step')).toContainText('FINAL MASTERY');
   let before=0,after=6,onOutput=false;
