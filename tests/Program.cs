@@ -3521,6 +3521,54 @@ static class ContractTests
                 "cropped-out creation targets retain the kernel squared-height number");
         }
 
+        // h^2 = -(x-2)^2 is real only at its exact double root. A Crop boundary
+        // within drawing tolerance must neither replace that root nor admit it
+        // when the root lies outside the kept interval.
+        var isolatedPath = JsonNode.Parse("""[{"points":[[2,0]],"startClosed":true,"endClosed":true}]""");
+        var isolatedPlayback = JsonNode.Parse("[[2,0]]");
+        foreach (var (from, to) in new[]
+                 {
+                     ("19999999999/10000000000", "3"), ("1", "20000000001/10000000000"), ("2", "3"), ("1", "2"),
+                     ("199999999999999999999/100000000000000000000", "3"), ("1", "200000000000000000001/100000000000000000000")
+                 })
+        {
+            var isolated = CroppedCreation(["Q", "N"], from, to)["result"]!["relation"]!;
+            True(JsonNode.DeepEquals(isolatedPath, isolated["paths"]),
+                $"Crop [{from}, {to}] keeps only the closed exact isolated root (2, 0)");
+            True(JsonNode.DeepEquals(isolatedPlayback, isolated["playback"]),
+                $"Crop [{from}, {to}] playback visits only the exact isolated root (2, 0)");
+        }
+        foreach (var (from, to) in new[]
+                 {
+                     ("20000000001/10000000000", "3"), ("1", "19999999999/10000000000"),
+                     ("200000000000000000001/100000000000000000000", "3"), ("1", "199999999999999999999/100000000000000000000")
+                 })
+        {
+            var excluded = CroppedCreation(["Q", "N"], from, to)["result"]!["relation"]!;
+            Equal(0, excluded["paths"]!.AsArray().Count,
+                $"Crop [{from}, {to}] never snaps the nearby outside root into its locus");
+            Equal(0, excluded["playback"]!.AsArray().Count,
+                $"Crop [{from}, {to}] has no playback without a kept real point");
+        }
+
+        // h^2 = 1-(x-2)^2/2 has the irrational real tip 2-sqrt(2). Exact
+        // comparison keeps it when Crop starts just before it and excludes it
+        // when Crop starts just after it.
+        double irrationalTip = 2 - Math.Sqrt(2);
+        var beforeTip = CroppedCreation(["Q", "H", "N", "A"], "5857864371/10000000000", "1")["result"]!["relation"]!;
+        True(beforeTip["paths"]!.AsArray().Any(path => path!["points"]!.AsArray().Any(point =>
+                point![0]!.GetValue<double>() == irrationalTip && point[1]!.GetValue<double>() == 0)) &&
+             beforeTip["paths"]!.AsArray().All(path => path!["points"]!.AsArray().All(point =>
+                point![0]!.GetValue<double>() >= irrationalTip)),
+            "a Crop start just before an irrational root joins both heights at that exact zero tip");
+        True(beforeTip["playback"]!.AsArray().Any(point =>
+                point![0]!.GetValue<double>() == irrationalTip && point[1]!.GetValue<double>() == 0),
+            "playback passes through the retained irrational zero tip");
+        var afterTip = CroppedCreation(["Q", "H", "N", "A"], "5857864381/10000000000", "1")["result"]!["relation"]!;
+        True(afterTip["paths"]!.AsArray().Count > 0 && afterTip["paths"]!.AsArray().All(path => path!["points"]!.AsArray().All(point =>
+                point![0]!.GetValue<double>() >= 5857864381d / 10000000000d && point[1]!.GetValue<double>() != 0)),
+            "a Crop start just after an irrational root never snaps that zero into the kept interval");
+
         var smallPositive = CroppedCreation(new[] { "Q" }.Concat(Enumerable.Repeat("H", 48)), "0", "1");
         var positivePaths = smallPositive["result"]!["relation"]!["paths"]!.AsArray();
         Equal(2, positivePaths.Count, "distinct tiny positive and negative height branches never merge by proximity");

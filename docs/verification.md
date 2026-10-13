@@ -2,6 +2,12 @@
 
 Version **0.1.0**, currently unreleased, is implemented on `prototype/vine-playground`. Source now lives in `web/`, `kernel/`, `bridge/` and `tests/`; the old `prototype/` directory is gone. The production artifact is built in `dist/`, with an optional repository-root copy for local preview. The default branch and public deployment are unchanged. The authorized organization-profile consolidation was pushed separately, as recorded below.
 
+## Exact Crop membership of real roots · 13 October 2026
+
+A source-48 `Q N` construction has just one real point, `(2,0)`. Drawing deduplication previously discarded it when a Crop boundary lay within `10⁻⁹`; converting a boundary closer than double precision could also admit the point from outside the exact Crop. Rational and algebraic quadratic roots now establish exact interval membership before drawing coordinates are converted. Both deduplication passes retain admitted roots over nearby ordinary samples, and an interior root keeps its included endpoint ownership.
+
+Opus authored the fix and regressions; an independent Astra review passed four included/excluded probes at `2 ± 10⁻²⁰` and 46 rational/irrational root-comparison checks, including negative quadratic coefficients. Integration adds those four Crop cases permanently. The integrated full Release suite passes **1,349,953 assertions**, and a fresh WebAssembly publish succeeds with the existing five FSharp trimming warnings. The complete browser matrix remains pending. This is bounded regression evidence, not an exhaustive proof for every legal expression.
+
 ## Garden keyboard labels and Crop cancellation · 13 October 2026
 
 Garden Tab now follows the top and bottom label rows even while collection disables Done, and loading/retry states retain their available controls. Its Space cue sits above the visible name label, clear of text and the dialog boundary. Chromium captures at 320 and 1146 pixels were visually reviewed. The exact Crop fields restore their accepted values before a re-render can trigger a change event, so Escape cannot commit discarded text.

@@ -1073,12 +1073,17 @@ module Game =
             Piecewise.compareRational value low < 0 || Piecewise.compareRational value high > 0
         | _ -> false
 
+    // Approximation only anchors drawing. CompareTo gives the exact sign of root-point,
+    // so interval membership never depends on the floating approximation.
+    type private QuadraticRoot = { Approximation: float; CompareTo: Piecewise.Rational -> int }
+
     let private rationalQuadraticRoots (segment: Piecewise.Segment) =
+        let rationalRoot value = { Approximation=Piecewise.toFloat value; CompareTo=fun point -> sign (Piecewise.compareRational value point) }
         match Piecewise.tryQuadratic x segment.Expression with
         | None -> []
         | Some (quadratic,linear,constant) when quadratic.Numerator = BigInteger.Zero ->
             if linear.Numerator = BigInteger.Zero then []
-            else [Piecewise.toFloat (Piecewise.divide (Piecewise.negate constant) linear)]
+            else [rationalRoot (Piecewise.divide (Piecewise.negate constant) linear)]
         | Some (quadratic,linear,constant) ->
             let four = Piecewise.ofInt 4
             let two = Piecewise.ofInt 2
@@ -1092,11 +1097,20 @@ module Game =
                     let denominator = Piecewise.multiply two quadratic
                     [ Piecewise.divide (Piecewise.add (Piecewise.negate linear) root) denominator
                       Piecewise.divide (Piecewise.subtract (Piecewise.negate linear) root) denominator ]
-                    |> List.map Piecewise.toFloat
+                    |> List.map rationalRoot
                 | None ->
                     let a,b,d = Piecewise.toFloat quadratic,Piecewise.toFloat linear,Piecewise.toFloat discriminant
                     let root = Math.Sqrt(d)
-                    [(-b-root)/(2.*a);(-b+root)/(2.*a)]
+                    // root-point = (q ± sqrt(d))/(2a) with rational q. Since d is
+                    // not a rational square, comparing q^2 with d decides the sign.
+                    let compare radicalSign point =
+                        let q = Piecewise.subtract (Piecewise.negate linear) (Piecewise.multiply (Piecewise.multiply two quadratic) point)
+                        let numeratorSign =
+                            if q.Numerator.Sign * radicalSign >= 0 then radicalSign
+                            else radicalSign * sign (Piecewise.compareRational discriminant (Piecewise.square q))
+                        numeratorSign * quadratic.Numerator.Sign
+                    [ { Approximation=(-b-root)/(2.*a); CompareTo=compare -1 }
+                      { Approximation=(-b+root)/(2.*a); CompareTo=compare 1 } ]
 
     let private tryExactSignedSquareRoot (expression: Entity) =
         let one = rational "1"
@@ -1245,12 +1259,15 @@ module Game =
         { Segments=segments; Lines=lines; HasRounding=fn.HasRounding
           Latex=sprintf "\\begin{cases}%s\\end{cases}" (String.concat " \\\\ " rows) }
 
-    let private approximatelyDistinct tolerance values =
+    // Keep the lowest of nearby values, except that an established root
+    // replaces a nearby sample, boundary or bisection estimate.
+    let private approximatelyDistinct tolerance (roots: Set<float>) values =
         values
         |> List.sort
         |> List.fold (fun accumulated value ->
             match accumulated with
-            | previous::_ when abs (value-previous) <= tolerance -> accumulated
+            | previous::rest when abs (value-previous) <= tolerance ->
+                if Set.contains value roots && not (Set.contains previous roots) then value::rest else accumulated
             | _ -> value::accumulated) []
         |> List.rev
 
@@ -1311,12 +1328,24 @@ module Game =
                         // only to anchor the drawn curve, never for validation.
                         rationalQuadraticRoots { segment with Expression=root.Factor }
                     | _ -> []
+                // Exact membership admits a root before any drawing proximity, so
+                // a nearby Crop boundary can neither replace nor capture it.
+                let establishedRoots =
+                    exactRoots @ exactTraversalRoots
+                    |> List.filter (fun root ->
+                        Double.IsFinite(root.Approximation) && root.CompareTo segment.Start >= 0 && root.CompareTo segment.End <= 0)
+                    |> List.map (fun root -> max startValue (min endValue root.Approximation),root)
+                let rootValues = establishedRoots |> List.map fst |> Set.ofList
+                let interiorRootAfterStart,interiorRootBeforeEnd =
+                    establishedRoots |> List.filter (fun (_,root) -> root.CompareTo segment.Start > 0) |> List.map fst |> Set.ofList,
+                    establishedRoots |> List.filter (fun (_,root) -> root.CompareTo segment.End < 0) |> List.map fst |> Set.ofList
                 let baseCandidates =
-                    startValue :: endValue :: exactRoots @ exactTraversalRoots @
+                    (startValue :: endValue ::
                         (sampleXs |> List.map Piecewise.toFloat |> List.filter (fun value -> value >= startValue && value <= endValue))
-                    |> List.filter (fun value -> Double.IsFinite(value) && value >= startValue-tolerance && value <= endValue+tolerance)
-                    |> List.map (fun value -> max startValue (min endValue value))
-                    |> approximatelyDistinct tolerance
+                     |> List.filter (fun value -> Double.IsFinite(value) && value >= startValue-tolerance && value <= endValue+tolerance)
+                     |> List.map (fun value -> max startValue (min endValue value)))
+                    @ (establishedRoots |> List.map fst)
+                    |> approximatelyDistinct tolerance rootValues
                 let crossingRoots =
                     baseCandidates
                     |> List.pairwise
@@ -1334,7 +1363,7 @@ module Game =
                                     low <- middle
                                     lowValue <- middleValue
                             Some ((low+high)/2.))
-                let candidates = baseCandidates @ crossingRoots |> approximatelyDistinct tolerance
+                let candidates = baseCandidates @ crossingRoots |> approximatelyDistinct tolerance rootValues
                 let exactPositions =
                     segment.Start :: segment.End :: sampleXs
                     |> List.map (fun point -> Piecewise.toFloat point,point)
@@ -1357,7 +1386,7 @@ module Game =
                         | None ->
                             let value = Piecewise.evaluateSegmentAt x point segment
                             Piecewise.tryCompareConstants value (rational "0"))
-                let zeroAnchors = exactRoots @ exactTraversalRoots @ crossingRoots |> Set.ofList
+                let zeroAnchors = Set.union rootValues (Set.ofList crossingRoots)
                 let samples =
                     candidates
                     |> List.map (fun px ->
@@ -1399,8 +1428,12 @@ module Game =
                     for firstIndex,lastIndex in ranges do
                         let subrun = run[firstIndex..lastIndex]
                         let firstX,lastX = fst (List.head subrun),fst (List.last subrun)
-                        let startClosed = if abs (firstX-startValue) < tolerance then segment.StartClosed else true
-                        let endClosed = if abs (lastX-endValue) < tolerance then segment.EndClosed else true
+                        // A retained interior root owns its point even within
+                        // drawing tolerance of an open segment boundary.
+                        let startClosed =
+                            if abs (firstX-startValue) < tolerance && not (Set.contains firstX interiorRootAfterStart) then segment.StartClosed else true
+                        let endClosed =
+                            if abs (lastX-endValue) < tolerance && not (Set.contains lastX interiorRootBeforeEnd) then segment.EndClosed else true
                         for family,branchEvaluator in branchEvaluators do
                             let points = subrun |> List.map (fun (px,value) -> if value = 0. then px,0. else px,branchEvaluator px)
                             let path={ Points=points; StartClosed=startClosed; EndClosed=endClosed }
