@@ -85,11 +85,11 @@ export class CropEditor {
       void this.commit(crop,previewed);
     });
     root.addEventListener('keydown',event=>{
+      if(event.defaultPrevented||event.isComposing||event.altKey||event.ctrlKey||event.metaKey||event.shiftKey)return;
       if(!(event.target as HTMLElement).matches('[data-crop-range],[data-crop-exact]'))return;
       if(event.key==='Escape'&&(event.target as HTMLElement).matches('[data-crop-range]')&&!this.held)return;
-      event.stopPropagation();
-      if(event.key==='Escape'){event.preventDefault();this.cancel();const context=this.context();if(context)this.restore(context.result);}
-      if(event.key==='Enter'&&(event.target as HTMLElement).matches('[data-crop-exact]')){event.preventDefault();(event.target as HTMLInputElement).dispatchEvent(new Event('change',{bubbles:true}));}
+      if(event.key==='Escape'){event.preventDefault();event.stopPropagation();this.cancel();const context=this.context();if(context)this.restore(context.result);}
+      if(event.key==='Enter'&&(event.target as HTMLElement).matches('[data-crop-exact]')){event.preventDefault();event.stopPropagation();(event.target as HTMLInputElement).dispatchEvent(new Event('change',{bubbles:true}));}
     });
     root.addEventListener('pointercancel',()=>this.cancel());
     window.addEventListener('blur',()=>this.cancel());

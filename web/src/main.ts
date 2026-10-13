@@ -977,6 +977,7 @@ $('construction').addEventListener('change',event=>{
   void serial(async()=>{if(!state?.circle)return;accept(await kernel.run(state,{type:'circle',...state.circle,[key]:value}));}).then(()=>{const current=document.querySelector<HTMLInputElement>(`[data-circle-value="${key}"]`);if(current&&state?.circle)current.value=state.circle[key];});
 });
 $('construction').addEventListener('keydown',event=>{
+  if(event.defaultPrevented||event.isComposing||event.altKey||event.ctrlKey||event.metaKey||event.shiftKey)return;
   const input=event.target as HTMLInputElement,key=input.dataset.circleValue as keyof Circle|undefined;
   if(!key||!state?.circle)return;
   if(event.key==='Enter'){event.preventDefault();input.dispatchEvent(new Event('change',{bubbles:true}));}
@@ -1500,6 +1501,7 @@ $('favorites-list').addEventListener('submit',event=>{
   seeds=next;finishRename(index);$('move-announcement').textContent=`Recipe renamed to ${name}.`;
 });
 $('favorites-list').addEventListener('keydown',event=>{
+  if(event.defaultPrevented||event.isComposing||event.altKey||event.ctrlKey||event.metaKey||event.shiftKey)return;
   if(event.key==='Escape'&&renamingSeed!==undefined){event.preventDefault();event.stopPropagation();finishRename(renamingSeed);}
 });
 function parseSave(value:unknown) {

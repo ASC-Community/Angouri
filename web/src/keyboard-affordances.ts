@@ -76,6 +76,11 @@ export function installKeyboardAffordances(documentRoot:Document) {
     // would detach it from both the control and its focus ring.
     if(!anchorVisible(active,rect,knob?rect.top+rect.height/2:rect.top)){cue.hidden=true;return;}
     let width=rect.width+12,height=18,left=rect.left-6,top=rect.top-9;
+    if(active.matches('[data-circle-handle]')) {
+      // A small round handle still needs room for Space beside its centred
+      // arrows. Widen the cue lane without moving either control or outline.
+      width=Math.max(width,96);left=rect.left+(rect.width-width)/2;
+    }
     if(knob) {
       const slider=active as HTMLInputElement;
       const min=Number(slider.min)||0,max=Number(slider.max)||100;

@@ -27,7 +27,7 @@ test('a full circle has both branches and exact radius edits share undo and redo
   await page.locator('#undo').click();await idle(page);expect((await snapshot(page)).circle.radius).toBe('3/4');
   await page.locator('#redo').click();await idle(page);expect((await snapshot(page)).circle.radius).toBe('1');
   await page.locator('#tab-function').click();await expect(page.locator('.equation-verdict')).toHaveCount(4);await expect(page.locator('.final-formula')).toContainText('h');
-  await page.locator('#launch').click();await expect(page.locator('.equation-verdict[data-status="hit"]')).toHaveCount(4);await expect(page.locator('#launch')).toHaveText('Next puzzle');
+  await page.locator('#launch').click();await expect(page.locator('.equation-verdict[data-status="hit"]')).toHaveCount(4);await expect(page.locator('#launch')).toHaveAccessibleName('Next puzzle');
   await page.locator('#reset').click();await idle(page);expect((await snapshot(page)).circle.radius).toBe('1/2');await page.locator('#undo').click();await idle(page);expect((await snapshot(page)).circle.radius).toBe('1');
 });
 
