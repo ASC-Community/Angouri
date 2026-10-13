@@ -1,13 +1,12 @@
-import { chromium } from '@playwright/test';
+import { launchChromium, previewURL } from './browser.mjs';
 import { mkdir } from 'node:fs/promises';
-import config from '../playwright.config.mjs';
 
-const browser=await chromium.launch({...config.projects[0].use.launchOptions,headless:true});
-const page=await browser.newPage({viewport:{width:1440,height:900},reducedMotion:'reduce'});
+const browser=await launchChromium();
+const page=await browser.newPage({baseURL:previewURL(),viewport:{width:1440,height:900},reducedMotion:'reduce'});
 const errors=[],layouts=[];page.on('pageerror',error=>errors.push(String(error)));
 await mkdir('artifacts',{recursive:true});
 const shot=name=>page.screenshot({path:`artifacts/${name}.png`,fullPage:true});
-const ready=async id=>{await page.goto(`http://127.0.0.1:4174/#level=${id}&view=flight`);await page.waitForFunction(()=>window.angouri?.state&&document.querySelector('#playground').getAttribute('aria-busy')==='false');};
+const ready=async id=>{await page.goto(`/#level=${id}&view=flight`);await page.waitForFunction(()=>window.angouri?.state&&document.querySelector('#playground').getAttribute('aria-busy')==='false');};
 const notes=async()=>{await page.locator('#ideas-open').click();await page.locator('#notes-content[aria-busy="false"]').waitFor();};
 try {
   for(const [name,size] of Object.entries({desktop:{width:1440,height:900},mobile:{width:390,height:844},compact:{width:320,height:568},landscape:{width:844,height:390}})) {
@@ -19,8 +18,8 @@ try {
   await page.setViewportSize({width:390,height:844});await ready(13);await shot('round-roof-mobile');await notes();await shot('flattening-notes-mobile');await page.keyboard.press('Escape');
   await page.locator('#menu-open').click();await shot('menu-community-mobile');await page.locator('#menu-version').click();await shot('version-log-mobile');await page.keyboard.press('Escape');
   await page.locator('#menu-open').click();await page.locator('#settings-open').click();await shot('settings-mobile');await page.keyboard.press('Escape');
-  await page.goto('http://127.0.0.1:4174/about/');await page.evaluate(()=>document.fonts.ready);await page.locator('#honksharp').screenshot({path:'artifacts/honksharp-about-mobile.png'});
-  await page.setViewportSize({width:1440,height:900});await page.goto('http://127.0.0.1:4174/about/');await page.evaluate(()=>document.fonts.ready);
+  await page.goto('/about/');await page.evaluate(()=>document.fonts.ready);await page.locator('#honksharp').screenshot({path:'artifacts/honksharp-about-mobile.png'});
+  await page.setViewportSize({width:1440,height:900});await page.goto('/about/');await page.evaluate(()=>document.fonts.ready);
   await page.locator('.project-stars img').evaluateAll(images=>images.forEach(img=>img.loading='eager'));
   await page.waitForFunction(()=>[...document.querySelectorAll('.project-stars img')].every(img=>img.complete));
   const badges=await page.locator('.project-stars img').evaluateAll(images=>images.map(img=>({src:img.src,loaded:img.naturalWidth>0})));

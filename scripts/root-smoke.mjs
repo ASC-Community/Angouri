@@ -1,16 +1,12 @@
-import { chromium } from '@playwright/test';
-import { readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { launchChromium, previewURL } from './browser.mjs';
 import assert from 'node:assert/strict';
-const cache=join(process.env.LOCALAPPDATA,'ms-playwright');
-const builds=(await readdir(cache)).filter(s=>/^chromium-\d+$/.test(s)).sort((a,b)=>Number(b.split('-')[1])-Number(a.split('-')[1]));
-const browser=await chromium.launch({headless:true,executablePath:join(cache,builds[0],'chrome-win64/chrome.exe')});
+const browser=await launchChromium();
 try {
-  const page=await browser.newPage({reducedMotion:'reduce'});
+  const page=await browser.newPage({baseURL:previewURL('http://127.0.0.1:4175'),reducedMotion:'reduce'});
   const errors=[], wasm=[];
   page.on('pageerror',error=>errors.push(String(error)));
   page.on('response',response=>{if(response.url().endsWith('.wasm'))wasm.push({url:response.url(),status:response.status(),type:response.headers()['content-type']});});
-  await page.goto('http://127.0.0.1:4175/');
+  await page.goto('/');
   await page.waitForFunction(()=>window.angouri?.state);
   assert.equal(await page.locator('#share-open').isVisible(),false);
   assert.equal(await page.locator('[data-op="H"] .katex').count(),1);
@@ -18,13 +14,13 @@ try {
   await page.waitForFunction(()=>window.angouri.result.solved);
   await page.locator('#launch').click();
   await page.waitForFunction(()=>window.angouri.flight.phase==='landed');
-  assert.equal(await page.locator('#launch').textContent(),'Next puzzle');
+  assert.equal(await page.locator('#launch').getAttribute('aria-label'),'Next puzzle');
   assert.equal(await page.locator('.game-shell.intro').count(),1);
   assert.equal(await page.locator('.pipeline[aria-label="Recipe, 1 of 1 slots filled"]').count(),1);
   assert.equal(await page.locator('.construction').isVisible(),false);
   assert(wasm.length>0);
   assert(wasm.every(r=>r.status===200&&r.type==='application/wasm'));
-  await page.goto('http://127.0.0.1:4175/about/');
+  await page.goto('/about/');
   assert((await page.locator('body').textContent()).includes('AngouriMath'));
   await page.getByRole('link',{name:'Back to the playground'}).click();
   await page.waitForFunction(()=>window.angouri?.result?.solved);

@@ -45,8 +45,11 @@ jobs:
       - name: Refresh community snapshot
         run: npm run sync:community
 
-      - name: Test community content
-        run: npm run test:content
+      - name: Test frontend units and content
+        run: npm run test:unit
+
+      - name: Test independent exact fixtures
+        run: npm run test:oracles
 
       - name: Test kernel
         run: npm run test:kernel
@@ -70,11 +73,23 @@ jobs:
           test "$(tr -d '\r\n' < dist/CNAME)" = "angouri.org"
           test -z "$(find dist -type l -print -quit)"
 
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install test browsers
+        run: npx playwright install --with-deps chromium firefox webkit
 
       - name: Test site in Chromium
-        run: npx playwright test --project=chromium --workers=1
+        run: npm run test:browser:prebuilt -- --project=chromium --workers=1
+
+      - name: Test lesson-tab keyboard controls in Firefox and WebKit
+        run: npm run test:browser:prebuilt -- tests/browser/notes-keyboard.spec.mjs --grep "^Notes lesson tabs use one Tab stop" --project=firefox --project=webkit --workers=1
+
+      - name: Upload browser failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-failure-diagnostics
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Upload Pages artifact
         if: >-

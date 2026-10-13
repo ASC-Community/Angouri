@@ -1,11 +1,10 @@
-import { chromium } from '@playwright/test';
-import { readdir, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
-const cache=join(process.env.LOCALAPPDATA,'ms-playwright');
-const builds=(await readdir(cache)).filter(x=>/^chromium-\d+$/.test(x)).sort((a,b)=>Number(b.split('-')[1])-Number(a.split('-')[1]));
-const browser=await chromium.launch({headless:true,executablePath:join(cache,builds[0],'chrome-win64/chrome.exe')});
+import { launchChromium, previewURL } from './browser.mjs';
+import { mkdir } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const browser=await launchChromium();
+const smoke=process.argv.includes('--smoke');
 await mkdir('artifacts',{recursive:true});
-const context=await browser.newContext({viewport:{width:1440,height:900},reducedMotion:'reduce'});
+const context=await browser.newContext({baseURL:previewURL(),viewport:{width:1440,height:900},reducedMotion:'reduce'});
 const page=await context.newPage(),errors=[];
 page.on('pageerror',e=>errors.push(e.stack));page.on('console',m=>{if(m.type()==='error')errors.push(m.text())});
 const idle=()=>page.evaluate(()=>window.angouri.whenIdle());
@@ -14,9 +13,24 @@ const discard=async()=>{if(await page.locator('#leave-dialog').isVisible())await
 const menu=async id=>{await page.locator('#menu-open').click();await page.locator(`#${id}`).click();if(id==='nav-create')await discard();};
 const puzzle=async n=>{await menu('puzzles-open');const option=page.locator(`[data-level="${n}"]`);if(!await option.isVisible())await option.locator('xpath=ancestor::details').locator('summary').click();await option.click();await discard();await idle();};
 const place=async op=>{await page.locator(`[data-op="${op}"]`).click();await idle();};
+const playbackCaptures=async()=>{
+  await puzzle(1);await place('H');await menu('settings-open');await page.locator('#motion-toggle').uncheck();await page.keyboard.press('Escape');
+  await page.locator('#launch').click();await page.waitForFunction(()=>window.angouri.flight.position>.45&&window.angouri.flight.position<.7);await shot('throw-in-flight');await page.waitForFunction(()=>window.angouri.flight.phase==='landed');
+  assert.equal(await page.locator('#tab-flow').isVisible(),false,'Puzzle 1.1 keeps its introductory Flight view.');
+  // The first two puzzles intentionally hide view controls, even after a throw.
+  // Construct the first ordered puzzle before demonstrating Flow playback.
+  await puzzle(3);await place('A');await place('H');
+  assert.equal(await page.evaluate(()=>window.angouri.result.solved),true);
+  await page.locator('#tab-flow').click();await page.locator('#flow-position').focus();await page.keyboard.press('End');
+  await page.locator('#launch').click();await page.waitForFunction(()=>window.angouri.flight.phase==='landed');
+  await page.locator('#rethrow').click();await page.waitForFunction(()=>window.angouri.flight.position>.55&&window.angouri.flight.position<.75);await shot('flow-playback');
+  await page.waitForFunction(()=>window.angouri.flight.phase==='landed');await shot('flow-confirmed');await page.locator('#tab-flight').click();
+};
 const layouts=[];
 try {
-  await page.goto('http://127.0.0.1:4174/');await page.waitForFunction(()=>window.angouri?.state,{timeout:60000});await page.evaluate(()=>document.fonts.ready);
+  await page.goto('/');await page.waitForFunction(()=>window.angouri?.state,undefined,{timeout:60000});await page.evaluate(()=>document.fonts.ready);
+  if(smoke)await playbackCaptures();
+  else {
   await shot('flight-desktop');
   await place('H');await page.locator('#launch').click();await shot('flight-solved');
   await puzzle(4);await shot('empty-slots-desktop');
@@ -43,11 +57,7 @@ try {
   await page.setViewportSize({width:1440,height:900});await menu('nav-create');await idle();
   for(let i=0;i<8;i++)await place('A');await shot('creation-desktop');
   await page.locator('#source-choose').click();await shot('starting-curve-chooser');await page.keyboard.press('Escape');
-  await puzzle(1);await place('H');await menu('settings-open');await page.locator('#motion-toggle').uncheck();await page.keyboard.press('Escape');
-  await page.locator('#launch').click();await page.waitForFunction(()=>window.angouri.flight.position>.45&&window.angouri.flight.position<.7);await shot('throw-in-flight');await page.waitForFunction(()=>window.angouri.flight.phase==='landed');
-  await page.locator('#tab-flow').click();await page.locator('#flow-position').focus();await page.keyboard.press('End');
-  await page.locator('#rethrow').click();await page.waitForFunction(()=>window.angouri.flight.position>.55&&window.angouri.flight.position<.75);await shot('flow-playback');
-  await page.waitForFunction(()=>window.angouri.flight.phase==='landed');await shot('flow-confirmed');await page.locator('#tab-flight').click();
+  await playbackCaptures();
   await page.setViewportSize({width:390,height:844});await shot('completion-mobile');
   await page.setViewportSize({width:320,height:568});await shot('completion-compact');
   await puzzle(4);for(const op of ['Q','H','H','N','A'])await place(op);
@@ -60,7 +70,8 @@ try {
   await page.setViewportSize({width:390,height:844});for(const op of ['Q','H','Q','N','A','A'])await place(op);await page.locator('#launch').click();await shot('capstone-complete-mobile');
   await menu('nav-create');await idle();await page.locator('#source-choose').click();await shot('curves-mobile');await page.locator('[data-source="8"]').click();await idle();await shot('creation-source-mobile');
   await puzzle(9);for(const op of ['H','N','A'])await place(op);await page.locator('#launch').click();await page.setViewportSize({width:320,height:568});await shot('finale-invitation-compact');await page.setViewportSize({width:390,height:844});
-  await page.goto('http://127.0.0.1:4174/about/');await page.evaluate(()=>document.fonts.ready);await shot('about-mobile');await page.screenshot({path:'artifacts/about-mobile-header.png'});await page.setViewportSize({width:1440,height:900});await shot('about-desktop');await page.screenshot({path:'artifacts/about-desktop-header.png'});
-  console.log(JSON.stringify({errors,layouts},null,2));
+  }
+  await page.setViewportSize({width:390,height:844});await page.goto('/about/');await page.evaluate(()=>document.fonts.ready);await shot('about-mobile');await page.screenshot({path:'artifacts/about-mobile-header.png'});await page.setViewportSize({width:1440,height:900});await shot('about-desktop');await page.screenshot({path:'artifacts/about-desktop-header.png'});
+  console.log(JSON.stringify({mode:smoke?'smoke':'full',errors,layouts},null,2));
 } finally {await context.close();await browser.close();}
 if(errors.length||layouts.some(l=>l.pageOverflow||l.railContentHeight>l.railHeight))process.exitCode=1;

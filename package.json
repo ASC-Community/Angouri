@@ -11,11 +11,16 @@
     "preview": "vite preview --config web/vite.config.ts --host 127.0.0.1",
     "check": "tsc --noEmit",
     "test:kernel": "dotnet run --project tests/Angouri.Tests.csproj -c Release",
-    "test:browser": "playwright test",
+    "test:browser": "npm run build && node scripts/test-browser.mjs",
+    "test:browser:prebuilt": "node scripts/test-browser.mjs",
     "sync:community": "node scripts/sync-community.mjs",
     "test:content": "node --test tests/content.test.mjs tests/learning-path.test.mjs",
+    "test:unit": "node --test tests/*.test.mjs",
+    "test:oracles": "python3 tests/extended_puzzles_oracle.py && python3 tests/mastery_oracle.py --fixtures-only",
     "measure": "node scripts/measure.mjs",
     "demo": "node scripts/capture-demo.mjs",
+    "inspect": "node scripts/inspect.mjs",
+    "inspect:smoke": "node scripts/inspect.mjs --smoke",
     "export:brand": "node scripts/export-brand.mjs"
   },
   "dependencies": {

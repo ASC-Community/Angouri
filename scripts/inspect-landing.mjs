@@ -1,8 +1,7 @@
-import {chromium} from '@playwright/test';
+import {launchChromium,previewURL} from './browser.mjs';
 import {mkdir,writeFile} from 'node:fs/promises';
-import config from '../playwright.config.mjs';
-const browser=await chromium.launch({...config.projects[0].use.launchOptions,headless:true});
-const page=await browser.newPage({reducedMotion:'reduce'}),errors=[],layouts=[];
+const browser=await launchChromium();
+const page=await browser.newPage({baseURL:previewURL(),reducedMotion:'reduce'}),errors=[],layouts=[];
 await page.addInitScript(()=>localStorage.clear());
 page.on('pageerror',error=>errors.push(String(error)));
 const idle=()=>page.evaluate(()=>window.angouri.whenIdle());
@@ -10,7 +9,7 @@ const shot=name=>page.screenshot({path:`artifacts/${name}.png`,fullPage:true});
 try {
   await mkdir('artifacts',{recursive:true});
   for(const [name,viewport] of Object.entries({desktop:{width:1440,height:900},mobile:{width:390,height:844},compact:{width:320,height:568},landscape:{width:844,height:390}})) {
-    await page.setViewportSize(viewport);await page.goto('http://127.0.0.1:4174/');
+    await page.setViewportSize(viewport);await page.goto('/');
     await page.waitForFunction(()=>window.angouri?.state&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
     await shot(`landing-empty-${name}`);
     for(const op of ['A','H']) {

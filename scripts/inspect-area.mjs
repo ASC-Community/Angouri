@@ -1,9 +1,8 @@
-import {chromium} from '@playwright/test';
+import {launchChromium,previewURL} from './browser.mjs';
 import {mkdir,writeFile} from 'node:fs/promises';
-import config from '../playwright.config.mjs';
 
-const browser=await chromium.launch({...config.projects[0].use.launchOptions,headless:true});
-const page=await browser.newPage({reducedMotion:'reduce'}),states=[],errors=[];
+const browser=await launchChromium();
+const page=await browser.newPage({baseURL:previewURL(),reducedMotion:'reduce'}),states=[],errors=[];
 page.on('pageerror',error=>errors.push(String(error)));
 const idle=()=>page.evaluate(()=>window.angouri.whenIdle());
 const shot=name=>page.screenshot({path:`artifacts/${name}.png`});
@@ -12,8 +11,8 @@ try {
   for(const [size,viewport] of Object.entries({desktop:{width:1440,height:900},mobile:{width:390,height:844},compact:{width:320,height:568},landscape:{width:844,height:390}})) {
     await page.setViewportSize(viewport);
     for(const [level,ops] of [[16,'I'],[19,'I'],[18,'IHNA']]) {
-      await page.goto('http://127.0.0.1:4174/about/');
-      await page.goto(`http://127.0.0.1:4174/#level=${level}&view=flight`);
+      await page.goto('/about/');
+      await page.goto(`/#level=${level}&view=flight`);
       await page.waitForFunction(id=>window.angouri?.state?.sourceId===id&&document.querySelector('#playground').getAttribute('aria-busy')==='false',level);
       if(level===18)await shot(`area-pullback-${size}`);
       const pose=await page.evaluate(()=>{

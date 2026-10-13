@@ -193,9 +193,9 @@ test('circle diagrams keep equal units, readable whole formulas and usable contr
   }
 });
 
-test('emulated touch moves a circle and the immediately following Throw tap works',async({browser,browserName})=>{
+test('emulated touch moves a circle and the immediately following Throw tap works',async({browser,browserName,baseURL})=>{
   test.skip(browserName!=='chromium','This check uses Chromium touch-event injection.');
-  const context=await browser.newContext({baseURL:'http://127.0.0.1:4174',viewport:{width:390,height:844},hasTouch:true,isMobile:true,reducedMotion:'reduce'});
+  const context=await browser.newContext({baseURL,viewport:{width:390,height:844},hasTouch:true,isMobile:true,reducedMotion:'reduce'});
   try {
     const page=await context.newPage();await ready(page,44);
     const box=await page.locator('[data-circle-handle="centre"]').boundingBox(),from={x:box.x+box.width/2,y:box.y+box.height/2},to=await screenPoint(page,1.5,.5);
@@ -203,7 +203,7 @@ test('emulated touch moves a circle and the immediately following Throw tap work
     for(let i=1;i<=6;i++)await session.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:from.x+(to.x-from.x)*i/6,y:from.y+(to.y-from.y)*i/6}]});
     await session.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await idle(page);
     expect((await snapshot(page)).circle).toEqual({x:'3/2',y:'1/2',radius:'1'});expect(await page.evaluate(()=>window.angouri.history.undo)).toBe(1);
-    await page.locator('#launch').tap();await expect(page.locator('#launch')).toHaveText('Next puzzle');
+    await page.locator('#launch').tap();await expect(page.locator('#launch')).toHaveAccessibleName('Next puzzle');
     await page.locator('#undo').tap();await idle(page);expect((await snapshot(page)).circle).toEqual({x:'2',y:'0',radius:'1'});
     await ready(page,43);
     const sling=await page.locator('[data-circle-handle="radius"]').boundingBox(),a=await screenPoint(page,2,0),b=await screenPoint(page,3,0),start={x:sling.x+sling.width/2,y:sling.y+sling.height/2};
@@ -211,7 +211,7 @@ test('emulated touch moves a circle and the immediately following Throw tap work
     for(let i=1;i<=6;i++)await session.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:start.x+(b.x-a.x)*i/12,y:start.y}]});
     await session.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await idle(page);
     expect((await snapshot(page)).circle.radius).toBe('1');expect(await page.evaluate(()=>window.angouri.flight.phase)).toBe('ready');
-    await page.locator('#launch').tap();await expect(page.locator('#launch')).toHaveText('Next puzzle');
+    await page.locator('#launch').tap();await expect(page.locator('#launch')).toHaveAccessibleName('Next puzzle');
   } finally {await context.close();}
 });
 

@@ -4,11 +4,13 @@
 No game kernel, floating-point comparisons or AngouriMath calls. This imports
 the independent Fraction/expression model used by the earlier oracle. Unknown
 integrals and values outside that small model stay explicitly unsupported.
+Use --fixtures-only for the inexpensive discovery and phase-landmark proofs.
 """
 from collections import Counter
 from itertools import permutations
 import json
 from pathlib import Path
+import sys
 
 from extended_puzzles_oracle import Exact, build, evaluate, one_edit_neighborhood, q, sine_half_pi
 from learning_path_oracle import legal_candidates, target_goal
@@ -125,4 +127,7 @@ def finale_audit():
 if __name__ == "__main__":
     discovery_proof()
     phase_landmark_proof()
-    finale_audit()
+    if "--fixtures-only" in sys.argv:
+        print("Scope: discovery and phase-landmark proofs only; the bounded finale permutation audit was not run.")
+    else:
+        finale_audit()

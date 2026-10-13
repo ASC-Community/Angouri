@@ -1213,10 +1213,10 @@ test('a stack consists of whole blocks and pickup only lifts the top copy',async
   await expect(lower).toHaveCount(0);expect(await page.locator('#palette').evaluate(el=>el.clientHeight)).toBe(height);await page.locator('#undo').click();await idle(page);await expect(lower).toHaveCount(1);
 });
 
-test('emulated touch can drag, immediately throw, then return by tapping its stack',async({browser,browserName})=>{
+test('emulated touch can drag, immediately throw, then return by tapping its stack',async({browser,browserName,baseURL})=>{
   test.skip(browserName!=='chromium','This check uses Chromium touch-event injection.');
-  const context=await browser.newContext({viewport:{width:390,height:844},hasTouch:true,isMobile:true,reducedMotion:'reduce'});
-  const page=await context.newPage();await ready(page,'http://127.0.0.1:4174/#level=4&view=flight');
+  const context=await browser.newContext({baseURL,viewport:{width:390,height:844},hasTouch:true,isMobile:true,reducedMotion:'reduce'});
+  const page=await context.newPage();await ready(page,'/#level=4&view=flight');
   const source=await page.locator('[data-op="H"]').boundingBox(),target=await page.locator('[data-insert="0"]').boundingBox();
   const from={x:source.x+source.width/2,y:source.y+source.height/2},to={x:target.x+target.width/2,y:target.y+target.height/2};
   const session=await context.newCDPSession(page);await session.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[from]});

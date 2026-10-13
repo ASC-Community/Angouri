@@ -1,9 +1,8 @@
-import {chromium} from '@playwright/test';
+import {launchChromium,previewURL} from './browser.mjs';
 import {mkdir,writeFile} from 'node:fs/promises';
-import config from '../playwright.config.mjs';
 
-const browser=await chromium.launch({...config.projects[0].use.launchOptions,headless:true});
-const page=await browser.newPage({reducedMotion:'reduce'}),errors=[],states=[];
+const browser=await launchChromium();
+const page=await browser.newPage({baseURL:previewURL(),reducedMotion:'reduce'}),errors=[],states=[];
 await page.addInitScript(()=>localStorage.clear());
 page.on('pageerror',error=>errors.push(String(error)));
 const idle=()=>page.evaluate(()=>window.angouri.whenIdle());
@@ -14,8 +13,8 @@ try {
   for(const [size,viewport] of Object.entries({desktop:{width:1440,height:900},compact:{width:320,height:568}})) {
     await page.setViewportSize(viewport);
     for(const [level,ops] of lessons) {
-      await page.goto('http://127.0.0.1:4174/about/');
-      await page.goto(`http://127.0.0.1:4174/#level=${level}&view=flight`);
+      await page.goto('/about/');
+      await page.goto(`/#level=${level}&view=flight`);
       await page.waitForFunction(id=>window.angouri?.state?.sourceId===id&&document.querySelector('#playground').getAttribute('aria-busy')==='false',level);
       await shot(`capstone-${level}-start-${size}`);
       await page.locator('#ideas-open').click();await page.locator('#notes-content[aria-busy="false"]').waitFor();

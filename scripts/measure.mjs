@@ -1,17 +1,10 @@
-import { chromium } from '@playwright/test';
-import { readdir, mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { launchChromium, previewURL } from './browser.mjs';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { cpus } from 'node:os';
-let executablePath;
-if(process.platform==='win32') {
-  const cache=join(process.env.LOCALAPPDATA,'ms-playwright');
-  const builds=(await readdir(cache)).filter(s=>/^chromium-\d+$/.test(s)).sort((a,b)=>Number(b.split('-')[1])-Number(a.split('-')[1]));
-  if(builds[0])executablePath=join(cache,builds[0],'chrome-win64/chrome.exe');
-}
-const browser=await chromium.launch({headless:true,executablePath});
-const context=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion:'reduce'});
+const browser=await launchChromium();
+const context=await browser.newContext({baseURL:previewURL(),viewport:{width:1440,height:1000},reducedMotion:'reduce'});
 const loads=[];context.on('response',r=>loads.push((async()=>{try{return {url:new URL(r.url()).pathname,bytes:(await r.body()).length,encoding:r.headers()['content-encoding']||'identity'}}catch{return {url:r.url(),bytes:null}}})()));
-const page=await context.newPage();const start=performance.now();await page.goto('http://127.0.0.1:4174/');await page.waitForFunction(()=>window.angouri?.state);
+const page=await context.newPage();const start=performance.now();await page.goto('/');await page.waitForFunction(()=>window.angouri?.state);
 const coldMilliseconds=performance.now()-start;
 const timings=await page.evaluate(async()=>{
   const recorded=[];
