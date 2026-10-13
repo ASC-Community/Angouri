@@ -395,6 +395,10 @@ module Game =
     let asFloat (e: Entity) =
         match e.Evaled with
         | :? Entity.Number.Real as r -> r.AsDouble()
+        // Exact normalization disables downcasting. Its cached numeric preview
+        // can therefore retain a Complex wrapper with an exactly zero imaginary
+        // part; accepting that wrapper must not change the exact entity itself.
+        | :? Entity.Number.Complex as c when c.ImaginaryPart.EDecimal.IsZero -> c.RealPart.AsDouble()
         | _ -> invalidInput "preview" "The curve did not return a real number."
     let checkedPreviewValue value =
         if not (Double.IsFinite(value)) || abs value > maxPreviewMagnitude then
@@ -404,7 +408,7 @@ module Game =
         if isNull text || text.Length = 0 || text.Length > 256 then
             invalidInput fieldName "Exact values must use a bounded constant expression."
         try
-            let value = MathS.FromString(text).InnerSimplified
+            let value = MathS.FromString(text) |> Piecewise.exactInnerSimplified
             if value.Vars |> Seq.isEmpty |> not then
                 invalidInput fieldName "Exact values cannot contain variables."
             let numeric = asFloat value
@@ -505,6 +509,8 @@ module Game =
         supplied = expected
     let readGoals source _allowSymbolic cropTargets crop n =
         let gs = array n
+        if cropTargets && gs.IsEmpty then
+            invalidInput "goals" "A shared challenge needs a target position. Expand Crop to include a target position."
         if isCircleSource source then
             if gs.Length < 3 || gs.Length > 8 then invalidInput "goals" "Circle challenges require between three and eight targets."
             gs |> List.map (fun n ->
@@ -922,7 +928,7 @@ module Game =
             let gap f =
                 let fromValue,toValue = evaluateAt f fromX,evaluateAt f toX
                 fromValue,toValue,(toValue - fromValue).InnerSimplified
-            let targetGap = (exactConstant "goals" toGoal.Y - exactConstant "goals" fromGoal.Y).InnerSimplified
+            let targetGap = (exactConstant "goals" toGoal.Y - exactConstant "goals" fromGoal.Y) |> Piecewise.exactInnerSimplified
             let _,_,actualGap = gap final
             result["heightGuide"] <- obj [
                 "fromX",str fromGoal.X; "toX",str toGoal.X; "target",str (targetGap.ToString())
@@ -1106,20 +1112,20 @@ module Game =
                 | Some exponent when exponent.Denominator = BigInteger.One &&
                                          exponent.Numerator >= BigInteger(2) ->
                     let rootExponent = Piecewise.ofBigInteger (exponent.Numerator/BigInteger(2)) |> Piecewise.toEntity
-                    power.Base.Pow(rootExponent).InnerSimplified,
+                    Piecewise.exactInnerSimplified (power.Base.Pow(rootExponent)),
                         (if exponent.Numerator.IsEven then one else power.Base),true
                 | _ -> one,current,false
             | :? Entity.Mulf as product ->
                 let left,leftRadicand,leftExtracted = split product.Multiplier
                 let right,rightRadicand,rightExtracted = split product.Multiplicand
-                (left*right).InnerSimplified,(leftRadicand*rightRadicand).InnerSimplified,leftExtracted||rightExtracted
+                Piecewise.exactInnerSimplified (left*right),Piecewise.exactInnerSimplified (leftRadicand*rightRadicand),leftExtracted||rightExtracted
             | :? Entity.Divf as quotient ->
                 let numerator,numeratorRadicand,numeratorExtracted = split quotient.Dividend
                 let denominator,denominatorRadicand,denominatorExtracted = split quotient.Divisor
-                (numerator/denominator).InnerSimplified,(numeratorRadicand/denominatorRadicand).InnerSimplified,numeratorExtracted||denominatorExtracted
+                Piecewise.exactInnerSimplified (numerator/denominator),Piecewise.exactInnerSimplified (numeratorRadicand/denominatorRadicand),numeratorExtracted||denominatorExtracted
             | _ ->
                 match Piecewise.tryRationalEntity current with
-                | Some value when value.Numerator.Sign >= 0 -> current.Pow(half).InnerSimplified,one,true
+                | Some value when value.Numerator.Sign >= 0 -> Piecewise.exactInnerSimplified (current.Pow(half)),one,true
                 | _ -> one,current,false
         let initialFactor,initialRadicand,initialExtracted = split expression
         let factor,radicand,extracted =
@@ -1128,24 +1134,29 @@ module Game =
                 // polynomial. Ask the bounded exact polynomial factoriser for
                 // the remaining factors; null means it cannot settle this input.
                 // Cache this alongside the solver so drawing frames never do CAS.
-                let factored = MathS.Polynomials.Factor(initialRadicand,x)
+                let factored = Piecewise.transformExact (fun value -> MathS.Polynomials.Factor(value,x)) initialRadicand
                 if isNull factored then initialFactor,initialRadicand,initialExtracted
                 else
                     let extraFactor,remainder,extraExtracted = split factored
-                    (initialFactor*extraFactor).InnerSimplified,remainder,initialExtracted||extraExtracted
+                    Piecewise.exactInnerSimplified (initialFactor*extraFactor),remainder,initialExtracted||extraExtracted
             else initialFactor,initialRadicand,initialExtracted
         if not extracted then None
         else
-            let candidate = (factor*radicand.Pow(half)).InnerSimplified
+            let candidate = Piecewise.exactInnerSimplified (factor*radicand.Pow(half))
             // AngouriMath verifies the exact identity. The original right side
             // still owns the real domain, including isolated zeros where the
             // square factor vanishes but the remaining radicand is negative.
-            if exactEqual (candidate.Pow(two).InnerSimplified) expression then
+            if exactEqual (Piecewise.exactInnerSimplified (candidate.Pow(two))) expression then
                 Some { Expression=candidate; Factor=factor; Radicand=radicand }
             else None
 
     let private samePoint (leftX,leftY) (rightX,rightY) =
         abs (leftX-rightX) < 0.0000001 && abs (leftY-rightY) < 0.0000001
+
+    // Topology requires one shared point. The broader drawing tolerance in
+    // samePoint must not join two distinct, merely very close height branches.
+    let private sameEndpoint (leftX,leftY) (rightX,rightY) =
+        leftX = rightX && leftY = rightY
 
     let private joinPoints first second =
         match second with
@@ -1160,14 +1171,14 @@ module Game =
         let merge first second =
             let firstStart,firstEnd = endpoints first
             let secondStart,secondEnd = endpoints second
-            if samePoint firstEnd secondStart then
+            if (first.EndClosed || second.StartClosed) && sameEndpoint firstEnd secondStart then
                 Some { Points=joinPoints first.Points second.Points; StartClosed=first.StartClosed; EndClosed=second.EndClosed }
-            elif samePoint firstEnd secondEnd then
+            elif (first.EndClosed || second.EndClosed) && sameEndpoint firstEnd secondEnd then
                 let reversed = reversePath second
                 Some { Points=joinPoints first.Points reversed.Points; StartClosed=first.StartClosed; EndClosed=reversed.EndClosed }
-            elif samePoint firstStart secondEnd then
+            elif (first.StartClosed || second.EndClosed) && sameEndpoint firstStart secondEnd then
                 Some { Points=joinPoints second.Points first.Points; StartClosed=second.StartClosed; EndClosed=first.EndClosed }
-            elif samePoint firstStart secondStart then
+            elif (first.StartClosed || second.StartClosed) && sameEndpoint firstStart secondStart then
                 let reversed = reversePath second
                 Some { Points=joinPoints reversed.Points first.Points; StartClosed=reversed.StartClosed; EndClosed=first.EndClosed }
             else None
@@ -1191,8 +1202,8 @@ module Game =
                 let branches =
                     heightSquaredBranchSchema.Value
                     |> List.choose (fun schema ->
-                        let branch = schema.Expression.Substitute(relationRhs,expression).Simplify()
-                        let domain = schema.Domain.Substitute(relationRhs,expression).Simplify()
+                        let branch = schema.Expression.Substitute(relationRhs,expression) |> Piecewise.exactSimplify
+                        let domain = schema.Domain.Substitute(relationRhs,expression) |> Piecewise.exactSimplify
                         if branch.Vars |> Seq.exists (fun variable -> variable = h || variable = relationRhs) ||
                            domain.Vars |> Seq.exists (fun variable -> variable = relationRhs) then
                             invalidInput "preview" "The squared-height relation could not be solved explicitly for h."
@@ -1270,7 +1281,7 @@ module Game =
                 match solved.SignedTraversalRoot with
                 | None -> solved.Branches |> List.map (fun branch -> branch.Family,branch.Expression)
                 | Some root ->
-                    [root.Expression;(-root.Expression).InnerSimplified]
+                    [root.Expression;Piecewise.exactInnerSimplified (-root.Expression)]
                     |> List.distinctBy (fun expression -> expression.ToString())
                     |> List.sortBy (fun expression -> expression.ToString())
                     |> List.mapi (fun family expression -> family,expression)
@@ -1279,8 +1290,7 @@ module Game =
                 |> List.map (fun (family,expression) ->
                     let evaluate,_ = Piecewise.compileNumeric x expression
                     family,(fun value ->
-                        let result=evaluate value
-                        if abs result < tolerance then 0. else checkedPreviewValue result))
+                        evaluate value |> checkedPreviewValue))
             if genericRounding then
                 let schemas = heightSquaredBranchSchema.Value |> List.map (fun branch -> branch.Family,branch.Expression.Compile([|relationRhs|]))
                 for path in sampledRoundingPaths sampleXs evaluator do
@@ -1325,11 +1335,43 @@ module Game =
                                     lowValue <- middleValue
                             Some ((low+high)/2.))
                 let candidates = baseCandidates @ crossingRoots |> approximatelyDistinct tolerance
+                let exactPositions =
+                    segment.Start :: segment.End :: sampleXs
+                    |> List.map (fun point -> Piecewise.toFloat point,point)
+                    |> Map.ofList
+                // Small negative right sides are outside the real domain. A
+                // drawing tolerance may clean a proved zero, never create one.
+                // Quadratic signs use integer arithmetic, without running the
+                // CAS independently at every point on a tiny scaled curve.
+                let quadratic =
+                    match polynomialDegree with
+                    | Some degree when degree <= 2 -> Piecewise.tryQuadratic x segment.Expression
+                    | _ -> None
+                let exactSignAt px =
+                    Map.tryFind px exactPositions
+                    |> Option.bind (fun point ->
+                        match quadratic with
+                        | Some (a,b,c) ->
+                            Piecewise.add (Piecewise.multiply (Piecewise.add (Piecewise.multiply a point) b) point) c
+                            |> fun value -> Some value.Numerator.Sign
+                        | None ->
+                            let value = Piecewise.evaluateSegmentAt x point segment
+                            Piecewise.tryCompareConstants value (rational "0"))
+                let zeroAnchors = exactRoots @ exactTraversalRoots @ crossingRoots |> Set.ofList
                 let samples =
                     candidates
                     |> List.map (fun px ->
                         let value = evaluator.Evaluate(px)
-                        px,(if abs value < tolerance then 0. else value))
+                        let exactValue =
+                            if Set.contains px zeroAnchors then 0.
+                            elif abs value >= tolerance then value
+                            else
+                                match exactSignAt px with
+                                | Some 0 -> 0.
+                                | Some sign when value = 0. || Math.Sign(value) <> sign ->
+                                    float sign * max Double.Epsilon (abs value)
+                                | _ -> value
+                        px,exactValue)
                 let runs = ResizeArray<(float*float) list>()
                 let mutable current : (float*float) list = []
                 for point in samples do
@@ -1345,10 +1387,10 @@ module Game =
                         indexed
                         |> List.choose (fun (index,(_,value)) ->
                             let adjacentPositive =
-                                (index > 0 && snd run[index-1] > tolerance) ||
-                                (index < lastIndex && snd run[index+1] > tolerance)
+                                (index > 0 && snd run[index-1] > 0.) ||
+                                (index < lastIndex && snd run[index+1] > 0.)
                             let checkpoint = checkpointXs |> List.exists (fun checkpointX -> abs (fst run[index]-checkpointX) <= tolerance)
-                            if index = 0 || index = lastIndex || checkpoint || abs value <= tolerance && adjacentPositive then Some index else None)
+                            if index = 0 || index = lastIndex || checkpoint || value = 0. && adjacentPositive then Some index else None)
                         |> List.distinct
                         |> List.sort
                     let ranges =
@@ -1360,7 +1402,7 @@ module Game =
                         let startClosed = if abs (firstX-startValue) < tolerance then segment.StartClosed else true
                         let endClosed = if abs (lastX-endValue) < tolerance then segment.EndClosed else true
                         for family,branchEvaluator in branchEvaluators do
-                            let points = subrun |> List.map (fun (px,value) -> if abs value <= tolerance then px,0. else px,branchEvaluator px)
+                            let points = subrun |> List.map (fun (px,value) -> if value = 0. then px,0. else px,branchEvaluator px)
                             let path={ Points=points; StartClosed=startClosed; EndClosed=endClosed }
                             addPath family path
                             // Both signs of a zero piece belong to their respective
@@ -1490,7 +1532,7 @@ module Game =
                 |> List.collect (fun (firstStarts,firstPoint,firstClosed) ->
                     endpoints second
                     |> List.choose (fun (secondStarts,secondPoint,secondClosed) ->
-                        if firstClosed && secondClosed && samePoint firstPoint secondPoint then Some (firstStarts,secondStarts,firstPoint) else None))
+                        if firstClosed && secondClosed && sameEndpoint firstPoint secondPoint then Some (firstStarts,secondStarts,firstPoint) else None))
             match shared with
             | [firstStarts,secondStarts,tip] when
                     (hasNoInteriorIntersection first && hasNoInteriorIntersection second) || isRadicalTip tip ->
@@ -1517,8 +1559,8 @@ module Game =
             | [ [first]; [second] ] when not solution.HasRounding &&
                     first.Points.Length>2 && second.Points.Length>2 &&
                     first.StartClosed && first.EndClosed && second.StartClosed && second.EndClosed &&
-                    samePoint (List.head first.Points) (List.head second.Points) &&
-                    samePoint (List.last first.Points) (List.last second.Points) &&
+                    sameEndpoint (List.head first.Points) (List.head second.Points) &&
+                    sameEndpoint (List.last first.Points) (List.last second.Points) &&
                     ((hasNoInteriorIntersection first && hasNoInteriorIntersection second) ||
                      (isRadicalTip (List.head first.Points) && isRadicalTip (List.last first.Points))) ->
                 // Natural radical tips join the signed branches into one whole
@@ -1541,7 +1583,18 @@ module Game =
                 tryJoinRegions firstPaths secondPaths |> Option.defaultValue families
             | _ -> families
         let resampleAnchored path =
-            let points=path.Points
+            // Open endpoints describe limits for drawing; a flight must stay
+            // within its owned interval and break across a missing singleton.
+            let inset (px,py) (nextX,nextY) =
+                px+(nextX-px)*0.000001,py+(nextY-py)*0.000001
+            let points =
+                match path.Points with
+                | first::second::rest when not path.StartClosed -> inset first second::second::rest
+                | points -> points
+            let points =
+                match List.rev points with
+                | last::previous::rest when not path.EndClosed -> List.rev (inset last previous::previous::rest)
+                | _ -> points
             let indices=points |> List.mapi (fun index (px,py) -> index,px,py)
                         |> List.choose (fun (index,px,py) ->
                             if index=0 || index=points.Length-1 || abs py<0.000000001 ||
@@ -1807,6 +1860,13 @@ module Game =
                         exactConstant "goals" goal.Y |> asFloat)
                 relationCurveData outputSampleXs checkpointXs preferredTarget finalDegree solution
             | None -> [],[]
+        let preCropRelationPaths =
+            match relationSolution,cropBounds with
+            | Some _,Some _ ->
+                let fullSolution = solveHeightSquaredRelation (List.last stagePresentations).Simplified
+                let checkpointXs = presentationGoals |> List.map (fun goal -> Piecewise.toFloat (Piecewise.parseRational goal.X))
+                relationCurveData sampleXs checkpointXs None finalDegree fullSolution |> fst |> Some
+            | _ -> None
         let playback,breaks,flights = playbackData playbackPaths
         let exactLatexCache = Dictionary<string,string>()
         let exactNumberCache = Dictionary<string,float>()
@@ -1841,8 +1901,14 @@ module Game =
                 exactEqualityCache[key] <- equal
                 equal
         let equalWithUnexpandedProof proof actual expected =
-            if actual = expected then true
-            elif Piecewise.trySeparateConstants (proof()) expected |> Option.isSome then false
+            // An approximate presentation must never bypass a certified miss.
+            // Keep the original substituted construction until after this proof.
+            let original = proof()
+            // Rational/landmark normalization is itself exact. It avoids four
+            // enclosure refinements for ordinary hits while independently
+            // checking the source of an otherwise structural presentation hit.
+            if actual = expected && Piecewise.exactInnerSimplified original = expected then true
+            elif Piecewise.trySeparateConstants original expected |> Option.isSome then false
             else cachedExactEqual actual expected
         let unexpandedValue point =
             (Piecewise.segmentAt point outputFinal).Expression.Substitute(x,Piecewise.toEntity point)
@@ -1886,7 +1952,7 @@ module Game =
                 let authoredTarget = exactConstant "goals" goal.Y
                 let authoredTargetNumber = exactNumber authoredTarget
                 let authoredTargetLatex = exactLatex authoredTarget
-                let expected = if relation then authoredTarget.Pow(rational "2").InnerSimplified else authoredTarget
+                let expected = if relation then authoredTarget.Pow(rational "2") |> Piecewise.exactInnerSimplified else authoredTarget
                 let defined = Piecewise.isDefinedAt point outputFinal
                 let checkpoint =
                     if not defined then
@@ -1922,6 +1988,8 @@ module Game =
                 | None -> ()
                 if relation then
                     checkpoint["lhs"] <- str (expected.ToString())
+                    checkpoint["lhsLatex"] <- str (exactLatex expected)
+                    checkpoint["lhsNumber"] <- flt (exactNumber expected)
                     checkpoint["rhs"] <- str (if defined then actual.ToString() else "undefined")
                     if defined then
                         let targetX,targetY = Piecewise.toFloat point,authoredTarget |> asFloat
@@ -2030,6 +2098,14 @@ module Game =
                 "playback",arr (playback |> List.map (fun (px,py) -> arr [flt px;flt py]))
                 "breaks",arr (breaks |> List.map num)
                 "flights",arr (flights |> List.map (fun (first,last) -> arr [num first;num last])) ]
+            match preCropRelationPaths with
+            | Some paths ->
+                result["relation"].["preCropPaths"] <- arr (paths |> List.map (fun path ->
+                    let json = pathJson path
+                    if final.Segments |> List.exists (fun segment -> Piecewise.hasSymbolicRounding segment.Expression) then
+                        json["approximateEnds"] <- boolean true
+                    json))
+            | None -> ()
         elif s.Mode = "puzzle" && s.Source >= 3 then
             let fromGoal = s.Goals |> List.reduce (fun best candidate -> if compareGoalHeight candidate best < 0 then candidate else best)
             let toGoal = s.Goals |> List.reduce (fun best candidate -> if compareGoalHeight candidate best > 0 then candidate else best)
@@ -2037,8 +2113,8 @@ module Game =
             let toIndex = presentationGoals |> List.findIndex (fun goal -> goal.X = toGoal.X)
             let gap (values: Entity list) =
                 let fromValue,toValue = values[fromIndex],values[toIndex]
-                fromValue,toValue,(toValue-fromValue).InnerSimplified
-            let targetGap = (exactConstant "goals" toGoal.Y-exactConstant "goals" fromGoal.Y).InnerSimplified
+                fromValue,toValue,Piecewise.exactInnerSimplified (toValue-fromValue)
+            let targetGap = (exactConstant "goals" toGoal.Y-exactConstant "goals" fromGoal.Y) |> Piecewise.exactInnerSimplified
             let _,_,actualGap = gap finalValues
             result["heightGuide"] <- obj [
                 "fromX",str fromGoal.X; "toX",str toGoal.X; "target",str (targetGap.ToString())
@@ -2322,6 +2398,8 @@ module Game =
                         if not (Double.IsFinite(height)) || abs height > maxTargetMagnitude then
                             invalidInput "export" "This construction's checkpoint values exceed the supported challenge target range."
                     generated,(s.Nodes |> List.countBy (fun node -> node.Op) |> Map.ofList),s.Nodes.Length
+            if goals.IsEmpty then
+                invalidInput "export" "A shared challenge needs a target position. Expand Crop to include a target position."
             let artifact = obj (common @ ["goals",goalsJson goals;"inventory",inventoryJson inventory;"limit",num limit] @ cropFields)
             // Keep export and import contracts locked together so no successful export can make a broken link.
             try importArtifact artifact |> ignore

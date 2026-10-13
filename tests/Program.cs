@@ -128,9 +128,18 @@ static class ContractTests
     {
         try
         {
+            if (args.Contains("--exact-authority-only", StringComparer.Ordinal))
+            {
+                ExactEqualityContract();
+                ExactAuthorityContract();
+                ExactRelationBoundaryContract();
+                Console.WriteLine($"PASS: {assertions} focused exact-authority assertions");
+                return 0;
+            }
             if (args.Contains("--relations-only", StringComparer.Ordinal))
             {
                 HeightSquaredRelationContract();
+                ExactRelationBoundaryContract();
                 Console.WriteLine($"PASS: {assertions} focused squared-height relation assertions");
                 return 0;
             }
@@ -172,6 +181,8 @@ static class ContractTests
             CropOutlineContract();
             PiecewisePresentationContract();
             ExactEqualityContract();
+            ExactAuthorityContract();
+            ExactRelationBoundaryContract();
             HeightSquaredRelationContract();
             CircleContract();
             CommandAndIdentityContract();
@@ -3415,6 +3426,145 @@ static class ContractTests
             "exact equality rejects a nonzero rational difference below floating precision");
         True(!EqualExactly("1/100000000000000000000000000000000000000000", "0"),
             "exact rational mismatch is decided without numeric rounding");
+    }
+
+    private static void ExactAuthorityContract()
+    {
+        const string nearSine = "1736481776669303488517166267693147960003756771840693872362413781320658221390147354215166131573995740/10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+        var piecewise = typeof(Game).Assembly.GetType("Angouri.Kernel.Piecewise", throwOnError: true)!;
+        var equal = piecewise.GetMethod("exactEqual", System.Reflection.BindingFlags.Static |
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic)!;
+        bool EqualExactly(string left, string right) =>
+            (bool)equal.Invoke(null, [MathS.FromString(left), MathS.FromString(right)])!;
+        string tinyPhase = $"sin(pi*(sin(pi/18)-({nearSine}))/2)";
+        True(!EqualExactly(tinyPhase, "0"), "a nested sine phase cannot supply a rounded proof integer");
+        True(!EqualExactly("sin(pi*sin(pi/18)^32/2)", "0"),
+            "a strictly positive nested sine stays distinct from zero");
+
+        // The source-64 cubic at x=1/3 becomes sin(pi/18), then its positive
+        // 32nd power. The last sine is strictly positive, so lifting misses 1.
+        var state = Clone(Level(64)["state"]!).AsObject();
+        state["mode"] = "challenge";
+        state["nodes"] = NodeArray("DQSQQQQQSA".Select(op => op.ToString()));
+        state["goals"] = new JsonArray(new JsonObject { ["x"] = "1/3", ["y"] = "1" });
+        state["inventory"] = new JsonObject { ["D"] = 1, ["Q"] = 6, ["S"] = 2, ["A"] = 1 };
+        state["limit"] = 10;
+        state["crop"] = new JsonObject { ["from"] = "1/3", ["to"] = "5/12" };
+        for (int repeat = 0; repeat < 2; repeat++)
+        {
+            var result = Act(state, new JsonObject { ["type"] = "evaluate" })["result"]!.AsObject();
+            var checkpoint = result["checkpoints"]![0]!;
+            True(checkpoint["actual"]!.GetValue<string>() != "1", "exact stage propagation preserves the tiny sine");
+            Contains(checkpoint["actualLatex"]!.GetValue<string>(), "sin", "the exact reading retains its symbolic sine");
+            Equal(false, checkpoint["hit"]!.GetValue<bool>(), "cold and cached legal recipes reject the exact near miss");
+            Equal(false, result["solved"]!.GetValue<bool>(), "the tiny positive difference never awards completion");
+        }
+
+        var targetArtifact = CreationArtifact(16, []);
+        targetArtifact["type"] = "challenge";
+        targetArtifact.Remove("nodes");
+        targetArtifact["goals"] = new JsonArray(
+            new JsonObject { ["x"] = "0", ["y"] = $"1+{tinyPhase}" },
+            new JsonObject { ["x"] = "2", ["y"] = "1" },
+            new JsonObject { ["x"] = "4", ["y"] = "1" });
+        targetArtifact["inventory"] = new JsonObject();
+        targetArtifact["limit"] = 0;
+        var targetResult = Ok(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = targetArtifact }
+        })["result"]!;
+        Equal(false, targetResult["checkpoints"]![0]!["hit"]!.GetValue<bool>(),
+            "import normalization cannot round a symbolic target to the constant source");
+        Contains(targetResult["checkpoints"]![0]!["targetLatex"]!.GetValue<string>(), "sin",
+            "imported exact target presentation retains the unresolved expression");
+        Equal(false, targetResult["solved"]!.GetValue<bool>(), "a rounded imported target cannot solve the challenge");
+        True(MathS.FromString("149/151").InnerSimplified is Entity.Number.Rational,
+            "exact stage construction does not contaminate fresh parser numerals");
+    }
+
+    private static void ExactRelationBoundaryContract()
+    {
+        JsonObject CroppedCreation(IEnumerable<string> operations, string from, string to)
+        {
+            var artifact = CreationArtifact(48, operations);
+            artifact["crop"] = new JsonObject { ["from"] = from, ["to"] = to };
+            return Ok(new JsonObject
+            {
+                ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = artifact }
+            });
+        }
+        var negative = CroppedCreation(new[] { "Q", "N" }.Concat(Enumerable.Repeat("H", 32)), "0", "1");
+        var negativeRelation = negative["result"]!["relation"]!;
+        Equal(0, negativeRelation["paths"]!.AsArray().Count,
+            "a strictly negative squared height below drawing tolerance has no real locus");
+        Equal(0, negativeRelation["playback"]!.AsArray().Count,
+            "a small negative squared height cannot acquire zero-height playback");
+        True(negativeRelation["preCropPaths"]!.AsArray().Count > 0 &&
+             negativeRelation["preCropPaths"]!.AsArray().All(path => path!["points"]!.AsArray().All(point =>
+                 point![0]!.GetValue<double>() == 2 && point[1]!.GetValue<double>() == 0)),
+            "uncropped context retains only the exact isolated real zero");
+        foreach (var checkpoint in negative["result"]!["checkpoints"]!.AsArray())
+        {
+            True(!string.IsNullOrWhiteSpace(checkpoint!["lhsLatex"]!.GetValue<string>()),
+                "cropped-out relation targets retain kernel squared-height LaTeX");
+            double targetHeight = checkpoint["targetNumber"]!.GetValue<double>();
+            Equal(targetHeight * targetHeight, checkpoint["lhsNumber"]!.GetValue<double>(),
+                "cropped-out creation targets retain the kernel squared-height number");
+        }
+
+        var smallPositive = CroppedCreation(new[] { "Q" }.Concat(Enumerable.Repeat("H", 48)), "0", "1");
+        var positivePaths = smallPositive["result"]!["relation"]!["paths"]!.AsArray();
+        Equal(2, positivePaths.Count, "distinct tiny positive and negative height branches never merge by proximity");
+        True(positivePaths.All(path => path!["points"]!.AsArray().All(point => point![1]!.GetValue<double>() != 0)),
+            "a small positive squared height is never flattened into a zero-height path");
+
+        var punctured = ImportCreation(48, ["S", "F"])["result"]!["relation"]!;
+        foreach (var pathNode in punctured["paths"]!.AsArray())
+        {
+            var path = pathNode!.AsObject();
+            var points = path["points"]!.AsArray();
+            for (int index = 0; index < points.Count; index++)
+            {
+                if (points[index]![0]!.GetValue<double>() != 3 || points[index]![1]!.GetValue<double>() != 0) continue;
+                True(index == 0 && !path["startClosed"]!.GetValue<bool>() ||
+                     index == points.Count - 1 && !path["endClosed"]!.GetValue<bool>(),
+                    "the missing zero at x=3 remains an open drawing endpoint");
+            }
+        }
+        True(punctured["playback"]!.AsArray().All(point =>
+                point![0]!.GetValue<double>() != 3 || point[1]!.GetValue<double>() != 0),
+            "resampling never flies through the excluded zero at x=3");
+        foreach (double height in new[] { -1d, 1d })
+            True(punctured["playback"]!.AsArray().Any(point =>
+                    point![0]!.GetValue<double>() == 3 && point[1]!.GetValue<double>() == height),
+                "the isolated real heights at the rounding peak remain in playback");
+
+        var full = ImportCreation(48, ["Q"])["result"]!["relation"]!;
+        True(full["preCropPaths"] is null, "uncropped relations do not duplicate context paths");
+        var cropped = CroppedCreation(["Q"], "1", "3")["result"]!["relation"]!;
+        True(JsonNode.DeepEquals(full["paths"], cropped["preCropPaths"]),
+            "Crop context uses the kernel's full solved relation paths");
+        True(cropped["paths"]!.AsArray().All(path => path!["points"]!.AsArray().All(point =>
+                point![0]!.GetValue<double>() >= 1 && point[0]!.GetValue<double>() <= 3)),
+            "the final relation still respects the kept Crop interval");
+
+        var noTargets = CroppedCreation([], "1/4", "1/2");
+        InvalidContains(new JsonObject
+        {
+            ["state"] = Clone(noTargets["state"]!),
+            ["action"] = new JsonObject { ["type"] = "export", ["kind"] = "challenge", ["view"] = "flight" }
+        }, "Expand Crop", "a creation with no retained target cannot export an unwinnable challenge");
+        var emptyChallenge = CreationArtifact(48, []);
+        emptyChallenge["type"] = "challenge";
+        emptyChallenge.Remove("nodes");
+        emptyChallenge["crop"] = new JsonObject { ["from"] = "1/4", ["to"] = "1/2" };
+        emptyChallenge["goals"] = new JsonArray();
+        emptyChallenge["inventory"] = new JsonObject();
+        emptyChallenge["limit"] = 0;
+        InvalidContains(new JsonObject
+        {
+            ["action"] = new JsonObject { ["type"] = "import", ["artifact"] = emptyChallenge }
+        }, "target position", "empty-target challenge imports stay invalid while creations remain valid");
     }
 
     private static void HeightSquaredRelationContract()

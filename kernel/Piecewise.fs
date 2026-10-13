@@ -37,11 +37,12 @@ module internal Piecewise =
         Squared: bool
     }
 
-    let private exactZeroEntity = MathS.FromString("0")
-    let private exactOneEntity = MathS.FromString("1")
-    let private exactNegativeOneEntity = MathS.FromString("-1")
+    let private integerEntity value : Entity = Entity.Number.Integer.Create(PeterO.Numbers.EInteger.FromInt32(value))
+    let private exactZeroEntity = integerEntity 0
+    let private exactOneEntity = integerEntity 1
+    let private exactNegativeOneEntity = integerEntity -1
     let private piEntity = MathS.FromString("pi")
-    let private twoEntity = MathS.FromString("2")
+    let private twoEntity = integerEntity 2
 
     // Crop changes interval ownership, not the algebra inside each segment.
     // Keep the expensive exact transformations bounded and reuse them while a
@@ -75,16 +76,6 @@ module internal Piecewise =
                     order.Enqueue(key)
                     computed)
 
-    let private simplifiedExpression (expression: Entity) =
-        let key = expression.ToString()
-        boundedExpressionCached simplifiedExpressionCache simplifiedExpressionOrder key (fun () ->
-            let simplified = expression.Simplify()
-            simplified,simplified.ToString(),simplified.Latexize())
-
-    let private differentiatedExpression (x: Entity.Variable) (expression: Entity) =
-        let key = x.ToString()+"\u001f"+expression.ToString()
-        boundedExpressionCached derivativeCache derivativeOrder key (fun () -> expression.Differentiate(x))
-
     let createRational (numerator: BigInteger) (denominator: BigInteger) =
         if denominator = BigInteger.Zero then invalidArg "denominator" "A rational denominator cannot be zero."
         let numerator,denominator =
@@ -117,7 +108,12 @@ module internal Piecewise =
         if value.Denominator = BigInteger.One then value.Numerator.ToString()
         else sprintf "%O/%O" value.Numerator value.Denominator
 
-    let toEntity value = MathS.FromString(rationalText value)
+    let toEntity value : Entity =
+        // Never populate the parser cache while downcasting is disabled: the
+        // same numeral would otherwise be approximate in subsequent requests.
+        let numerator = PeterO.Numbers.EInteger.FromString(value.Numerator.ToString())
+        if value.Denominator = BigInteger.One then Entity.Number.Integer.Create(numerator)
+        else Entity.Number.Rational.Create(numerator,PeterO.Numbers.EInteger.FromString(value.Denominator.ToString()))
     let toFloat value = float value.Numerator / float value.Denominator
     let compareRational left right = compare (left.Numerator * right.Denominator) (right.Numerator * left.Denominator)
     let add left right = createRational (left.Numerator*right.Denominator + right.Numerator*left.Denominator) (left.Denominator*right.Denominator)
@@ -140,8 +136,221 @@ module internal Piecewise =
         let remainder = value.Numerator % value.Denominator
         if remainder <> BigInteger.Zero && value.Numerator.Sign > 0 then quotient+BigInteger.One else quotient
 
+    let integerSquareRoot (value: BigInteger) =
+        if value.Sign < 0 then invalidArg "value" "Cannot take the integer square root of a negative number."
+        elif value < BigInteger(2) then value
+        else
+            let mutable estimate = BigInteger.One <<< int ((value.GetBitLength()+1L)/2L)
+            let mutable next = (estimate + value/estimate) >>> 1
+            while next < estimate do
+                estimate <- next
+                next <- (estimate + value/estimate) >>> 1
+            estimate
+
+    let tryRationalSquareRoot value =
+        if value.Numerator.Sign < 0 then None
+        else
+            let numeratorRoot = integerSquareRoot value.Numerator
+            let denominatorRoot = integerSquareRoot value.Denominator
+            if numeratorRoot*numeratorRoot = value.Numerator && denominatorRoot*denominatorRoot = value.Denominator then
+                Some (createRational numeratorRoot denominatorRoot)
+            else None
+
+    let private proofEntity = toEntity
+
+    let rec private proofRational depth (value: Entity) =
+        if depth > 64 then None
+        else
+            let child = proofRational (depth+1)
+            let binary operation left right =
+                match child left,child right with
+                | Some a,Some b -> Some (operation a b)
+                | _ -> None
+            match value with
+            | :? Entity.Number.Rational -> tryParseRational (value.ToString())
+            | :? Entity.Sumf as sum -> binary add sum.Augend sum.Addend
+            | :? Entity.Minusf as difference -> binary subtract difference.Minuend difference.Subtrahend
+            | :? Entity.Mulf as product -> binary multiply product.Multiplier product.Multiplicand
+            | :? Entity.Divf as division ->
+                match child division.Dividend,child division.Divisor with
+                | Some numerator,Some denominator when denominator <> zero -> Some (divide numerator denominator)
+                | _ -> None
+            | :? Entity.Powf as power ->
+                match child power.Base,child power.Exponent with
+                | Some basis,Some exponent when exponent.Denominator = BigInteger.One &&
+                        BigInteger.Abs(exponent.Numerator) <= BigInteger(1024) &&
+                        basis <> zero &&
+                        BigInteger.Abs(exponent.Numerator) * BigInteger(basis.Numerator.GetBitLength()+basis.Denominator.GetBitLength()) <= BigInteger(16384) ->
+                    let count = int (BigInteger.Abs(exponent.Numerator))
+                    let result = createRational (BigInteger.Pow(basis.Numerator,count)) (BigInteger.Pow(basis.Denominator,count))
+                    Some (if exponent.Numerator.Sign < 0 then divide one result else result)
+                | Some basis,Some exponent when basis = zero && exponent.Denominator = BigInteger.One && exponent.Numerator.Sign > 0 -> Some zero
+                | Some basis,Some exponent when exponent = createRational BigInteger.One (BigInteger 2) ->
+                    tryRationalSquareRoot basis
+                | _ -> None
+            | _ -> None
+
+    let rec private proofPiMultiple depth (value: Entity) =
+        if depth > 64 then None
+        elif value = piEntity then Some one
+        else
+            let child = proofPiMultiple (depth+1)
+            match value with
+            | :? Entity.Sumf as sum ->
+                match child sum.Augend,child sum.Addend with | Some a,Some b -> Some (add a b) | _ -> None
+            | :? Entity.Minusf as difference ->
+                match child difference.Minuend,child difference.Subtrahend with | Some a,Some b -> Some (subtract a b) | _ -> None
+            | :? Entity.Mulf as product ->
+                match proofRational 0 product.Multiplier,child product.Multiplicand with
+                | Some scale,Some angle -> Some (multiply scale angle)
+                | _ ->
+                    match child product.Multiplier,proofRational 0 product.Multiplicand with
+                    | Some angle,Some scale -> Some (multiply angle scale)
+                    | _ -> None
+            | :? Entity.Divf as division ->
+                match child division.Dividend,proofRational 0 division.Divisor with
+                | Some angle,Some divisor when divisor <> zero -> Some (divide angle divisor)
+                | _ -> None
+            | _ -> if proofRational 0 value = Some zero then Some zero else None
+
+    let private tryQuarterTurnPhase argument =
+        proofPiMultiple 0 argument |> Option.map (multiply (ofInt 2))
+
+    // Exact table landmarks and half-angle identities restore radical shoulder
+    // proofs without allowing the CAS to guess rational values numerically.
+    let rec private proofSine depth angle =
+        if depth > 16 then None
+        else
+            let two = ofInt 2
+            let half = divide one two
+            let reduced = subtract angle (multiply two (ofBigInteger (floorRational (divide angle two))))
+            let negative = compareRational reduced one > 0
+            let positive = if negative then subtract reduced one else reduced
+            let acute = if compareRational positive half > 0 then subtract one positive else positive
+            let value =
+                if acute = zero then Some exactZeroEntity
+                elif acute = half then Some exactOneEntity
+                elif acute = divide one (ofInt 6) then Some (proofEntity half)
+                elif acute = divide one (ofInt 4) then Some ((twoEntity.Pow(proofEntity half))/twoEntity)
+                elif acute = divide one (ofInt 3) then Some (((proofEntity (ofInt 3)).Pow(proofEntity half))/twoEntity)
+                elif acute.Denominator.IsEven then
+                    proofSine (depth+1) (subtract half (multiply two acute))
+                    |> Option.map (fun cosine -> ((exactOneEntity-cosine)/twoEntity).Pow(proofEntity half))
+                else None
+            value |> Option.map (fun result -> if negative then -result else result)
+
+    // Exact readings must retain unresolved constants. Default CAS downcasting
+    // may turn a tiny sine into zero before an equality proof ever sees it.
+    let private rewriteExact (expression: Entity) =
+        expression.Replace(Func<Entity,Entity>(fun node ->
+            let compareOperands predicate left right =
+                match proofRational 0 left,proofRational 0 right with
+                | Some a,Some b -> Some (predicate (compareRational a b))
+                | _ -> None
+            let predicate =
+                match node with
+                | :? Entity.Equalsf as comparison -> compareOperands ((=) 0) comparison.NodeFirstChild comparison.NodeSecondChild
+                | :? Entity.Greaterf as comparison -> compareOperands (fun value -> value > 0) comparison.NodeFirstChild comparison.NodeSecondChild
+                | :? Entity.GreaterOrEqualf as comparison -> compareOperands (fun value -> value >= 0) comparison.NodeFirstChild comparison.NodeSecondChild
+                | :? Entity.Lessf as comparison -> compareOperands (fun value -> value < 0) comparison.NodeFirstChild comparison.NodeSecondChild
+                | :? Entity.LessOrEqualf as comparison -> compareOperands (fun value -> value <= 0) comparison.NodeFirstChild comparison.NodeSecondChild
+                | _ -> None
+            match predicate,proofRational 0 node with
+            | Some truth,_ -> Entity.Boolean.Create(truth)
+            | _,Some rational -> proofEntity rational
+            | _ ->
+                let exactPower =
+                    match node with
+                    | :? Entity.Powf as power ->
+                        match proofRational 0 power.Exponent with
+                        | Some exponent when exponent.Denominator = BigInteger.One ->
+                            // Integer outer powers distribute without choosing a
+                            // radical branch. This keeps squared sine shoulders
+                            // rational without asking numeric downcasting to
+                            // recognize the value of (sqrt(2)/2)^2.
+                            match power.Base with
+                            | :? Entity.Divf as division ->
+                                Some (division.Dividend.Pow(power.Exponent)/division.Divisor.Pow(power.Exponent))
+                            | :? Entity.Mulf as product ->
+                                Some (product.Multiplier.Pow(power.Exponent)*product.Multiplicand.Pow(power.Exponent))
+                            | :? Entity.Powf as inner ->
+                                Some (inner.Base.Pow(inner.Exponent*power.Exponent))
+                            | _ -> None
+                        | _ -> None
+                    | _ -> None
+                let sine =
+                    match node with
+                    | :? Entity.Sinf as sine -> proofPiMultiple 0 sine.Argument |> Option.bind (proofSine 0)
+                    | :? Entity.Cosf as cosine -> proofPiMultiple 0 cosine.Argument |> Option.bind (fun angle -> proofSine 0 (add angle (divide one (ofInt 2))))
+                    | _ -> None
+                exactPower |> Option.orElse sine |> Option.defaultValue node))
+    let rec private normalizeExact remaining expression =
+        let next = rewriteExact expression
+        if remaining = 0 || next = expression then next else normalizeExact (remaining-1) next
+    let rec private finishExact remaining (expression: Entity) =
+        // Keep rational arithmetic and known angle identities
+        // exact while restoring the integer nodes needed by
+        // rewrite rules. Never reinterpret decimal estimates.
+        let integers = normalizeExact 64 expression
+        let next = integers.InnerSimplified
+        if remaining = 0 || next = expression then integers
+        else finishExact (remaining-1) next
+
+    let transformExact simplify (expression: Entity) =
+        // General CAS rewriting needs its ordinary exact numeral constructors.
+        // Protect unresolved constants with symbols so those rewrites cannot
+        // evaluate a tiny sine/radical and guess an integer from its decimal.
+        // Restore the original entities afterwards; temporary symbols never
+        // escape into a reading, expression cache, or serialized construction.
+        let original = normalizeExact 64 expression
+        let replacements = ResizeArray<Entity.Variable*Entity>()
+        let symbols = Dictionary<Entity,Entity.Variable>()
+        let protectedExpression = original.Replace(Func<Entity,Entity>(fun node ->
+            // Keep pi's known nonzero identity in variable algebra, so phase
+            // cancellation does not gain an artificial conditional domain.
+            // A constant expression involving pi is still protected as a whole.
+            if node :? Entity.Number.Rational || node :? Entity.Boolean || node = piEntity || not (Seq.isEmpty node.Vars) then node
+            else
+                match symbols.TryGetValue(node) with
+                | true,symbol -> symbol :> Entity
+                | false,_ ->
+                    let mutable prefix = "exactconstant"
+                    let mutable name = prefix+"_"+string replacements.Count
+                    while original.Vars |> Seq.exists (fun variable -> variable.Name = name) do
+                        prefix <- prefix+"x"
+                        name <- prefix+"_"+string replacements.Count
+                    let symbol = MathS.Var(name)
+                    symbols[node] <- symbol
+                    replacements.Add(symbol,node)
+                    symbol :> Entity))
+        use ordinaryNumbers = MathS.Settings.DowncastingEnabled.Set(true)
+        let simplified = simplify protectedExpression
+        if isNull simplified then null
+        else
+            let restored =
+                replacements
+                |> Seq.rev
+                |> Seq.fold (fun (current: Entity) (symbol,value) -> current.Substitute(symbol,value)) simplified
+            normalizeExact 64 restored
+
+    let exactInnerSimplified (expression: Entity) =
+        transformExact (fun value -> value.InnerSimplified) expression
+
+    let exactSimplify (expression: Entity) =
+        transformExact (fun value -> value.Simplify()) expression
+
     let tryRationalEntity (value: Entity) =
-        value.InnerSimplified.ToString() |> tryParseRational
+        value |> exactInnerSimplified |> proofRational 0
+
+    let private differentiatedExpression (x: Entity.Variable) (expression: Entity) =
+        let key = x.ToString()+"\u001f"+expression.ToString()
+        boundedExpressionCached derivativeCache derivativeOrder key (fun () -> transformExact (fun value -> value.Differentiate(x)) expression)
+
+    let private simplifiedExpression (expression: Entity) =
+        let key = expression.ToString()
+        boundedExpressionCached simplifiedExpressionCache simplifiedExpressionOrder key (fun () ->
+            let simplified = exactSimplify expression
+            simplified,simplified.ToString(),simplified.Latexize())
 
     let private trySineLandmarkEquality (left: Entity) (right: Entity) =
         let landmark value =
@@ -189,118 +398,10 @@ module internal Piecewise =
         | target,(:? Entity.Sinf as sine) -> landmark target |> Option.bind (sineEqualsLandmark 0 sine)
         | _ -> None
 
-    let private proofEntity value : Entity =
-        // Parsing while numeric downcasting is disabled can cache Real numeral
-        // nodes for later requests. Construct exact nodes without the parser.
-        let numerator = PeterO.Numbers.EInteger.FromString(value.Numerator.ToString())
-        if value.Denominator = BigInteger.One then Entity.Number.Integer.Create(numerator)
-        else Entity.Number.Rational.Create(numerator,PeterO.Numbers.EInteger.FromString(value.Denominator.ToString()))
-
-    let rec private proofRational depth (value: Entity) =
-        if depth > 64 then None
-        else
-            let child = proofRational (depth+1)
-            let binary operation left right =
-                match child left,child right with
-                | Some a,Some b -> Some (operation a b)
-                | _ -> None
-            match value with
-            | :? Entity.Number.Rational -> tryParseRational (value.ToString())
-            | :? Entity.Sumf as sum -> binary add sum.Augend sum.Addend
-            | :? Entity.Minusf as difference -> binary subtract difference.Minuend difference.Subtrahend
-            | :? Entity.Mulf as product -> binary multiply product.Multiplier product.Multiplicand
-            | :? Entity.Divf as division ->
-                match child division.Dividend,child division.Divisor with
-                | Some numerator,Some denominator when denominator <> zero -> Some (divide numerator denominator)
-                | _ -> None
-            | :? Entity.Powf as power ->
-                match child power.Base,child power.Exponent with
-                | Some basis,Some exponent when exponent.Denominator = BigInteger.One &&
-                        BigInteger.Abs(exponent.Numerator) <= BigInteger(1024) &&
-                        basis <> zero &&
-                        BigInteger.Abs(exponent.Numerator) * BigInteger(basis.Numerator.GetBitLength()+basis.Denominator.GetBitLength()) <= BigInteger(16384) ->
-                    let count = int (BigInteger.Abs(exponent.Numerator))
-                    let result = createRational (BigInteger.Pow(basis.Numerator,count)) (BigInteger.Pow(basis.Denominator,count))
-                    Some (if exponent.Numerator.Sign < 0 then divide one result else result)
-                | Some basis,Some exponent when basis = zero && exponent.Denominator = BigInteger.One && exponent.Numerator.Sign > 0 -> Some zero
-                | _ -> None
-            | _ -> None
-
-    let rec private proofPiMultiple depth (value: Entity) =
-        if depth > 64 then None
-        elif value = piEntity then Some one
-        else
-            let child = proofPiMultiple (depth+1)
-            match value with
-            | :? Entity.Sumf as sum ->
-                match child sum.Augend,child sum.Addend with | Some a,Some b -> Some (add a b) | _ -> None
-            | :? Entity.Minusf as difference ->
-                match child difference.Minuend,child difference.Subtrahend with | Some a,Some b -> Some (subtract a b) | _ -> None
-            | :? Entity.Mulf as product ->
-                match proofRational 0 product.Multiplier,child product.Multiplicand with
-                | Some scale,Some angle -> Some (multiply scale angle)
-                | _ ->
-                    match child product.Multiplier,proofRational 0 product.Multiplicand with
-                    | Some angle,Some scale -> Some (multiply angle scale)
-                    | _ -> None
-            | :? Entity.Divf as division ->
-                match child division.Dividend,proofRational 0 division.Divisor with
-                | Some angle,Some divisor when divisor <> zero -> Some (divide angle divisor)
-                | _ -> None
-            | _ -> if proofRational 0 value = Some zero then Some zero else None
-
-    // Exact table landmarks and half-angle identities restore radical shoulder
-    // proofs without allowing the CAS to guess rational values numerically.
-    let rec private proofSine depth angle =
-        if depth > 16 then None
-        else
-            let two = ofInt 2
-            let half = divide one two
-            let reduced = subtract angle (multiply two (ofBigInteger (floorRational (divide angle two))))
-            let negative = compareRational reduced one > 0
-            let positive = if negative then subtract reduced one else reduced
-            let acute = if compareRational positive half > 0 then subtract one positive else positive
-            let value =
-                if acute = zero then Some exactZeroEntity
-                elif acute = half then Some exactOneEntity
-                elif acute = divide one (ofInt 6) then Some (proofEntity half)
-                elif acute = divide one (ofInt 4) then Some ((twoEntity.Pow(proofEntity half))/twoEntity)
-                elif acute = divide one (ofInt 3) then Some (((proofEntity (ofInt 3)).Pow(proofEntity half))/twoEntity)
-                elif acute.Denominator.IsEven then
-                    proofSine (depth+1) (subtract half (multiply two acute))
-                    |> Option.map (fun cosine -> ((exactOneEntity-cosine)/twoEntity).Pow(proofEntity half))
-                else None
-            value |> Option.map (fun result -> if negative then -result else result)
-
     let private proveConstantEquality (left: Entity) (right: Entity) =
-        // Numeric downcasting can turn an unresolved difference
-        // such as sin(pi/18)-r into zero when r is a very close
-        // rational. Proofs must keep approximate numbers apart.
         use exactNumbers = MathS.Settings.DowncastingEnabled.Set(false)
-        let rewrite (expression: Entity) =
-            expression.Replace(Func<Entity,Entity>(fun node ->
-                match proofRational 0 node with
-                | Some rational -> proofEntity rational
-                | None ->
-                    let sine =
-                        match node with
-                        | :? Entity.Sinf as sine -> proofPiMultiple 0 sine.Argument |> Option.bind (proofSine 0)
-                        | :? Entity.Cosf as cosine -> proofPiMultiple 0 cosine.Argument |> Option.bind (fun angle -> proofSine 0 (add angle (divide one (ofInt 2))))
-                        | _ -> None
-                    sine |> Option.defaultValue node))
-        let rec normalize remaining expression =
-            let next = rewrite expression
-            if remaining = 0 || next = expression then next else normalize (remaining-1) next
-        let rec finish remaining (expression: Entity) =
-            // Keep rational arithmetic and known angle identities
-            // exact while restoring the integer nodes needed by
-            // rewrite rules. Never reinterpret decimal estimates.
-            let integers = normalize 64 expression
-            let next = integers.InnerSimplified
-            if remaining = 0 || next = expression then integers
-            else finish (remaining-1) next
-        let expanded = (left-right) |> finish 64 |> fun value -> value.Expand() |> finish 64
-        expanded = exactZeroEntity || (expanded.Simplify() |> finish 64) = exactZeroEntity
+        let expanded = (left-right) |> finishExact 64 |> fun value -> value.Expand() |> finishExact 64
+        expanded = exactZeroEntity || (expanded.Simplify() |> finishExact 64) = exactZeroEntity
 
     let exactEqual (left: Entity) (right: Entity) =
         if left = right then true
@@ -323,7 +424,7 @@ module internal Piecewise =
                         else rightText+"\u001f"+leftText
                     boundedExpressionCached exactEqualityCache exactEqualityOrder key (fun () ->
                         if Seq.isEmpty left.Vars && Seq.isEmpty right.Vars then proveConstantEquality left right
-                        else (left-right).Simplify() = exactZeroEntity)
+                        else exactSimplify (left-right) = exactZeroEntity)
 
     let private containsIntegral (value: Entity) =
         value.Nodes |> Seq.exists (fun node -> node :? Entity.Integralf)
@@ -388,13 +489,13 @@ module internal Piecewise =
         |> List.sortWith compareRational
 
     let private tryAffine (x: Entity.Variable) (expression: Entity) =
-        let simplified = expression.InnerSimplified
-        let atZero = simplified.Substitute(x,toEntity zero).InnerSimplified
-        let atOne = simplified.Substitute(x,toEntity one).InnerSimplified
+        let simplified = exactInnerSimplified expression
+        let atZero = simplified.Substitute(x,toEntity zero) |> exactInnerSimplified
+        let atOne = simplified.Substitute(x,toEntity one) |> exactInnerSimplified
         match tryRationalEntity atZero,tryRationalEntity atOne with
         | Some intercept,Some valueAtOne ->
             let slope = subtract valueAtOne intercept
-            let candidate = (toEntity slope * x + toEntity intercept).InnerSimplified
+            let candidate = (toEntity slope * x + toEntity intercept) |> exactInnerSimplified
             if exactEqual simplified candidate then Some (slope,intercept) else None
         | _ -> None
 
@@ -419,19 +520,19 @@ module internal Piecewise =
                 Some (low,high)
 
     let private tryQuarterTurnSineTransform (x: Entity.Variable) (expression: Entity) =
-        let simplified = expression.InnerSimplified
-        let pi = MathS.FromString("pi")
-        let two = MathS.FromString("2")
+        let simplified = exactInnerSimplified expression
+        let pi = piEntity
+        let two = twoEntity
         expression.Nodes
         |> Seq.choose (function | :? Entity.Sinf as sine -> Some sine | _ -> None)
         |> Seq.tryPick (fun sine ->
             let sineEntity = sine :> Entity
-            let phase = (sine.Argument*two/pi).Simplify()
+            let phase = (sine.Argument*two/pi) |> exactSimplify
             match tryAffine x phase with
             | Some (phaseSlope,phaseIntercept) when phaseSlope.Numerator <> BigInteger.Zero ->
                 let atPhase phaseValue =
                     let point = divide (subtract phaseValue phaseIntercept) phaseSlope
-                    expression.Substitute(x,toEntity point).InnerSimplified |> tryRationalEntity
+                    expression.Substitute(x,toEntity point) |> tryRationalEntity
                 match atPhase zero,atPhase one with
                 | Some atZero,Some atOne ->
                     let outputScale = subtract atOne atZero
@@ -508,11 +609,10 @@ module internal Piecewise =
             value.Nodes
             |> Seq.choose (function :? Entity.Sinf as sine -> Some sine | _ -> None)
             |> Seq.tryPick (fun sine ->
-                let pi = MathS.FromString("pi")
-                let phase = (sine.Argument * toEntity (ofInt 2) / pi).Simplify() |> tryRationalEntity
+                let phase = tryQuarterTurnPhase sine.Argument
                 let variable = MathS.Var("round_input")
                 let replaced = value.Substitute(sine,variable)
-                let at point = replaced.Substitute(variable,toEntity point).InnerSimplified |> tryRationalEntity
+                let at point = replaced.Substitute(variable,toEntity point) |> tryRationalEntity
                 match phase,at zero,at one with
                 | Some phase,Some offset,Some atOne ->
                     let scale = subtract atOne offset
@@ -527,7 +627,7 @@ module internal Piecewise =
                 | _ -> None)
         sineRounded
         |> Option.orElseWith (fun () -> tryRationalEntity value |> Option.map round)
-        |> Option.orElseWith (fun () -> value.Simplify() |> tryRationalEntity |> Option.map round)
+        |> Option.orElseWith (fun () -> exactSimplify value |> tryRationalEntity |> Option.map round)
 
     let evaluateExpressionAt (x: Entity.Variable) point (expression: Entity) =
         let rec reduce (current: Entity) =
@@ -537,7 +637,7 @@ module internal Piecewise =
                     | :? Entity.Ceilf as node when not (hasSymbolicRounding node.Argument) -> Some (node :> Entity,node.Argument,false)
                     | _ -> None)
             match leaf with
-            | None -> current.Substitute(x,toEntity point).InnerSimplified
+            | None -> current.Substitute(x,toEntity point) |> exactInnerSimplified
             | Some (node,argument,isFloor) ->
                 match roundConstant isFloor (argument.Substitute(x,toEntity point)) with
                 | Some integer -> reduce (current.Substitute(node,toEntity (ofBigInteger integer)))
@@ -731,20 +831,20 @@ module internal Piecewise =
             fn.Segments
             |> List.filter (fun segment -> compareRational segment.Start segment.End < 0)
             |> List.sortWith (fun left right -> compareRational left.Start right.Start)
-        let mutable accumulated = MathS.FromString("0")
+        let mutable accumulated = exactZeroEntity
         let output = ResizeArray<Segment>()
         let mutable failure : string option = None
         for segment in intervals do
             if failure.IsNone then
                 let startValue,endValue = toEntity segment.Start,toEntity segment.End
-                let local = segment.Expression.Integrate(x,startValue,x).Simplify()
-                let area = segment.Expression.Integrate(x,startValue,endValue).Simplify()
+                let local = transformExact (fun value -> value.Integrate(x,startValue,x)) segment.Expression |> exactSimplify
+                let area = transformExact (fun value -> value.Integrate(x,startValue,endValue)) segment.Expression |> exactSimplify
                 if containsIntegral local || containsIntegral area then
                     failure <- Some "This construction does not have an exact supported accumulated form."
                 else
-                    let expression = (accumulated + local).Simplify()
+                    let expression = (accumulated + local) |> exactSimplify
                     output.Add({ segment with StartClosed=true;EndClosed=true;Expression=expression })
-                    accumulated <- (accumulated + area).Simplify()
+                    accumulated <- (accumulated + area) |> exactSimplify
         match failure with
         | Some message -> Error message
         | None when output.Count = 0 -> Error "This construction has no interval to accumulate."
@@ -755,9 +855,9 @@ module internal Piecewise =
             fn.Segments
             |> List.filter (fun segment -> compareRational segment.Start segment.End < 0)
         let valueAt point segment =
-            segment.Expression.Substitute(x,toEntity point).InnerSimplified
+            segment.Expression.Substitute(x,toEntity point) |> exactInnerSimplified
         let derivativeAt point segment =
-            segment.Expression.Differentiate(x).Substitute(x,toEntity point).InnerSimplified
+            (differentiatedExpression x segment.Expression).Substitute(x,toEntity point) |> exactInnerSimplified
         let incident point =
             let left =
                 intervals
@@ -794,13 +894,13 @@ module internal Piecewise =
                 |> List.map (fun segment ->
                     let expression =
                         if compareRational segment.Start segment.End < 0 then
-                            segment.Expression.Differentiate(x).InnerSimplified
+                            differentiatedExpression x segment.Expression |> exactInnerSimplified
                         else
                             let left,right = incident segment.Start
                             let source = right |> Option.orElse left
                             match source with
                             | Some interval -> derivativeAt segment.Start interval
-                            | None -> segment.Expression.Differentiate(x).InnerSimplified
+                            | None -> differentiatedExpression x segment.Expression |> exactInnerSimplified
                     { segment with Expression=expression })
             Ok { fn with Segments=differentiated }
 
@@ -824,10 +924,10 @@ module internal Piecewise =
     // through (and simplifying) every earlier sine again after a lift or scale.
     let private pointwiseOperation op =
         match op with
-        | "H" -> Some (fun (expression: Entity) -> (expression/twoEntity).InnerSimplified)
-        | "A" -> Some (fun expression -> (expression+exactOneEntity).InnerSimplified)
-        | "N" -> Some (fun expression -> -expression)
-        | "Q" -> Some (fun expression -> expression.Pow(twoEntity).InnerSimplified)
+        | "H" -> Some (fun (expression: Entity) -> exactInnerSimplified (expression/twoEntity))
+        | "A" -> Some (fun expression -> exactInnerSimplified (expression+exactOneEntity))
+        | "N" -> Some (fun expression -> exactInnerSimplified (-expression))
+        | "Q" -> Some (fun expression -> exactInnerSimplified (expression.Pow(twoEntity)))
         | "S" ->
             Some (fun expression -> MathS.Sin(piEntity*expression/twoEntity))
         | _ -> None
@@ -837,7 +937,7 @@ module internal Piecewise =
             values |> List.map (fun value ->
                 let key = op+"\u001f"+value.ToString()
                 boundedExpressionCached pointwiseValueCache pointwiseValueOrder key (fun () ->
-                    (transform value).InnerSimplified)))
+                    exactInnerSimplified (transform value))))
 
     let apply (x: Entity.Variable) maxSegments op fn =
         match pointwiseOperation op with
@@ -868,7 +968,7 @@ module internal Piecewise =
         if hasSymbolicRounding rightSegment.Expression then exactZeroEntity
         else
             (differentiatedExpression x rightSegment.Expression)
-                .Substitute(x,toEntity point).InnerSimplified
+                .Substitute(x,toEntity point) |> exactInnerSimplified
 
     let rightSlopeAtZero (x: Entity.Variable) fn = rightSlopeAt x zero fn
 
@@ -965,36 +1065,16 @@ module internal Piecewise =
     let expressionText fn = (presentation fn).ExpressionText
 
     let tryQuadratic (x: Entity.Variable) (expression: Entity) =
-        let valueAt point = expression.Substitute(x,toEntity point).InnerSimplified |> tryRationalEntity
+        let valueAt point = expression.Substitute(x,toEntity point) |> tryRationalEntity
         match valueAt zero,valueAt one,valueAt (negate one) with
         | Some atZero,Some atOne,Some atNegativeOne ->
             let two = ofInt 2
             let linear = divide (subtract atOne atNegativeOne) two
             let quadratic = subtract (divide (add atOne atNegativeOne) two) atZero
             let candidate =
-                (toEntity quadratic * x.Pow(MathS.FromString("2")) + toEntity linear*x + toEntity atZero).InnerSimplified
+                (toEntity quadratic * x.Pow(twoEntity) + toEntity linear*x + toEntity atZero) |> exactInnerSimplified
             if exactEqual expression candidate then Some (quadratic,linear,atZero) else None
         | _ -> None
-
-    let integerSquareRoot (value: BigInteger) =
-        if value.Sign < 0 then invalidArg "value" "Cannot take the integer square root of a negative number."
-        elif value < BigInteger(2) then value
-        else
-            let mutable estimate = BigInteger.One <<< int ((value.GetBitLength()+1L)/2L)
-            let mutable next = (estimate + value/estimate) >>> 1
-            while next < estimate do
-                estimate <- next
-                next <- (estimate + value/estimate) >>> 1
-            estimate
-
-    let tryRationalSquareRoot value =
-        if value.Numerator.Sign < 0 then None
-        else
-            let numeratorRoot = integerSquareRoot value.Numerator
-            let denominatorRoot = integerSquareRoot value.Denominator
-            if numeratorRoot*numeratorRoot = value.Numerator && denominatorRoot*denominatorRoot = value.Denominator then
-                Some (createRational numeratorRoot denominatorRoot)
-            else None
 
     // Machin's identity pi = 16 atan(1/5) - 4 atan(1/239), with each
     // alternating series bracketed by consecutive partial sums. No floating
