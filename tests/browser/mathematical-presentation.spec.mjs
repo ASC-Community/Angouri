@@ -79,8 +79,8 @@ test('the optional source-67 sketch compares real-height branches with real-heig
   test.setTimeout(120000);
   await page.goto('/about/');await page.goto('/#level=67');
   await page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
-  await page.locator('#hints-open').click();await page.getByRole('button',{name:'Another hint',exact:true}).click();
-  await page.getByRole('button',{name:'Show a sketch',exact:true}).click();await expect(page.locator('#hint-sketch')).toHaveAttribute('aria-busy','false');
+  await page.locator('#hints-open').click();await page.getByRole('button',{name:'Reveal another hint',exact:true}).click();
+  await page.getByRole('button',{name:'Reveal sketch',exact:true}).click();await expect(page.locator('#hint-sketch')).toHaveAttribute('aria-busy','false');
   const sketch=page.locator('#hint-sketch > .note-relation');await expect(sketch).toHaveCount(1);
   const data=await sketch.evaluate(element=>{
     const goals=window.angouri.result.checkpoints,markers=[...element.querySelectorAll('[data-note-target]')];
