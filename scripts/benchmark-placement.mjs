@@ -65,7 +65,8 @@ const uiRecipe='AAAAAAHHHH';
 const uiCases=[
   {name:'height',sourceId:25,recipe:uiRecipe,expected:uiRecipe},
   {name:'wave-input',sourceId:54,recipe:'AHQ',expected:'ASHQ'},
-  {name:'wave-output',sourceId:54,recipe:'QHA',expected:'SQHA',afterStation:true}
+  {name:'wave-output',sourceId:54,recipe:'QHA',expected:'SQHA',afterStation:true},
+  {name:'mastery-phase',sourceId:64,recipe:'DQSA',expected:'DQSA'}
 ];
 const uiRuns=[];
 for(const scenario of uiCases)for(const view of ['flight','function','flow']){
@@ -156,5 +157,6 @@ const waves=Object.fromEntries(uiCases.filter(scenario=>scenario.sourceId===54).
   sourceId:scenario.sourceId,recipe:scenario.expected,
   views:Object.fromEntries(uiRuns.filter(run=>run.name===scenario.name).map(run=>[run.view,summarizeUiRun(run)]))
 }]));
-console.log(JSON.stringify({engine:engineName,url:baseUrl,readyMilliseconds:report.readyMilliseconds,cases:summary,ui:{sourceId:25,recipe:uiRecipe,views:ui},waves},null,2));
+const mastery={sourceId:64,recipe:'DQSA',views:Object.fromEntries(uiRuns.filter(run=>run.sourceId===64).map(run=>[run.view,summarizeUiRun(run)]))};
+console.log(JSON.stringify({engine:engineName,url:baseUrl,readyMilliseconds:report.readyMilliseconds,cases:summary,ui:{sourceId:25,recipe:uiRecipe,views:ui},waves,mastery},null,2));
 await browser.close();
