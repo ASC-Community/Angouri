@@ -18,7 +18,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
 .intro #ideas-open, .intro #hints-open, .intro .scene-toolbar, .intro #reset { display: none; }
 .landing .site-header { position: relative; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: center; padding: clamp(80px,14dvh,128px) 0 clamp(28px,5dvh,48px); }
 .landing .brand { grid-column: 2; grid-row: 1; justify-self: center; }
-.landing .menu-button { position: absolute; top: 24px; right: 10px; }
+.landing .menu-button { position: absolute; grid-area: auto; top: 24px; right: 10px; }
 .landing .puzzle-heading { display: none; }
 .landing #axis-labels, .landing .flight-grid, .landing .flight-height-axis { display: none; }
 .intro .recipe-heading h2, .intro .history-button:disabled { visibility: hidden; }
@@ -258,7 +258,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
   .construction { margin-bottom: 7px; }
   .dock-footer { padding-top: 3px; min-height: 23px; }
 }
-@media(max-height:520px) and (min-width:601px) {
+@media(max-height:520px) and (min-width:481px) {
   .play-dock { width: 310px; max-width: 43%; max-height: 100%; overflow: hidden; margin: auto 0; padding: 8px 10px; }
   .palette { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }.palette[data-count] { --piece-height: 55px; }
   .palette[data-count="6"] { grid-template-columns: repeat(3,minmax(0,1fr)); }
@@ -280,7 +280,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
   .success-medal>svg { width: 25px; height: 25px; padding: 4px; }
 }
 @media(max-width:370px) { .palette { gap: 7px; } }
-@media(max-width:600px) and (max-height:700px) {
+@media(max-width:600px) and (min-height:521px) and (max-height:700px) {
   .play-dock { max-height: 45%; }
 }
 
@@ -293,7 +293,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid #426940; outline-offs
   .palette:is([data-count="7"],[data-count="8"],[data-count="9"]) .ingredient-cue { display: none; }
   .palette:is([data-count="7"],[data-count="8"],[data-count="9"]) .ingredient-surface { padding: 7px 4px; gap: 3px; }
 }
-@media(max-height:520px) and (min-width:601px) {
+@media(max-height:520px) and (min-width:481px) {
   .palette:is([data-count="7"],[data-count="8"],[data-count="9"]) { grid-template-columns: repeat(3,minmax(0,1fr)); }
 }
 @media(max-width:600px) {
@@ -345,7 +345,7 @@ body.reduced-motion *, body.reduced-motion *::before, body.reduced-motion *::aft
   .intro .ingredient .op-formula { font-size: 24px; }
   .intro .ingredient[data-op="H"] .op-formula { font-size: calc((var(--piece-height) - 22px) * .64); }
 }
-@media(max-height:520px) and (min-width:601px) {
+@media(max-height:520px) and (min-width:481px) {
   .choice-game { --launch-width: 124px; }
   .landing .site-header { padding: 28px 0 20px; }
   .landing .brand { transform: scale(1.8); }
@@ -361,6 +361,25 @@ body.reduced-motion *, body.reduced-motion *::before, body.reduced-motion *::aft
   .choice-game .dock-footer .recipe-guidance { flex: none; }
   .choice-game .feedback { width: 100%; }
   .choice-game .dock-actions { justify-content: center; }
+}
+@media(max-height:520px) and (min-width:481px) and (max-width:600px) {
+  .palette[data-count="4"] { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .palette[data-count="5"] { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .choice-game .ingredient-cue { display: none; }
+}
+@media(max-height:520px) and (max-width:480px) {
+  /* Leave one complete palette face and its focus cues inside the body scroller. */
+  .play-dock { max-height: 154px; }
+  .recipe-heading { margin-bottom: 4px; }
+  .dock-footer { padding-top: 1px; }
+  .dock-actions { min-height: 40px; }
+  .choice-game .play-dock { padding: 8px; max-height: 160px; }
+  .choice-game .palette { --piece-height: 54px; min-height: calc(var(--piece-height) + 5px); padding-block: 2px 3px; }
+  .choice-game .ingredient-cue { display: none; }
+  .choice-game .dock-footer { min-height: 48px; }
+  .choice-game .ingredient-surface { padding-block: 6px; }
+  .landing .site-header { padding-top: 68px; padding-bottom: 20px; }
+  .landing .brand { transform: scale(2); }
 }
 
 /* Stations use the same single, horizontally scrollable recipe as other chapters. */

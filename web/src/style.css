@@ -297,9 +297,30 @@ details { border-top: 1px solid var(--line); padding-top: 14px; margin: 16px 0; 
 @media(max-width:370px) { .scene-toolbar { gap: 7px; }.view-tabs button { padding: 4px 7px; }.view-tabs button [data-icon] { display: none; } }
 @media(max-height:700px) { .game-shell { padding-bottom: 10px; }.site-header { padding-top: 10px; }.puzzle-heading h1 { font-size: 26px; margin-bottom: 3px; }.puzzle-heading>p:last-child { font-size: 11px; } }
 @media(max-height:620px) and (max-width:600px) { .puzzle-tip { display: none; }.site-header { gap: 6px 12px; padding-top: 8px; }.puzzle-heading h1 { font-size: 24px; } }
-@media(max-height:520px) and (min-width:601px) {
+@media(max-height:520px) and (min-width:481px) {
   .canvas-side { --toolbar-room: 46px; }
   .playground { flex-direction: row; align-items: stretch; gap: 16px; }.canvas-side { min-width: 0; width: auto; margin: 0; }.scene-toolbar { gap: 12px; min-height: var(--toolbar-room); padding: 3px 0 7px; }.view-tabs button { font-size: 10px; padding: 3px 8px; min-height: 28px; }.view-tabs svg { width: 14px; }.scene[data-view=function], .scene[data-view=flow] { margin-bottom: 0; }.equation-layout { padding: 14px; gap: 14px; }
+}
+/* A narrow, short window still needs a reading area below the shared controls.
+   Use the heading beside Menu/Notes, keeping the minimal introductions intact. */
+@media(max-height:520px) and (max-width:480px) {
+  .game-shell:not(.intro) .site-header { position: relative; display: block; min-height: 76px; padding: 8px 98px 0 6px; }
+  .game-shell:not(.intro) .brand { display: none; }
+  .game-shell:not(.intro) .menu-button { position: absolute; top: 8px; right: 6px; }
+  .game-shell:not(.intro) .puzzle-heading { text-align: left; }
+  .game-shell:not(.intro) .puzzle-heading h1 { font-size: 20px; }
+  .game-shell:not(.intro) .puzzle-title-row, .game-shell:not(.intro) .chapter-context { justify-content: flex-start; }
+  .game-shell:not(.intro) .chapter-context { gap: 3px; margin-bottom: 3px; }
+  .game-shell:not(.intro) .puzzle-guidance { position: absolute; top: 50px; right: 6px; }
+  .canvas-side { --toolbar-room: 32px; }
+  .scene-toolbar { min-height: var(--toolbar-room); padding: 1px 0; }
+  .view-tabs { padding-block: 0; }
+  .view-tabs button { min-height: 28px; }
+  .equation-layout { padding: 8px; gap: 8px; }
+  .flow-controls { padding-block: 3px 0; }
+  .flow-goals { padding-block: 0; }
+  .flow-line { padding-block: 4px; }
+  #flow-position { height: 26px; }
 }
 .intro .canvas-side { flex: 1; height: auto; min-height: 0; }
 @media(prefers-reduced-motion:reduce) { *, *:before, *:after { animation: none!important; transition: none!important; scroll-behavior: auto!important; } }
