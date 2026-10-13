@@ -2,6 +2,14 @@
 
 Version **0.1.0**, currently unreleased, is implemented on `prototype/vine-playground`. Source now lives in `web/`, `kernel/`, `bridge/` and `tests/`; the old `prototype/` directory is gone. The production artifact is built in `dist/`, with an optional repository-root copy for local preview. The default branch and public deployment are unchanged. The authorized organization-profile consolidation was pushed separately, as recorded below.
 
+## Concurrent saves and completion resets · 13 October 2026
+
+Library mutations now take a cross-tab Web Lock, read the latest stored array, and update the requested stable recipe identity. Legacy rows migrate on the next successful write, unknown rows remain intact, and loading no longer truncates active entries beyond twelve. Capacity is checked after kernel export inside the final transaction. External updates retain an in-progress rename draft and focus. Deletion and its persistent recovery copy still share one atomic write.
+
+Ordinary autosaves merge only newly confirmed completion additions with the durable record. Reset and explicit progress replacement use a new generation; a stale tab cannot restore its earlier completion set, while a newly confirmed win can count after reset. Reset persists the prepared workspace before replacing live play. A failed write leaves the original state, history and completion record available in a retryable confirmation dialog.
+
+TypeScript and five focused storage-model checks pass. Seven focused Chromium browser cases pass against an isolated Vite server and the existing published kernel, covering simultaneous saves, stale row actions, recovery, rename drafts, delayed export capacity, stale-tab progress/reset, and reset write failure. This worker did not run a kernel build, packaged build, full suite, native Safari, assistive technology, or physical-device tests.
+
 ## Lake-garden composition and earned contours · 9 October 2026
 
 The picture now uses a landscaped lake reference: broad calm water, grouped trees rooted along one shore, a quiet curving path and a close planted bank. Taiping Lake Gardens and lakeside planting photographs were visually inspected; the raised-pond/greenhouse reference was rejected. The eight authored pieces and exact puzzle rules remain unchanged. Sources and design decisions are recorded in [garden-design.md](garden-design.md) and AGENTS.md.

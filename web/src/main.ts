@@ -4,6 +4,7 @@ import './crop.css';
 import { CropEditor, cropControl, cropEdited, updateCropVerdict, updateCropWindow, probePoints } from './crop';
 import { renderBrand } from './brand';
 import { Kernel } from './engine';
+import { completionRecord, mergeCompletions, mutateLibrary, readLibrary, readStored, seedStorageLimit, StorageTransactions, type CompletionRecord, type DeletedSeed, type LibraryMutation, type Seed, type Snapshot } from './persistence';
 import { icon } from './icons';
 import { adjacentSlot, insertedSlots, movedSlots, normalizeSlots, type RailSlots } from './rail';
 import { sizeEquationTables } from './comparison-layout';
@@ -55,7 +56,7 @@ function read(key: string,maxLength=65536): unknown {
 }
 function write(key: string, value: unknown) {
   let saved=true;
-  try { localStorage.setItem(key,JSON.stringify(value)); }
+  try { localStorage.setItem(key,JSON.stringify(value)); storageAvailable=true; }
   catch { storageAvailable=false;saved=false; }
   $('save-status').innerHTML = storageAvailable ? '<span class="status-dot"></span> Saved on this device' : 'Session only · Export to keep your progress';
   return saved;
@@ -83,10 +84,12 @@ let flightScroll={left:0,top:0};
 let equationScroll=[{left:0,top:0},{left:0,top:0}];
 const equationPanels=()=>[...$('scene').querySelectorAll<HTMLElement>('.final-equation,.value-table tbody')];
 function rememberEquationScroll(){const panels=equationPanels();if(panels.length)equationScroll=panels.map(el=>({left:el.scrollLeft,top:el.scrollTop}));}
-type Snapshot={state:State;slots:RailSlots};
 let railSlots:RailSlots=[];
 let undo: Snapshot[] = [], redo: Snapshot[] = [];
 let completed = new Set<number>();
+let progressEpoch=completionRecord(read(SAVE)).progressEpoch;
+const pendingWins=new Map<number,string>();
+const storageTransactions=new StorageTransactions(navigator.locks);
 const introStage=()=>state?.mode==='puzzle'&&[1,2].includes(state.sourceId)?state.sourceId:0;
 const introActive=()=>introStage()>0;
 const choiceActive=()=>!!state&&state.mode!=='remix'&&!state.circle&&!state.station&&state.limit===1;
@@ -106,18 +109,21 @@ function cancelCurveChange(settle=false) {
   displayedPoints=undefined;displayedSlope=undefined;delete $('scene').dataset.curveTransition;
   if(settle&&state&&result&&displayedView()==='flight'){paintTrajectory(result.points);animatePosition();}
 }
-interface Seed { name: string; artifact: Artifact; snapshot?:Snapshot; view?:View; savedAt?:string }
-interface DeletedSeed extends Seed { deletedAt:string; deletedIndex:number }
-const seedStorageLimit=1024*1024;
-const storedSeeds = read(SEEDS,seedStorageLimit);
-const libraryEntries:(Seed|DeletedSeed)[]=Array.isArray(storedSeeds)?storedSeeds.filter((s):s is Seed=>!!s&&typeof s.name==='string'&&s.name.length<=60&&s.artifact?.type==='creation'):[];
-const isDeletedSeed=(seed:Seed|DeletedSeed):seed is DeletedSeed=>'deletedAt' in seed&&typeof seed.deletedAt==='string';
-let seeds:Seed[]=libraryEntries.filter(seed=>!isDeletedSeed(seed)).slice(0,12);
-let deletedSeeds:DeletedSeed[]=libraryEntries.filter(isDeletedSeed);
-// One write keeps removal and its recovery copy atomic, retaining old arrays.
-function writeLibrary(next:Seed[],deleted=deletedSeeds) {
-  const entries=[...next,...deleted];
-  return JSON.stringify(entries).length<=seedStorageLimit&&write(SEEDS,entries);
+let seeds:Seed[]=[],deletedSeeds:DeletedSeed[]=[];
+function refreshLibrary(paint=false) {
+  try {
+    const library=readLibrary(readStored(localStorage,SEEDS,seedStorageLimit));
+    seeds=library.seeds;deletedSeeds=library.deleted;if(paint)renderSeeds();return true;
+  }catch{return false;}
+}
+refreshLibrary();
+async function changeLibrary(action:LibraryMutation) {
+  const changed=await storageTransactions.run(SEEDS,()=>{
+    const mutation=mutateLibrary(readStored(localStorage,SEEDS,seedStorageLimit),action);
+    if(!write(SEEDS,mutation.entries))throw new Error('Device storage could not be updated.');
+    return mutation.changed!;
+  });
+  refreshLibrary();return changed;
 }
 const kernel = new Kernel((message)=> { notice={text:message,kind:'error'}; showNotice(); });
 const shapeNotes = new ShapeNotes(kernel);
@@ -182,7 +188,39 @@ const cropEditor=new CropEditor($('construction'),()=>state&&result&&pending===0
   });
 
 function preferences() { write(PREF,{view,...(motionOverride===undefined?{}:{motion:motionOverride}),characterShortcuts}); }
-function progress() { if(state) write(SAVE,{schema:1,type:'save',state,slots:railSlots,completed:[...completed],view,entry:location.hash.slice(0,8192)}); }
+function adoptCompletions(record:CompletionRecord) {
+  progressEpoch=record.progressEpoch;
+  for(const [id,epoch] of pendingWins)if(epoch!==progressEpoch)pendingWins.delete(id);
+  completed=new Set([...record.completed,...pendingWins.keys()]);
+}
+function refreshCompletions() {
+  try{adoptCompletions(completionRecord(readStored(localStorage,SAVE)));return true;}catch{return false;}
+}
+function progress() {
+  if(!state)return;
+  const snapshot=clone({schema:1,type:'save',state,slots:railSlots,view,entry:location.hash.slice(0,8192),confirmed:throwWon});
+  const epoch=progressEpoch,additions=[...pendingWins].filter(([,generation])=>generation===epoch).map(([id])=>id);
+  void storageTransactions.run(SAVE,()=>{
+    const merged=mergeCompletions(completionRecord(readStored(localStorage,SAVE)),epoch,additions);
+    if(!write(SAVE,{...snapshot,...merged}))return;
+    for(const id of additions)if(pendingWins.get(id)===epoch)pendingWins.delete(id);
+    adoptCompletions(merged);renderLevels();
+  }).catch(()=>{storageAvailable=false;$('save-status').textContent='Session only · Export to keep your progress';});
+}
+function recordCompletion(id:number) {
+  // Read the generation when the win occurs. A new win after another tab's
+  // reset counts, while the old tab's previously completed set never returns.
+  refreshCompletions();pendingWins.set(id,progressEpoch);completed.add(id);progress();
+}
+async function replaceProgress(reply:Response,slots:RailSlots|undefined,nextView:View,ids:number[],entry:string) {
+  requireOk(reply);
+  const record={progressEpoch:crypto.randomUUID(),completed:[...new Set(ids)]};
+  const snapshot={schema:1,type:'save',state:reply.state,slots:normalizeSlots(reply.state,slots),view:nextView,entry,confirmed:false,...record};
+  await storageTransactions.run(SAVE,()=>{
+    if(!write(SAVE,snapshot))throw new Error('Could not save the new progress on this device. Your current recipe and completions are unchanged. Try again.');
+  });
+  pendingWins.clear();adoptCompletions(record);
+}
 let feedbackContent:string|undefined;
 function showNotice() {
   $('feedback').className=`feedback ${notice.kind}`;
@@ -215,7 +253,7 @@ function serial<T>(work: ()=>Promise<T>,retainCirclePreview=false): Promise<T | 
   cropEditor.cancel();
   if(!retainCirclePreview)cancelCirclePickup();
   pending++; $('playground').setAttribute('aria-busy','true');updatePrimary();
-  const task=chain.then(work);
+  const task=chain.then(async()=>{const value=await work();await storageTransactions.idle();return value;});
   chain=task.then(()=>{},e=>{
     const message=e instanceof Error?e.message:String(e);
     error(message==='Engine interrupted'||message==='Engine recovery failed'
@@ -696,7 +734,7 @@ function updateTargets() {
   if(!throwWon&&result.solved&&result.checkpoints.length>0&&hits===result.checkpoints.length) {
     throwWon=true;
     if(state.mode==='puzzle'&&isPicture(state.sourceId)&&!pictureCelebrated)pictureCollecting=true;
-    if(state.mode==='puzzle'){completed.add(state.sourceId);progress();renderLevels();}
+    if(state.mode==='puzzle'){recordCompletion(state.sourceId);renderLevels();}
     updatePrimary();$('success').classList.toggle('just-solved',!reduced);
     $('move-announcement').textContent='Every target hit.';
   }
@@ -835,6 +873,7 @@ function recipeKey(snapshot:Snapshot) {
 }
 function unsavedRecipe() {
   if(!state||(state.circle?!circleEdited(state,result):!cropEdited(state)&&!state.nodes.some(node=>node.id!==state!.station?.id)))return false;
+  if(!refreshLibrary())return true;
   const current=recipeKey({state,slots:railSlots});
   return !seeds.some(seed=>{try{return seed.snapshot&&recipeKey(seed.snapshot)===current;}catch{return false;}});
 }
@@ -853,7 +892,7 @@ function goToPuzzle(sourceId:number,protect=true) {
   if(protect)changeWorkspace(next,LEVELS[sourceId-1].name);
   else {closeDialogs();void next();}
 }
-function showEnding() {
+function renderEnding() {
   const count=PUZZLE_ORDER.filter(id=>completed.has(id)).length,all=count===PUZZLE_ORDER.length;
   $('ending-title').textContent=all?'A whole garden of ideas.':'Your garden, shaped.';
   $('ending-description').textContent=all?'Heights, folds, change, accumulation — and a path that comes back. You explored every puzzle. There are still shapes to revisit and flights of your own to make.':'You brought the ideas together. More chapters are waiting whenever you want to explore them.';
@@ -862,8 +901,8 @@ function showEnding() {
     const done=chapter.levels.filter(id=>completed.has(id)).length,complete=done===chapter.levels.length;
     return `<li class="ending-chapter ${complete?'complete':''}" style="--arrival:${i*90}ms" aria-label="${chapter.name}: ${done} of ${chapter.levels.length} complete"><span class="ending-chapter-art ${chapter.color}">${chapterArt(i)}${complete?`<span class="ending-check">${icon('check',13)}</span>`:''}</span><span>${chapter.name}</span><small>${done} / ${chapter.levels.length}</small></li>`;
   }).join('');
-  open('ending-dialog','launch');
 }
+function showEnding(){renderEnding();open('ending-dialog','launch');}
 function focusPart(id:string) {
   const part=document.querySelector<HTMLElement>(`.part-body[data-stage="${CSS.escape(id)}"]`);
   focusRecipeControl(part);
@@ -1340,7 +1379,8 @@ $('reset-progress-confirm').onclick=async()=>{
   confirm.disabled=true;cancel.disabled=true;
   const reset=await serial(async()=>{
     const reply=await kernel.run(undefined,{type:'level',sourceId:1,mode:'puzzle'});requireOk(reply);
-    completed=new Set();window.history.replaceState(null,'',location.pathname+location.search);
+    await replaceProgress(reply,undefined,view,[],'');
+    window.history.replaceState(null,'',location.pathname+location.search);
     accept(reply,'clear');return true;
   });
   confirm.disabled=false;cancel.disabled=false;
@@ -1416,8 +1456,17 @@ $('copy-link').onclick=async()=>{try{await navigator.clipboard.writeText($<HTMLT
 function download(value:unknown,name:string){const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 $('download-artifact').onclick=()=>{if(sharingArtifact)download(sharingArtifact,`angouri-${sharingArtifact.type}.json`);};
 $('download-save').onclick=()=>{if(state)download({schema:1,type:'save',state,slots:railSlots,completed:[...completed],view},'angouri-progress.json');};
-let renamingSeed:number|undefined;
-function renderSeeds(){
+let renamingSeed:string|undefined,renameSeed:Seed|undefined,renameDraft='';
+function seedControl(id:string,attribute:string) {
+  return $('favorites-list').querySelector<HTMLElement>(`[data-library-id="${CSS.escape(id)}"] [${attribute}]`);
+}
+function renderSeeds(preserveDraft=true){
+  const focused=document.activeElement as HTMLElement|null,owned=!!focused&&$('favorites-list').contains(focused);
+  const focusId=focused?.closest<HTMLElement>('[data-library-id]')?.dataset.libraryId;
+  const focusAttribute=focused?.id==='rename-seed'?'id="rename-seed"':focused?.getAttributeNames().find(name=>/^data-(?:seed|rename-seed|delete-seed|restore-seed|cancel-rename)$/.test(name));
+  const selection=focused instanceof HTMLInputElement?[focused.selectionStart,focused.selectionEnd] as const:undefined;
+  const draft=$<HTMLInputElement>('rename-seed');if(preserveDraft&&draft&&renamingSeed)renameDraft=draft.value;
+  const oldError=$('rename-error'),renameError=oldError&&!oldError.hidden?oldError.textContent:'';
   const dateFormat=new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeStyle:'short'});
   const metadata=(s:Seed)=>{
     const saved=s.snapshot?.state,chapter=saved?chapterIndex(saved.sourceId):-1;
@@ -1426,22 +1475,32 @@ function renderSeeds(){
     const when=date&&Number.isFinite(date.getTime())?`<time datetime="${date.toISOString()}">${escape(dateFormat.format(date))}</time>`:'<span>Date unavailable</span>';
     return `<span class="favorite-meta"><span class="favorite-context">${context}</span><span aria-hidden="true">·</span>${when}</span>`;
   };
+  const renameForm=(seed:Seed,index:number)=>`<form class="favorite-row favorite-edit" data-library-id="${seed.id}" data-rename-form="${index}"><div class="favorite-info"><label for="rename-seed">Recipe name</label><input id="rename-seed" type="text" maxlength="60" required value="${escape(renameDraft)}" aria-describedby="rename-error">${metadata(seed)}</div><div class="favorite-actions"><button type="button" class="button" data-cancel-rename="${index}">Cancel</button><button class="button primary" type="submit">${icon('check',16)} Save name</button></div><p id="rename-error" class="reset-progress-error" role="alert" ${renameError?'':'hidden'}>${escape(renameError||'')}</p></form>`;
   $('favorites-list').innerHTML=seeds.length?seeds.map((s,i)=>{
-    const meta=metadata(s);
-    if(renamingSeed===i)return `<form class="favorite-row favorite-edit" data-rename-form="${i}"><div class="favorite-info"><label for="rename-seed">Recipe name</label><input id="rename-seed" type="text" maxlength="60" required value="${escape(s.name)}" aria-describedby="rename-error">${meta}</div><div class="favorite-actions"><button type="button" class="button" data-cancel-rename="${i}">Cancel</button><button class="button primary" type="submit">${icon('check',16)} Save name</button></div><p id="rename-error" class="reset-progress-error" role="alert" hidden></p></form>`;
-    return `<div class="favorite-row"><div class="favorite-info"><span class="favorite-name">${escape(s.name)}</span>${meta}</div><div class="favorite-actions"><button class="button" data-seed="${i}" aria-label="Open ${escape(s.name)}">${icon('folder',16)} Open</button><button class="icon-button" data-rename-seed="${i}" aria-label="Rename ${escape(s.name)}" title="Rename">${icon('rename',16)}</button><button class="icon-button" data-delete-seed="${i}" aria-label="Delete ${escape(s.name)}" title="Delete">${icon('trash',16)}</button></div></div>`;
-  }).join(''):deletedSeeds.length?'':`<div class="empty-library">${icon('folder',32)}<p>Your saved recipes appear here.</p></div>`;
-  if(deletedSeeds.length)$('favorites-list').insertAdjacentHTML('beforeend',`<section class="deleted-seeds" aria-labelledby="deleted-seeds-title"><h3 id="deleted-seeds-title">Recently deleted</h3>${deletedSeeds.map((seed,i)=>`<div class="deleted-seed-row"><div class="favorite-info"><span class="deleted-seed-name">${escape(seed.name)}</span>${metadata(seed)}</div><button class="button" data-restore-seed="${i}" aria-label="Undo deletion of ${escape(seed.name)}">${icon('undo',16)} Undo</button></div>`).join('')}</section>`);
+    if(renamingSeed===s.id)return renameForm(s,i);
+    return `<div class="favorite-row" data-library-id="${s.id}"><div class="favorite-info"><span class="favorite-name">${escape(s.name)}</span>${metadata(s)}</div><div class="favorite-actions"><button class="button" data-seed="${i}" aria-label="Open ${escape(s.name)}">${icon('folder',16)} Open</button><button class="icon-button" data-rename-seed="${i}" aria-label="Rename ${escape(s.name)}" title="Rename">${icon('rename',16)}</button><button class="icon-button" data-delete-seed="${i}" aria-label="Delete ${escape(s.name)}" title="Delete">${icon('trash',16)}</button></div></div>`;
+  }).join(''):deletedSeeds.length||renamingSeed?'':`<div class="empty-library">${icon('folder',32)}<p>Your saved recipes appear here.</p></div>`;
+  // An external deletion cannot discard a name the player is still editing.
+  if(renamingSeed&&renameSeed&&!seeds.some(seed=>seed.id===renamingSeed))$('favorites-list').insertAdjacentHTML('afterbegin',renameForm(renameSeed,-1));
+  if(deletedSeeds.length)$('favorites-list').insertAdjacentHTML('beforeend',`<section class="deleted-seeds" aria-labelledby="deleted-seeds-title"><h3 id="deleted-seeds-title">Recently deleted</h3>${deletedSeeds.map((seed,i)=>`<div class="deleted-seed-row" data-library-id="${seed.id}"><div class="favorite-info"><span class="deleted-seed-name">${escape(seed.name)}</span>${metadata(seed)}</div><button class="button" data-restore-seed="${i}" aria-label="Undo deletion of ${escape(seed.name)}">${icon('undo',16)} Undo</button></div>`).join('')}</section>`);
+  if(owned&&focusId&&focusAttribute){
+    const next=seedControl(focusId,focusAttribute)||$('seed-name');next.focus({preventScroll:true});
+    if(selection&&next instanceof HTMLInputElement)next.setSelectionRange(...selection);
+  }
 }
-$('library-open').onclick=()=>{renamingSeed=undefined;$('library-error').hidden=true;renderSeeds();open('library-dialog');};
+$('library-open').onclick=()=>{renamingSeed=undefined;renameSeed=undefined;$('library-error').hidden=true;refreshLibrary();renderSeeds();open('library-dialog');};
 function saveRecipe(name:string) {
   return serial(async()=>{
     if(!state)return;
-    if(seeds.length>=12)throw new Error('Your library is full. Delete a saved recipe to make room. Its Undo stays available in Save & open.');
-    const reply=await kernel.run(state,{type:'export',kind:'creation',view});requireOk(reply);
-    const next=[...seeds,{name:name.trim().slice(0,60)||'My next great throw',artifact:reply.artifact!,snapshot:{state:clone(state),slots:[...railSlots]},view,savedAt:new Date().toISOString()}];
-    if(!writeLibrary(next))throw new Error('Could not save on this device. Keep this recipe open and export progress from Save & open.');
-    seeds=next;notice={text:'',kind:''};showNotice();renderSeeds();return true;
+    const snapshot={state:clone(state),slots:[...railSlots]},savedView=view;
+    const reply=await kernel.run(snapshot.state,{type:'export',kind:'creation',view:savedView});requireOk(reply);
+    try {
+      await changeLibrary({type:'save',seed:{id:crypto.randomUUID(),name:name.trim().slice(0,60)||'My next great throw',artifact:reply.artifact!,snapshot,view:savedView,savedAt:new Date().toISOString()}});
+    }catch(e){
+      if(!storageAvailable)throw new Error('Could not save on this device. Keep this recipe open and export progress from Save & open.');
+      throw e;
+    }
+    notice={text:'',kind:''};showNotice();renderSeeds();return true;
   });
 }
 $('seed-save').onsubmit=async event=>{
@@ -1461,65 +1520,67 @@ function openSeed(seed:Seed) {
     accept(reply,'clear',saved.slots,saved.view);preferences();return true;
   });
 }
-function finishRename(index:number) {
-  renamingSeed=undefined;renderSeeds();
-  $('favorites-list').querySelector<HTMLButtonElement>(`[data-rename-seed="${index}"]`)?.focus({preventScroll:true});
+function finishRename(id:string) {
+  renamingSeed=undefined;renameSeed=undefined;renderSeeds();
+  (seedControl(id,'data-rename-seed')||seedControl(id,'data-restore-seed')||$('seed-name')).focus({preventScroll:true});
 }
-function libraryRowError(button:HTMLElement,text:string) {
+function libraryRowError(id:string,attribute:string,text:string) {
+  const button=seedControl(id,attribute);
+  if(!button){$('library-error').textContent=text;$('library-error').hidden=false;return;}
   const row=button.closest('.favorite-row,.deleted-seed-row')!;
   let message=row.querySelector<HTMLElement>('.favorite-error');
   if(!message){message=document.createElement('p');message.className='favorite-error reset-progress-error';message.setAttribute('role','alert');row.append(message);}
   message.textContent=text;
 }
-$('favorites-list').onclick=event=>{
-  const b=(event.target as Element).closest<HTMLElement>('button');if(!b)return;
+$('favorites-list').onclick=async event=>{
+  const b=(event.target as Element).closest<HTMLElement>('button'),id=b?.closest<HTMLElement>('[data-library-id]')?.dataset.libraryId;if(!b||!id||b.getAttribute('aria-disabled')==='true')return;
   if(b.dataset.renameSeed!==undefined){
-    renamingSeed=Number(b.dataset.renameSeed);renderSeeds();
+    refreshLibrary();const seed=seeds.find(seed=>seed.id===id);if(!seed){renderSeeds();return;}
+    renamingSeed=id;renameSeed=seed;renameDraft=seed.name;renderSeeds(false);
     const input=$<HTMLInputElement>('rename-seed');input.focus({preventScroll:true});input.select();
   }
-  if(b.dataset.cancelRename!==undefined)finishRename(Number(b.dataset.cancelRename));
-  if(b.dataset.deleteSeed!==undefined){
-    const index=Number(b.dataset.deleteSeed),next=seeds.filter((_,i)=>i!==index);
-    const removed={...seeds[index],deletedAt:new Date().toISOString(),deletedIndex:index},deleted=[removed,...deletedSeeds];
-    if(writeLibrary(next,deleted)){
-      seeds=next;deletedSeeds=deleted;renamingSeed=undefined;$('library-error').hidden=true;notice={text:'',kind:''};showNotice();renderSeeds();
-      $('favorites-list').querySelector<HTMLButtonElement>('[data-restore-seed="0"]')!.focus();
-      $('library-status').textContent=`${removed.name} deleted. Undo stays available in Recently deleted.`;
-    }
-    else libraryRowError(b,'Could not delete on this device. Your saved recipe is still here.');
+  if(b.dataset.cancelRename!==undefined)finishRename(id);
+  if(b.dataset.deleteSeed!==undefined||b.dataset.restoreSeed!==undefined){
+    const restoring=b.dataset.restoreSeed!==undefined,attribute=restoring?'data-restore-seed':'data-delete-seed';
+    b.setAttribute('aria-disabled','true');
+    try{
+      const changed=await changeLibrary(restoring?{type:'restore',id}:{type:'delete',id,at:new Date().toISOString()});
+      if(renamingSeed===id){renamingSeed=undefined;renameSeed=undefined;}
+      $('library-error').hidden=true;notice={text:'',kind:''};showNotice();renderSeeds();
+      (seedControl(id,restoring?'data-seed':'data-restore-seed')||$('seed-name')).focus();
+      $('library-status').textContent=restoring?`${changed.name} restored.`:`${changed.name} deleted. Undo stays available in Recently deleted.`;
+    }catch(e){
+      refreshLibrary();renderSeeds();
+      libraryRowError(id,attribute,storageAvailable?(e instanceof Error?e.message:String(e)):restoring?'Could not restore on this device. Your recipe is still available here; try Undo again.':'Could not delete on this device. Your saved recipe is still here.');
+    }finally{b.removeAttribute('aria-disabled');}
   }
-  if(b.dataset.restoreSeed!==undefined){
-    if(seeds.length>=12){libraryRowError(b,'Your library is full. Delete another saved recipe, then retry Undo.');return;}
-    const index=Number(b.dataset.restoreSeed),{deletedAt,deletedIndex,...seed}=deletedSeeds[index];
-    const position=Number.isInteger(deletedIndex)?Math.max(0,Math.min(deletedIndex,seeds.length)):seeds.length;
-    const next=[...seeds.slice(0,position),seed,...seeds.slice(position)],deleted=deletedSeeds.filter((_,i)=>i!==index);
-    if(writeLibrary(next,deleted)){
-      seeds=next;deletedSeeds=deleted;renamingSeed=undefined;$('library-error').hidden=true;notice={text:'',kind:''};showNotice();renderSeeds();
-      $('favorites-list').querySelector<HTMLButtonElement>(`[data-seed="${position}"]`)!.focus();
-      $('library-status').textContent=`${seed.name} restored.`;
-    }
-    else libraryRowError(b,'Could not restore on this device. Your recipe is still available here; try Undo again.');
+  if(b.dataset.seed!==undefined){
+    refreshLibrary();const seed=seeds.find(seed=>seed.id===id);if(seed)changeWorkspace(()=>openSeed(seed).then(ok=>{if(ok)closeDialogs();}),seed.name);else renderSeeds();
   }
-  if(b.dataset.seed!==undefined){const seed=seeds[Number(b.dataset.seed)];changeWorkspace(()=>openSeed(seed).then(ok=>{if(ok)closeDialogs();}),seed.name);}
 };
-$('favorites-list').addEventListener('submit',event=>{
+$('favorites-list').addEventListener('submit',async event=>{
   const form=(event.target as Element).closest<HTMLFormElement>('[data-rename-form]');if(!form)return;
   event.preventDefault();
-  const index=Number(form.dataset.renameForm),input=$<HTMLInputElement>('rename-seed'),name=input.value.trim();
-  const fail=(message:string)=>{$('rename-error').textContent=message;$('rename-error').hidden=false;input.focus({preventScroll:true});};
+  const id=form.dataset.libraryId!,input=$<HTMLInputElement>('rename-seed'),name=input.value.trim().slice(0,60);
+  const fail=(message:string)=>{if(renamingSeed!==id)return;$('rename-error').textContent=message;$('rename-error').hidden=false;$('rename-seed').focus({preventScroll:true});};
   if(!name){fail('Enter a recipe name.');return;}
-  const next=seeds.map((seed,i)=>i===index?{...seed,name}:seed);
-  if(!writeLibrary(next)){fail('Could not save the name on this device. Try again.');return;}
-  seeds=next;finishRename(index);$('move-announcement').textContent=`Recipe renamed to ${name}.`;
+  try{await changeLibrary({type:'rename',id,name});}
+  catch(e){fail(storageAvailable?(e instanceof Error?e.message:String(e)):'Could not save the name on this device. Try again.');return;}
+  if(renamingSeed===id)finishRename(id);else renderSeeds();$('move-announcement').textContent=`Recipe renamed to ${name}.`;
 });
 $('favorites-list').addEventListener('keydown',event=>{
   if(event.defaultPrevented||event.isComposing||event.altKey||event.ctrlKey||event.metaKey||event.shiftKey)return;
   if(event.key==='Escape'&&renamingSeed!==undefined){event.preventDefault();event.stopPropagation();finishRename(renamingSeed);}
 });
+window.addEventListener('storage',event=>{
+  if(event.key===SEEDS||event.key===null)refreshLibrary(true);
+  if(event.key===SAVE||event.key===null){refreshCompletions();if(initialized){renderLevels();if($<HTMLDialogElement>('ending-dialog').open)renderEnding();}}
+});
 function parseSave(value:unknown) {
   if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Choose an Angouri JSON file.');
   const data={...value,view:canonicalView((value as Record<string,unknown>).view)} as Record<string,unknown>;
-  if(data.schema!==1||data.type!=='save'||Object.keys(data).some(k=>!['schema','type','state','slots','completed','view','entry'].includes(k))||data.entry!==undefined&&(typeof data.entry!=='string'||data.entry.length>8192))throw new Error('Unsupported progress file.');
+  if(data.schema!==1||data.type!=='save'||Object.keys(data).some(k=>!['schema','type','state','slots','completed','view','entry','progressEpoch','confirmed'].includes(k))||data.entry!==undefined&&(typeof data.entry!=='string'||data.entry.length>8192))throw new Error('Unsupported progress file.');
+  if(data.progressEpoch!==undefined&&(typeof data.progressEpoch!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(data.progressEpoch))||data.confirmed!==undefined&&typeof data.confirmed!=='boolean')throw new Error('The progress file has invalid fields.');
   if(!Array.isArray(data.completed)||data.completed.length>LEVELS.length||!data.completed.every(n=>Number.isInteger(n)&&n>=1&&n<=LEVELS.length)||!isView(data.view)||!data.state)throw new Error('The progress file has invalid fields.');
   if(data.slots!==undefined&&(!Array.isArray(data.slots)||data.slots.length>65||!data.slots.every(id=>id===null||typeof id==='string'&&/^[A-Za-z0-9_-]{1,64}$/.test(id))))throw new Error('The saved recipe slots are invalid.');
   return {state:data.state as State,slots:data.slots as RailSlots|undefined,completed:data.completed as number[],view:data.view};
@@ -1584,4 +1645,4 @@ window.addEventListener('hashchange',()=>{
   }catch(e){error(e instanceof Error?e.message:'Could not open this shared link.');}
 });
 // Read-only diagnostics for reproducible loading/latency/recovery checks.
-Object.defineProperty(window,'angouri',{value:{get state(){return clone(state);},get slots(){return [...railSlots];},get result(){return clone(result);},get view(){return view;},get flight(){return clone(flight);},get history(){return {undo:undo.length,redo:redo.length};},get measurements(){return clone(kernel.measurements);},restart:()=>kernel.restart(),whenIdle:()=>chain}});
+Object.defineProperty(window,'angouri',{value:{get state(){return clone(state);},get slots(){return [...railSlots];},get result(){return clone(result);},get view(){return view;},get flight(){return clone(flight);},get history(){return {undo:undo.length,redo:redo.length};},get measurements(){return clone(kernel.measurements);},restart:()=>kernel.restart(),whenIdle:async()=>{await chain;await storageTransactions.idle();}}});
