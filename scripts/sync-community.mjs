@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { parseCommunity, parseProjects } from './community.mjs';
+import { parsePeople, parseProjects } from './community.mjs';
 
 const endpoint='https://api.github.com/repos/ASC-Community/.github/contents/profile/README.md';
 let source,markdown;
@@ -18,7 +18,7 @@ if(process.argv[2]==='--from'&&process.argv.length===4) {
   markdown=Buffer.from(source.content,'base64').toString('utf8');
 }
 const projects=parseProjects(markdown);
-parseCommunity(markdown);
+parsePeople(markdown);
 const snapshot={schema:1,source:source.html_url,blobSha:source.sha,markdown};
 await mkdir(new URL('../content/',import.meta.url),{recursive:true});
 await writeFile(new URL('../content/community.json',import.meta.url),JSON.stringify(snapshot,null,2)+'\n');

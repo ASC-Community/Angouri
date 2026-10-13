@@ -7,6 +7,16 @@
   <meta name="description" content="Shape the flight. Hit every target. A cucumber-throwing puzzle powered by mathematics.">
   <title>Angouri · Shape the flight</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <noscript><style>
+    html:has(body .no-script), html body:has(.no-script) { height: auto; min-height: 100%; overflow: auto; }
+    body:has(.no-script) { margin: 0; color: #2a4334; background: #f4f7e9; font: 16px/1.5 Arial, Helvetica, sans-serif; }
+    body .game-shell { display: none; }
+    body .no-script { box-sizing: border-box; min-height: 100vh; min-height: 100dvh; display: grid; align-content: center; justify-items: center; gap: 16px; margin: 0; padding: 24px; text-align: center; background: #f4f7e9; font-size: 16px; }
+    .no-script h1 { margin: 0; font: italic 48px/1.2 Georgia, serif; }
+    .no-script p { margin: 0; }
+    .no-script a { max-width: 32ch; padding: 12px 16px; border: 1px solid #d2dcc6; border-radius: 10px; color: #2a4334; background: #fffefa; text-decoration: underline; }
+    .no-script a:focus-visible { outline: 3px solid #426940; outline-offset: 4px; }
+  </style></noscript>
 </head>
 <body>
   <main class="game-shell loading intro choice-game landing">
@@ -110,7 +120,7 @@
     <div class="ending-actions"><button id="ending-garden" class="button primary"><span data-icon="picture"></span>Your picture</button><button id="ending-create" class="button">Create a flight</button><button id="ending-revisit" class="button"><span data-icon="puzzles"></span>Revisit puzzles</button></div>
     <p class="ending-credit">Powered by <a href="https://github.com/asc-community/AngouriMath" target="_blank" rel="noopener noreferrer" aria-label="AngouriMath on GitHub, opens in a new tab"><img src="./projects/angourimath.png" width="22" height="22" alt="">AngouriMath<span data-icon="external"></span></a></p>
   </dialog>
-  <noscript><p class="no-script">This game needs JavaScript. <a href="./about/">Meet Angouri and its open-source projects</a>.</p></noscript>
+  <noscript><main class="no-script"><h1>Angouri</h1><p>This game needs JavaScript.</p><a href="./about/" tabindex="0">Meet Angouri and its open-source projects →</a></main></noscript>
   <script type="module" src="./src/main.ts"></script>
 </body>
 </html>
