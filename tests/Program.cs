@@ -3391,6 +3391,15 @@ static class ContractTests
             "symbolic equality also rejects a tiny algebraic difference");
         True(EqualExactly("sin(pi/6)", "1/2"), "exact sine landmarks survive disabled numeric downcasting");
         True(EqualExactly("sin(pi/4)", "sqrt(2)/2"), "exact sine radicals survive disabled numeric downcasting");
+        foreach (var (angle, value) in new[] {
+            ("pi/8", "sqrt(2-sqrt(2))/2"), ("3*pi/8", "sqrt(2+sqrt(2))/2"),
+            ("9*pi/8", "-sqrt(2-sqrt(2))/2"), ("-3*pi/8", "-sqrt(2+sqrt(2))/2")
+        })
+        {
+            True(EqualExactly($"sin({angle})", value), "exact eighth-turn shoulders retain canonical half-angle identities");
+            True(!EqualExactly($"sin({angle})", $"({value})+1/10^100"),
+                "exact eighth-turn shoulders reject a tiny offset from their radical target");
+        }
         True(EqualExactly("cos(pi/3)", "1/2"), "exact cosine landmarks survive disabled numeric downcasting");
         True(EqualExactly("sin(pi/4)+137/139", "sqrt(2)/2+137/139"),
             "an exact proof normalizes fresh rational constants without numeric conversion");

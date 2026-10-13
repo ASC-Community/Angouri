@@ -231,8 +231,15 @@ module internal Piecewise =
                 if acute = zero then Some exactZeroEntity
                 elif acute = half then Some exactOneEntity
                 elif acute = divide one (ofInt 6) then Some (proofEntity half)
-                elif acute = divide one (ofInt 4) then Some ((twoEntity.Pow(proofEntity half))/twoEntity)
-                elif acute = divide one (ofInt 3) then Some (((proofEntity (ofInt 3)).Pow(proofEntity half))/twoEntity)
+                elif acute = divide one (ofInt 4) then Some (proofEntity half*twoEntity.Pow(proofEntity half))
+                elif acute = divide one (ofInt 3) then Some (proofEntity half*(proofEntity (ofInt 3)).Pow(proofEntity half))
+                // Keep the eighth-turn half-angle in its canonical radical
+                // form. This is an exact identity; no decimal recognition is
+                // needed to compare authored radical shoulder targets.
+                elif acute = divide one (ofInt 8) then
+                    Some ((twoEntity-twoEntity.Pow(proofEntity half)).Pow(proofEntity half)/twoEntity)
+                elif acute = divide (ofInt 3) (ofInt 8) then
+                    Some ((twoEntity+twoEntity.Pow(proofEntity half)).Pow(proofEntity half)/twoEntity)
                 elif acute.Denominator.IsEven then
                     proofSine (depth+1) (subtract half (multiply two acute))
                     |> Option.map (fun cosine -> ((exactOneEntity-cosine)/twoEntity).Pow(proofEntity half))
