@@ -109,14 +109,16 @@ async function squareReference(known:Set<number>,examples:ReferenceExamples) {
 }
 
 async function powerReference(known:Set<number>,examples:ReferenceExamples) {
+  // Use the common centred input (x-2)/4, rather than the active puzzles'
+  // (x-2)/2. Every power keeps the same four-unit domain and comparison scale.
   const [small,second,fourth,eighth,sixth,raised,raisedSquared,negatedFourth,negatedSixth]=await Promise.all([
-    examples.example(4,'H'),examples.example(8,''),examples.example(8,'Q'),
-    examples.example(8,'QQ'),examples.example(29,'Q'),examples.example(4,'HA'),
-    examples.example(4,'HAQ'),examples.example(8,'QN'),examples.example(29,'QN')
+    examples.example(4,'HH'),examples.example(8,'HH'),examples.example(8,'HHQ'),
+    examples.example(8,'HHQQ'),examples.example(29,'HHHQ'),examples.example(4,'HHA'),
+    examples.example(4,'HHAQ'),examples.example(8,'HHQN'),examples.example(29,'HHHQN')
   ]);
   const flatter='<p>Magnitude means distance from zero; '+tex('|u|')+' is the magnitude of '+tex('u')+'. For magnitudes between zero and one, squaring moves heights closer to zero while keeping zero and one fixed.</p>'+strip([second.stages.at(-1)!,fourth.stages.at(-1)!],['Squared input','Squared again'],[move('Q')])+`<p>${tex('0<|u|<1\\;\\Longrightarrow\\;u^2<|u|')}</p>`+tag(12);
   const orientation='<p>An even power supplies a nonnegative shape. Negation reverses that shape without changing its zeros.</p>'+strip([fourth.stages.at(-1)!,negatedFourth.stages.at(-1)!],['Even power','Negated even power'],[move('N')])+tag(13);
-  const families='<p>The input power matters as well as the square block.</p>'+compare('Same zero and unit height. Different middles.',[
+  const families='<p>The input power matters as well as the square block.</p>'+compare('Same input. Different powers.',[
     {label:'Second power',stage:second.stages.at(-1)!,before:small.stages.at(-1)!},
     {label:'Fourth power',stage:fourth.stages.at(-1)!,before:small.stages.at(-1)!},
     {label:'Sixth power',stage:sixth.stages.at(-1)!,before:sixth.stages.at(-2)!}
@@ -137,7 +139,7 @@ async function powerReference(known:Set<number>,examples:ReferenceExamples) {
     {label:'Second power',stage:second.stages.at(-1)!,before:small.stages.at(-1)!},
     {label:'Fourth power',stage:fourth.stages.at(-1)!,before:small.stages.at(-1)!},
     {label:'Eighth power',stage:eighth.stages.at(-1)!,before:small.stages.at(-1)!}
-  ]);
+  ])+tag(11);
   if(known.has(11))return current('Repeated squaring creates a family of shapes.',choice)+recall([31],'Below and above one',fitting)+recall([29,30],'Even-power silhouettes',families+reuse)+recall([12,13],'Squaring and orientation',flatter+orientation);
   if(known.has(31))return current('One is the dividing height for squaring.',fitting)+recall([30],'Orientation keeps power landmarks',reuse)+recall([29],'Power families',families)+recall([12,13],'Squaring and orientation',flatter+orientation);
   if(known.has(30))return current('Even-power landmarks survive reflection.',reuse)+recall([29],'Power families',families)+recall([12,13],'Squaring and orientation',flatter+orientation);
@@ -231,7 +233,7 @@ async function circleReference(known:Set<number>,examples:ReferenceExamples) {
 async function relationReference(known:Set<number>,examples:ReferenceExamples) {
   const [base,lift,half,quarter,turned,roundedRoof,pointedRoof]=await Promise.all([
     ...['HH','HHA','HHH','HHHH','HHN'].map(ops=>examples.example(68,ops)),
-    examples.example(66,''),examples.example(66,'Q')
+    examples.example(66,'H'),examples.example(66,'HQ')
   ]);
   const diagram=(result:Result,label:string)=>relationSketch(result,label,{before:base,bounds:[0,4,-2,2]});
   const equation='<p>The right side is squared height. At each position, a positive value gives two heights, zero gives one, and a negative value gives no real height. The upper and lower parts are called branches. At one position, call the right-side value '+tex('a')+'.</p>'+diagram(base,'One equation, both heights')+`<p>${tex('h^2=a')} ${tex('\\Longrightarrow')} ${tex('h=\\pm\\sqrt a\\quad(a\\ge0)')}</p>`+tag(48);
@@ -240,7 +242,7 @@ async function relationReference(known:Set<number>,examples:ReferenceExamples) {
     {label:'Before',html:diagram(base,'Before')},{label:'One halve',html:diagram(half,'Heights scale by one over the square root of two')},{label:'Two halves',html:diagram(quarter,'Heights are halved')}
   ])+`<p>${tex('h^2=a/4\\quad\\Longrightarrow\\quad h=\\pm\\sqrt a/2')}</p>`+tag(69);
   const regions='<p>Negation exchanges the positive and negative regions of the right side. A height can exist only in a nonnegative region. It does not simply turn the visible loop upside down.</p>'+diagramChoices('Change the sign. Change where heights exist.',[{label:'Before',html:diagram(base,'Heights inside the zeros')},{label:'Negate',html:diagram(turned,'Heights outside the zeros')}])+tag(70);
-  const magnitudes='<p>The supplied roof is already nonnegative. With that roof on the right, solving takes a square root and the branches have rounded ends. Squaring the roof first makes the solved heights positive and negative copies of it, so they meet in pointed ends.</p>'+diagramChoices('Same roof. Rounded or pointed ends.',[
+  const magnitudes='<p>This half-height roof is nonnegative. With that roof on the right, solving takes a square root and the branches have rounded ends. Squaring the roof first makes the solved heights positive and negative copies of it, so they meet in pointed ends.</p>'+diagramChoices('Same roof. Rounded or pointed ends.',[
     {label:'Roof',html:relationSketch(roundedRoof,'Square-root branches have rounded ends.')},
     {label:'Roof squared',html:relationSketch(pointedRoof,'Copied roof branches meet in points.',{before:roundedRoof})}
   ])+`<p>${tex('h^2=a\\ \\Longrightarrow\\ h=\\pm\\sqrt a')} ${tex('\\qquad')} ${tex('h^2=a^2\\ \\Longrightarrow\\ h=\\pm a\\quad(a\\ge0)')}</p>`+tag(66);
@@ -358,17 +360,18 @@ async function stepReference(known:Set<number>,examples:ReferenceExamples) {
 }
 
 async function togetherReference(known:Set<number>,examples:ReferenceExamples) {
+  const regions=known.has(65)?await examples.example(50,'FSI'):undefined;
+  const gate=regions?gateRegionCard(regions):'';
   // This lesson's focused reference retains only these three prerequisites.
   // Do not evaluate every garden craft before showing its independent sketch.
   if(known.has(65)&&!known.has(67)&&!known.has(85)) {
-    const [regions,shifted,steps,circle]=await Promise.all([examples.example(50,'FSI'),examples.example(4,'AHF'),examples.example(4,'HF'),examples.circleExample('1','0','3/4')]);
-    const body='<p>Positive input raises the accumulated total. Zero input makes a flat section; negative input lowers the total. Each stretch contributes its height times its width.</p>'+strip(regions.stages.slice(-2),['Signed input regions','Rises, plateaus and falls'],[move('I')])+tag(65);
-    const continuity='<p>A jump between constant input heights changes the slope of the accumulated path. The total remains continuous, even where its direction changes.</p>'+strip(regions.stages.slice(-2),['Held step heights','Continuous accumulated total'],[move('I')])+tag(63);
+    const [shifted,steps,circle]=await Promise.all([examples.example(4,'AHF'),examples.example(4,'HF'),examples.circleExample('1','0','3/4')]);
+    const continuity='<p>A jump between constant input heights changes the slope of the accumulated path. The total remains continuous, even where its direction changes.</p>'+strip(regions!.stages.slice(-2),['Held step heights','Continuous accumulated total'],[move('I')])+tag(63);
     const thresholds='<p>A lift that is halved before Floor becomes a half-unit input shift. It moves the jump positions; lifting after Floor would raise the finished steps instead.</p>'+compare('Move the input thresholds.',[
       {label:'Unshifted steps',stage:steps.stages.at(-1)!},
       {label:'Shifted steps',stage:shifted.stages.at(-1)!,before:steps.stages.at(-1)!}
     ])+tag(60);
-    return current('Input regions become rises, plateaus and falls.',body)+recall([63],'Step heights become a continuous path',continuity)+recall([60],'Place the thresholds',thresholds)+recall([66],'Paired magnitudes',pairedMagnitudeCard(circle));
+    return current('Input regions become rises, plateaus and falls.',gate)+recall([63],'Step heights become a continuous path',continuity)+recall([60],'Place the thresholds',thresholds)+recall([66],'Paired magnitudes',pairedMagnitudeCard(circle));
   }
   const [slope,wave,steps,area,circle,water,bamboo]=await Promise.all([
     examples.example(50,'NAQD'),examples.example(4,'HS'),examples.example(4,'HF'),
@@ -420,14 +423,19 @@ async function togetherReference(known:Set<number>,examples:ReferenceExamples) {
     return current(lesson[1],lesson[2])+visibleArt.reverse().map(([id,title,body])=>recall([id],title,body)).join('');
   }
   const artRecall=visibleArt.reverse().map(([id,title,body])=>recall([id],title,body)).join('');
+  const gateRecall=gate?recall([65],'Input regions become rises, plateaus and falls',gate):'';
   const reading=await changingPhaseReference(examples)+tag(64);
   if(known.has(85)) {
     const accumulated=await examples.example(50,'FI');
     const body='<p>Accumulation turns each constant input height into a straight section with that slope. Zero input holds the total still; a larger input makes the total climb more steeply.</p>'+strip([accumulated.stages[1],accumulated.stages[2]],['Different step heights','Different accumulated slopes'],[move('I')])+'<p>A constructed curve can become the input to another operation. Read its slope, its zero positions and its height separately; each relationship answers a different question.</p>'+tag(85);
-    return current('Read the roles of intermediate curves.',body)+recall([84],'Input slope controls phase spacing',reading)+recall([66],'The right side supplies paired heights',relationCard)+recall([60,62],'Thresholds and area',stepCard)+artRecall;
+    return current('Read the roles of intermediate curves.',body)+gateRecall+recall([84],'Input slope controls phase spacing',reading)+recall([66],'The right side supplies paired heights',relationCard)+recall([60,62],'Thresholds and area',stepCard)+artRecall;
   }
-  if(known.has(67))return current('Mixed constructions are read one relationship at a time.',reading)+recall([66],'Paired magnitudes',relationCard)+recall([61,62],'Steps, projection and accumulation',stepCard)+recall([50,54],'Phase, amplitude and baseline',waveCard)+recall([32,34],'Slope and flat places',slopeCard)+artRecall;
+  if(known.has(67))return current('Mixed constructions are read one relationship at a time.',reading)+gateRecall+recall([66],'Paired magnitudes',relationCard)+recall([61,62],'Steps, projection and accumulation',stepCard)+recall([50,54],'Phase, amplitude and baseline',waveCard)+recall([32,34],'Slope and flat places',slopeCard)+artRecall;
   return current('A composition can be inspected stage by stage.',reading)+recall([32,34],'Slope and flat places',slopeCard)+recall([50,54],'Circular phase and output height',waveCard)+recall([66],'Paired magnitudes',relationCard)+artRecall;
+}
+
+function gateRegionCard(regions:Result) {
+  return '<p>Positive input raises the accumulated total. Zero input makes a flat section; negative input lowers the total. Each stretch contributes its height times its width.</p>'+strip(regions.stages.slice(-2),['Signed input regions','Rises, plateaus and falls'],[move('I')])+tag(65);
 }
 
 function pairedMagnitudeCard(circle:Result) {
