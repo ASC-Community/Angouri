@@ -20,14 +20,14 @@ test('equivalent Create choices preserve authored source, blocks, crop, history 
   for(const [sourceId,choice] of [[79,50],[81,4],[82,50],[71,49],[73,9],[75,48],[76,4],[77,48],[78,48],[83,66]]) {
     await create(page,sourceId);await place(page,'A');
     if(await page.locator('[data-crop-add]').count()){await page.locator('[data-crop-add]').click();await idle(page);}
-    const before=await snapshot(page),measurements=await page.evaluate(()=>window.angouri.measurements.length);
+    const before=await snapshot(page),measurements=await page.evaluate(()=>window.angouri.measurements.edits.length);
     expect(before.state.crop).toBeDefined();expect(before.state.nodes.length).toBeGreaterThan(0);
     await page.locator('#source-choose').click();
     const option=page.locator(`[data-source="${choice}"]`);
     await expect(option).toHaveAttribute('aria-pressed','true');
     await option.click();await idle(page);
     expect(await snapshot(page),`source ${sourceId}`).toEqual(before);
-    expect(await page.evaluate(()=>window.angouri.measurements.length)).toBe(measurements);
+    expect(await page.evaluate(()=>window.angouri.measurements.edits.length)).toBe(measurements);
     await expect(page.locator('#source-choose')).toBeFocused();
     await expect(page.locator('#curves-dialog')).not.toBeVisible();
   }
