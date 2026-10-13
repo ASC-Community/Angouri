@@ -2,6 +2,14 @@
 
 Version **0.1.0**, currently unreleased, is implemented on `prototype/vine-playground`. Source now lives in `web/`, `kernel/`, `bridge/` and `tests/`; the old `prototype/` directory is gone. The production artifact is built in `dist/`, with an optional repository-root copy for local preview. The default branch and public deployment are unchanged. The authorized organization-profile consolidation was pushed separately, as recorded below.
 
+## Garden keyboard labels and Crop cancellation · 13 October 2026
+
+Garden Tab now follows the top and bottom label rows even while collection disables Done, and loading/retry states retain their available controls. Its Space cue sits above the visible name label, clear of text and the dialog boundary. Chromium captures at 320 and 1146 pixels were visually reviewed. The exact Crop fields restore their accepted values before a re-render can trigger a change event, so Escape cannot commit discarded text.
+
+The implementation checkout passed 18 focused Garden/Crop/Circle cases across Chromium, Firefox and WebKit. Independent review found missing left-Crop-bound coverage; the integrated checkout adds that case and passes all nine exact-field cases across those engines. These cover guarded keys, one Enter history entry, Escape value/focus restoration, and a later Tab without a new edit. TypeScript, the packaged frontend build using the existing published kernel, and all 50 Node tests pass. This is focused evidence through `2fe89aa`, not a combined full-suite or native Safari claim.
+
+The mandatory agent contracts were split losslessly into topic documents linked from AGENTS.md. A mechanical check and independent review establish that all 161 original body units remain exactly once, with the 16 legacy anchors and local links preserved. Subsequent accepted decisions are recorded in the relevant topic files.
+
 ## Explicit removal of a recovery copy · 13 October 2026
 
 Recently deleted now offers a per-recipe Delete forever action. Its confirmation names the recipe, states that deletion cannot be undone, and starts on Cancel. Failed storage keeps the copy available with a retryable error. This is the only permanent-removal path; import, reset, menu navigation and elapsed time never purge recovery entries.
