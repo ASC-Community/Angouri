@@ -178,7 +178,7 @@ test('the mixed final garden uses the full chain and finishes only the solved so
   const result=await page.evaluate(()=>window.angouri.result);expect(result.solved).toBe(true);expect(result.checkpoints).toHaveLength(10);
   expect(await page.evaluate(()=>window.angouri.state.nodes.map(n=>n.op).join(''))).toBe('DAHFISQ');
   await page.locator('#tab-function').click();await expect(page.locator('.equation-verdict')).toHaveCount(10);await expect(page.locator('.katex-error')).toHaveCount(0);
-  await page.locator('#launch').click();await expect(page.locator('#launch')).toHaveText('Finish');
+  await page.locator('#launch').click();await expect(page.locator('#launch')).toHaveAccessibleName('Finish');
   await expect(page.locator('.equation-verdict[data-status="hit"]')).toHaveCount(10);
   await page.locator('#launch').click();await expect(page.locator('#ending-dialog')).toBeVisible();await expect(page.locator('#ending-progress')).toHaveText('1 of 70 puzzles complete');
   await expect(page.locator('#ending-dialog')).toContainText('AngouriMath');

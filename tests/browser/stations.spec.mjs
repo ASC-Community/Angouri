@@ -143,7 +143,7 @@ test('each calculus visualization stays inside its own step and reads that step 
 test('the final station rewards its input/output solution and advances to Loops',async({page})=>{
   await ready(page,42,'function');for(const op of 'HHNA')await add(page,op);await add(page,'N',6);await add(page,'A',7);
   expect(await order(page)).toBe('HHNAINA');expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(true);
-  await page.locator('#launch').click();await expect(page.locator('#launch')).toHaveText('Next chapter');await expect(page.locator('.equation-verdict[data-status="hit"]')).toHaveCount(5);
+  await page.locator('#launch').click();await expect(page.locator('#launch')).toHaveAccessibleName('Next chapter');await expect(page.locator('.equation-verdict[data-status="hit"]')).toHaveCount(5);
   await page.locator('#launch').click();await idle(page);expect((await state(page)).sourceId).toBe(43);await expect(page.locator('#level-category')).toContainText('LOOPS');
   expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual([42]);
 });

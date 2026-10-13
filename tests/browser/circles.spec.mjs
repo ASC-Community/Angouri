@@ -127,7 +127,7 @@ test('circle reward traverses by phase, shares all views, and restores the Flow 
   await page.locator('#tab-flight').click();expect(await page.evaluate(()=>window.angouri.flight.position)).toBeGreaterThan(.3);await expect(page.locator('[data-ring="1"]')).toHaveAttribute('data-status','hit');
   await page.locator('#tab-function').click();await page.waitForFunction(()=>window.angouri.flight.phase==='landed');await expect(page.locator('.equation-verdict[data-status="hit"]')).toHaveCount(4);
   await page.locator('#tab-flow').click();await expect(slider).toBeEnabled();await expect(slider).toHaveValue('0.5');
-  await expect(page.locator('#launch')).toHaveText('Next puzzle');await expect(page.locator('#rethrow')).toBeVisible();
+  await expect(page.locator('#launch')).toHaveAccessibleName('Next puzzle');await expect(page.locator('#rethrow')).toBeVisible();
 });
 
 test('circle Flow reveals components and a selectable chord without changing the construction',async({page})=>{
@@ -240,7 +240,7 @@ test('the slingshot controls radius, previews its move, cancels cleanly and neve
   }
   expect((await snapshot(page)).circle.radius).toBe('1');expect(await page.evaluate(()=>window.angouri.history.undo)).toBe(1);
   expect(await page.evaluate(()=>window.angouri.flight.phase)).toBe('ready');expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(true);
-  await page.locator('#launch').click();await expect(page.locator('#launch')).toHaveText('Next puzzle');
+  await page.locator('#launch').click();await expect(page.locator('#launch')).toHaveAccessibleName('Next puzzle');
   await page.locator('#undo').click();await idle(page);expect((await snapshot(page)).circle.radius).toBe('1/2');
   await handle.click();const point=await screenPoint(page,3,0);await page.mouse.click(point.x,point.y);await idle(page);expect((await snapshot(page)).circle.radius).toBe('1');
 });
