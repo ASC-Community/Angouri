@@ -2,6 +2,12 @@
 
 Version **0.1.0**, currently unreleased, is implemented on `prototype/vine-playground`. Source now lives in `web/`, `kernel/`, `bridge/` and `tests/`; the old `prototype/` directory is gone. The production artifact is built in `dist/`, with an optional repository-root copy for local preview. The default branch and public deployment are unchanged. The authorized organization-profile consolidation was pushed separately, as recorded below.
 
+## Explicit removal of a recovery copy · 13 October 2026
+
+Recently deleted now offers a per-recipe Delete forever action. Its confirmation names the recipe, states that deletion cannot be undone, and starts on Cancel. Failed storage keeps the copy available with a retryable error. This is the only permanent-removal path; import, reset, menu navigation and elapsed time never purge recovery entries.
+
+Six focused storage-model checks and TypeScript pass. The permanent-removal browser scenario passes in Chromium, Firefox and WebKit, including a library close to its size limit, cancellation, write failure, successful retry, retained current workspace, and preserved new-save draft. The confirmation was visually inspected at 320×568 and 844×390. No packaged build or full suite was run for this bounded change.
+
 ## Concurrent saves and completion resets · 13 October 2026
 
 Library mutations now take a cross-tab Web Lock, read the latest stored array, and update the requested stable recipe identity. Legacy rows migrate on the next successful write, unknown rows remain intact, and loading no longer truncates active entries beyond twelve. Capacity is checked after kernel export inside the final transaction. External updates retain an in-progress rename draft and focus. Deletion and its persistent recovery copy still share one atomic write.

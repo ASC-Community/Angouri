@@ -1495,7 +1495,7 @@ function seedControl(id:string,attribute:string) {
 function renderSeeds(preserveDraft=true){
   const focused=document.activeElement as HTMLElement|null,owned=!!focused&&$('favorites-list').contains(focused);
   const focusId=focused?.closest<HTMLElement>('[data-library-id]')?.dataset.libraryId;
-  const focusAttribute=focused?.id==='rename-seed'?'id="rename-seed"':focused?.getAttributeNames().find(name=>/^data-(?:seed|rename-seed|delete-seed|restore-seed|cancel-rename)$/.test(name));
+  const focusAttribute=focused?.id==='rename-seed'?'id="rename-seed"':focused?.getAttributeNames().find(name=>/^data-(?:seed|rename-seed|delete-seed|restore-seed|purge-seed|cancel-rename)$/.test(name));
   const selection=focused instanceof HTMLInputElement?[focused.selectionStart,focused.selectionEnd] as const:undefined;
   const draft=$<HTMLInputElement>('rename-seed');if(preserveDraft&&draft&&renamingSeed)renameDraft=draft.value;
   const oldError=$('rename-error'),renameError=oldError&&!oldError.hidden?oldError.textContent:'';
@@ -1514,7 +1514,7 @@ function renderSeeds(preserveDraft=true){
   }).join(''):deletedSeeds.length||renamingSeed?'':`<div class="empty-library">${icon('folder',32)}<p>Your saved recipes appear here.</p></div>`;
   // An external deletion cannot discard a name the player is still editing.
   if(renamingSeed&&renameSeed&&!seeds.some(seed=>seed.id===renamingSeed))$('favorites-list').insertAdjacentHTML('afterbegin',renameForm(renameSeed,-1));
-  if(deletedSeeds.length)$('favorites-list').insertAdjacentHTML('beforeend',`<section class="deleted-seeds" aria-labelledby="deleted-seeds-title"><h3 id="deleted-seeds-title">Recently deleted</h3>${deletedSeeds.map((seed,i)=>`<div class="deleted-seed-row" data-library-id="${seed.id}"><div class="favorite-info"><span class="deleted-seed-name">${escape(seed.name)}</span>${metadata(seed)}</div><button class="button" data-restore-seed="${i}" aria-label="Undo deletion of ${escape(seed.name)}">${icon('undo',16)} Undo</button></div>`).join('')}</section>`);
+  if(deletedSeeds.length)$('favorites-list').insertAdjacentHTML('beforeend',`<section class="deleted-seeds" aria-labelledby="deleted-seeds-title"><h3 id="deleted-seeds-title">Recently deleted</h3>${deletedSeeds.map((seed,i)=>`<div class="deleted-seed-row" data-library-id="${seed.id}"><div class="favorite-info"><span class="deleted-seed-name">${escape(seed.name)}</span>${metadata(seed)}</div><div class="favorite-actions"><button class="button" data-restore-seed="${i}" aria-label="Undo deletion of ${escape(seed.name)}">${icon('undo',16)} Undo</button><button id="purge-${seed.id}" class="icon-button" data-purge-seed="${i}" aria-label="Permanently delete ${escape(seed.name)}" title="Delete forever" aria-haspopup="dialog" aria-controls="purge-seed-dialog">${icon('trash',16)}</button></div></div>`).join('')}</section>`);
   if(owned&&focusId&&focusAttribute){
     const next=seedControl(focusId,focusAttribute)||$('seed-name');next.focus({preventScroll:true});
     if(selection&&next instanceof HTMLInputElement)next.setSelectionRange(...selection);
@@ -1572,6 +1572,11 @@ $('favorites-list').onclick=async event=>{
     const input=$<HTMLInputElement>('rename-seed');input.focus({preventScroll:true});input.select();
   }
   if(b.dataset.cancelRename!==undefined)finishRename(id);
+  if(b.dataset.purgeSeed!==undefined){
+    refreshLibrary();const seed=deletedSeeds.find(seed=>seed.id===id);if(!seed){renderSeeds();return;}
+    purgingSeed=id;$('purge-seed-description').textContent=`Permanently delete “${seed.name}” from Recently deleted? You cannot undo this.`;
+    $('purge-seed-error').hidden=true;open('purge-seed-dialog',b.id);
+  }
   if(b.dataset.deleteSeed!==undefined||b.dataset.restoreSeed!==undefined){
     const restoring=b.dataset.restoreSeed!==undefined,attribute=restoring?'data-restore-seed':'data-delete-seed';
     b.setAttribute('aria-disabled','true');
@@ -1604,6 +1609,25 @@ $('favorites-list').addEventListener('keydown',event=>{
   if(event.defaultPrevented||event.isComposing||event.altKey||event.ctrlKey||event.metaKey||event.shiftKey)return;
   if(event.key==='Escape'&&renamingSeed!==undefined){event.preventDefault();event.stopPropagation();finishRename(renamingSeed);}
 });
+let purgingSeed:string|undefined;
+function returnFromPurge(id:string|undefined) {
+  refreshLibrary();renderSeeds();open('library-dialog');
+  requestAnimationFrame(()=>{if($<HTMLDialogElement>('library-dialog').open)(id&&seedControl(id,'data-purge-seed')||$('seed-name')).focus({preventScroll:true});});
+}
+$('purge-seed-cancel').onclick=()=>returnFromPurge(purgingSeed);
+$('purge-seed-confirm').onclick=async()=>{
+  const id=purgingSeed;if(!id)return;
+  const confirm=$<HTMLButtonElement>('purge-seed-confirm'),cancel=$<HTMLButtonElement>('purge-seed-cancel');
+  confirm.disabled=true;cancel.disabled=true;
+  try {
+    const removed=await changeLibrary({type:'purge',id});
+    if(renamingSeed===id){renamingSeed=undefined;renameSeed=undefined;}
+    purgingSeed=undefined;returnFromPurge(undefined);$('library-status').textContent=`${removed.name} permanently deleted.`;
+  }catch(e){
+    $('purge-seed-error').textContent=storageAvailable?(e instanceof Error?e.message:String(e)):'Could not delete on this device. The recovery copy is still available. Try again.';
+    $('purge-seed-error').hidden=false;
+  }finally{confirm.disabled=false;cancel.disabled=false;}
+};
 window.addEventListener('storage',event=>{
   if(event.key===SEEDS||event.key===null)refreshLibrary(true);
   if(event.key===SAVE||event.key===null){refreshCompletions();if(initialized){renderLevels();if($<HTMLDialogElement>('ending-dialog').open)renderEnding();}}

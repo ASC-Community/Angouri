@@ -48,6 +48,12 @@ test('only new awards in the current reset generation can extend completion',()=
   assert.deepEqual(mergeCompletions(reset,'reset',[4]),{progressEpoch:'reset',completed:[4]});
 });
 
+test('permanent removal drops only the named recovery copy',()=>{
+  const active=seed('active'),keep={...seed('keep'),deletedAt:'yesterday',deletedIndex:1},remove={...seed('remove'),deletedAt:'today',deletedIndex:0};
+  assert.deepEqual(mutateLibrary([active,keep,remove],{type:'purge',id:'remove'}).entries,[active,keep]);
+  assert.throws(()=>mutateLibrary([active,keep],{type:'purge',id:'active'}),/recovery copy changed/);
+});
+
 test('a missing cross-tab lock cannot silently fall back to unsafe writes',async()=>{
   let written=false;
   await assert.rejects(new StorageTransactions(undefined).run('library',()=>{written=true;}),/Safe device storage is unavailable/);

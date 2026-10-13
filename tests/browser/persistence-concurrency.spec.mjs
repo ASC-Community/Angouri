@@ -3,7 +3,7 @@ import {test,expect} from '@playwright/test';
 const progressKey='angouri:vine:v1:progress',libraryKey='angouri:vine:v1:seeds';
 const idle=page=>page.evaluate(()=>window.angouri.whenIdle());
 const stored=(page,key=libraryKey)=>page.evaluate(key=>JSON.parse(localStorage.getItem(key)),key);
-async function ready(page,source=4){await page.goto(`/#level=${source}&view=flight`);await page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground').getAttribute('aria-busy')==='false');}
+async function ready(page,source=4){await page.goto(`/#level=${source}&view=flight`);await page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground').getAttribute('aria-busy')==='false',undefined,{polling:100});}
 async function library(page){await page.locator('#menu-open').click();await page.locator('#library-open').click();}
 async function save(page,name){await page.locator('#seed-name').fill(name);await page.locator('#favorite-save').click();await idle(page);}
 async function resetDialog(page){await page.locator('#menu-open').click();await page.locator('#settings-open').click();await page.locator('#reset-progress-open').click();}
@@ -13,8 +13,13 @@ test('simultaneous saves and stale row actions preserve other tabs and recovery 
   // Keep a truly stale display in the second tab; mutations must still read
   // fresh data under their lock and address IDs rather than displayed indices.
   await other.addInitScript(()=>window.addEventListener('storage',event=>event.stopImmediatePropagation()));
-  await Promise.all([ready(page),ready(other)]);await Promise.all([library(page),library(other)]);
-  await Promise.all([save(page,'First tab'),save(other,'Second tab')]);
+  await ready(page);await ready(other);await library(page);await library(other);
+  await page.locator('#seed-name').fill('First tab');await other.locator('#seed-name').fill('Second tab');
+  // Start both real form handlers together without racing the browser's one
+  // keyboard/pointer focus between two pages (especially in WebKit).
+  await Promise.all([page.evaluate(()=>document.querySelector('#seed-save').requestSubmit()),other.evaluate(()=>document.querySelector('#seed-save').requestSubmit())]);
+  await Promise.all([idle(page),idle(other)]);
+  await expect(page.locator('#seed-name')).toHaveValue('');await expect(other.locator('#seed-name')).toHaveValue('');
   expect((await stored(page)).map(seed=>seed.name).sort()).toEqual(['First tab','Second tab']);
   await other.locator('#library-dialog .close-dialog').click();await library(other);
   await other.getByRole('button',{name:'Rename Second tab',exact:true}).click();await other.locator('#rename-seed').fill('Second renamed');
@@ -24,9 +29,12 @@ test('simultaneous saves and stale row actions preserve other tabs and recovery 
   await other.getByRole('button',{name:'Save name',exact:true}).click();
   await expect(other.getByRole('button',{name:'Open Second renamed',exact:true})).toBeVisible();
   expect((await stored(page)).find(seed=>seed.deletedAt)).toEqual(removed);
-  await Promise.all([save(other,'Third recipe'),page.getByRole('button',{name:'Undo deletion of First tab'}).click()]);
+  await other.locator('#seed-name').fill('Third recipe');
+  await Promise.all([other.evaluate(()=>document.querySelector('#seed-save').requestSubmit()),page.evaluate(id=>document.querySelector(`[data-library-id="${id}"] [data-restore-seed]`).click(),removed.id)]);
   await idle(page);await idle(other);
-  expect((await stored(page)).map(seed=>seed.name).sort()).toEqual(['First tab','Second renamed','Third recipe']);
+  await expect(page.locator('#library-status')).toHaveText('First tab restored.');
+  await expect(page.getByRole('button',{name:'Open First tab',exact:true})).toBeVisible();
+  expect((await stored(page)).filter(seed=>!seed.deletedAt).map(seed=>seed.name).sort()).toEqual(['First tab','Second renamed','Third recipe']);
   expect((await stored(page)).find(seed=>seed.name==='First tab').id).toBe(removed.id);
   await page.reload();await page.waitForFunction(()=>window.angouri?.result);await library(page);
   await expect(page.locator('[data-seed]')).toHaveCount(3);await expect(page.locator('[data-restore-seed]')).toHaveCount(0);
@@ -97,4 +105,38 @@ test('a failed reset preserves the live workspace and durable progress until ret
   await page.evaluate(()=>Storage.prototype.setItem=window.originalSetItem);await page.locator('#reset-progress-confirm').click();await idle(page);
   await expect(page.locator('#reset-progress-dialog')).toBeHidden();expect((await stored(page,progressKey)).completed).toEqual([]);
   expect(await page.evaluate(()=>window.angouri.state.nodes)).toEqual([]);
+});
+
+test('one confirmed permanent deletion frees library space and keeps failed writes retryable',async({page},testInfo)=>{
+  test.setTimeout(90000);
+  await ready(page);await library(page);await save(page,'Recovery to remove');await save(page,'Keep active');
+  await page.getByRole('button',{name:'Delete Recovery to remove',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Undo deletion of Recovery to remove'})).toBeVisible();
+  await page.evaluate(key=>{
+    const entries=JSON.parse(localStorage.getItem(key)),recovery=entries.find(seed=>seed.deletedAt);
+    recovery.padding='';recovery.padding='x'.repeat(1024*1024-128-JSON.stringify(entries).length);localStorage.setItem(key,JSON.stringify(entries));
+  },libraryKey);
+  await page.reload();await page.waitForFunction(()=>window.angouri?.result);await library(page);
+  await save(page,'After freeing space');await expect(page.locator('#library-error')).toContainText('storage limit');
+  const before=await stored(page),workspace=await page.evaluate(()=>window.angouri.state);
+  await page.getByRole('button',{name:'Permanently delete Recovery to remove',exact:true}).click();
+  await expect(page.locator('#purge-seed-cancel')).toBeFocused();await expect(page.locator('#purge-seed-description')).toContainText('Recovery to remove');
+  await expect(page.locator('#purge-seed-description')).toContainText('cannot undo');
+  await page.locator('#purge-seed-cancel').click();await expect(page.getByRole('button',{name:'Permanently delete Recovery to remove',exact:true})).toBeFocused();
+  expect(await stored(page)).toEqual(before);
+  for(const viewport of [{width:320,height:568},{width:844,height:390}]){
+    await page.setViewportSize(viewport);await page.getByRole('button',{name:'Permanently delete Recovery to remove',exact:true}).click();
+    await page.screenshot({path:testInfo.outputPath(`permanent-delete-${viewport.width}.png`)});
+    expect(await page.locator('#purge-seed-dialog').evaluate(dialog=>dialog.scrollWidth<=dialog.clientWidth+1)).toBe(true);
+    await page.locator('#purge-seed-cancel').click();
+  }
+  await page.getByRole('button',{name:'Permanently delete Recovery to remove',exact:true}).click();
+  await page.evaluate(key=>{window.originalLibraryWrite=Storage.prototype.setItem;Storage.prototype.setItem=function(name,value){if(name===key)throw new DOMException('Full','QuotaExceededError');return window.originalLibraryWrite.call(this,name,value);};},libraryKey);
+  await page.locator('#purge-seed-confirm').click();await expect(page.locator('#purge-seed-error')).toContainText('recovery copy is still available');
+  expect(await stored(page)).toEqual(before);
+  await page.evaluate(()=>Storage.prototype.setItem=window.originalLibraryWrite);await page.locator('#purge-seed-confirm').click();
+  await expect(page.locator('#library-dialog')).toBeVisible();await expect(page.getByRole('button',{name:'Open Keep active',exact:true})).toBeVisible();
+  expect(await stored(page)).toEqual(before.filter(seed=>!seed.deletedAt));expect(await page.evaluate(()=>window.angouri.state)).toEqual(workspace);
+  await expect(page.locator('#seed-name')).toHaveValue('After freeing space');await page.locator('#favorite-save').click();await idle(page);
+  await expect(page.getByRole('button',{name:'Open After freeing space',exact:true})).toBeVisible();await expect(page.locator('#library-error')).toBeHidden();
 });
