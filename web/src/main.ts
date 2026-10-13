@@ -506,6 +506,7 @@ function updatePrimary() {
   $('success').hidden=!won;
   if(won)$('success').innerHTML=`<span class="success-medal">${icon(state&&isMastery(state.sourceId)?'mastery':'check',22)}<span>${state?.mode==='puzzle'&&isMastery(state.sourceId)?'Mastery challenge complete!':state?.mode==='puzzle'&&isPicture(state.sourceId)?'Picture piece earned!':'All targets!'}</span></span>`;
   showNotice();
+  syncFlightClock();
 }
 function render(focusCell?:number) {
   if(!state||!result)return;
@@ -800,10 +801,20 @@ function throwCucumber(replay=false,focusNext=false) {
   $('move-announcement').textContent='Cucumber launched.';
   if(reduced)finishFlight();
 }
-let lastFrame=performance.now();
+let flightFrame:number|undefined,lastFrame=0;
+const flightCanAdvance=()=>initialized&&(flight.phase==='releasing'||flight.phase==='flying')&&!document.hidden&&!document.querySelector('dialog[open]');
+function syncFlightClock() {
+  if(flightCanAdvance()) {
+    // A resumed flight starts a fresh time interval; paused time never advances it.
+    if(flightFrame===undefined){lastFrame=performance.now();flightFrame=requestAnimationFrame(frame);}
+  } else {
+    if(flightFrame!==undefined)cancelAnimationFrame(flightFrame);
+    flightFrame=undefined;
+  }
+}
 function frame(time: number) {
-  const dt=Math.min(time-lastFrame,50);lastFrame=time;
-  if(initialized&&!document.hidden&&!document.querySelector('dialog[open]')) {
+  const dt=Math.max(0,Math.min(time-lastFrame,50));lastFrame=time;
+  if(flightCanAdvance()) {
     if(flight.phase==='releasing') {
       flight.release=Math.min(1,(flight.release||0)+dt/160);animatePosition();
       if(flight.release===1){flight={phase:'flying',position:0};updatePrimary();animatePosition();}
@@ -811,9 +822,11 @@ function frame(time: number) {
       flight.position=Math.min(1,flight.position+dt/2600);animatePosition();if(flight.position===1)finishFlight();
     }
   }
-  requestAnimationFrame(frame);
+  flightFrame=undefined;
+  if(flightCanAdvance())flightFrame=requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);
+document.addEventListener('visibilitychange',syncFlightClock);
+document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('close',syncFlightClock));
 const sizeInspection=()=>{
   if(!state||!result)return;
   sizeFlightAnnotations($('scene'));sizeFlowAnnotations($('scene'));sizeEquationTables($('scene'));sizeCircleControls($('scene'));
@@ -1261,7 +1274,7 @@ const open=(id:string,returnId='menu-open',origin?:ReturnType<typeof rememberFoc
   if(!restoreFocus(origin))$(returnId).focus({preventScroll:true});
   const dialog=$<HTMLDialogElement>(id),native=document.activeElement;
   if(origin)referenceOrigins.set(dialog,{focus:origin,native});else referenceOrigins.delete(dialog);
-  dialog.showModal();
+  dialog.showModal();syncFlightClock();
   if(!dialog.querySelector('[autofocus]')) {
     const back=dialog.querySelector<HTMLElement>('.dialog-top button');
     const keyboard=document.documentElement.dataset.focusModality==='keyboard';
