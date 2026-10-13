@@ -104,9 +104,14 @@ export class CropEditor {
     try {
       while(this.queued&&this.held){
         const crop=this.queued,state=this.held.state,generation=this.generation;this.queued=undefined;
-        const reply=await this.evaluate(state,crop);
-        if(generation===this.generation&&this.held&&reply.status==='ok'&&reply.result)this.preview(reply.result);
+        try {
+          const reply=await this.evaluate(state,crop);
+          if(generation===this.generation&&this.held&&reply.status==='ok'&&reply.result)this.preview(reply.result);
+        } catch {
+          // An obsolete preview cannot cancel a newer input or gesture.
+          if(generation===this.generation)this.cancel();
+        }
       }
-    } catch {this.cancel();} finally {this.busy=false;}
+    } finally {this.busy=false;}
   }
 }
