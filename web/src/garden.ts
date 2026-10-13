@@ -203,7 +203,7 @@ export class Garden {
     let cached=this.cache.get(sourceId);
     if(!cached) {
       cached=(async()=>{
-        const response=await this.kernel.run(undefined,{type:'level',sourceId,mode:'puzzle'});
+        const response=await this.kernel.run(undefined,{type:'level',sourceId,mode:'puzzle'},'background');
         const paths=response.status==='ok'?response.result?.picture?.paths:undefined;
         if(!paths?.length)throw new Error('Outline unavailable');
         const clean=paths.map(path=>path.points.filter(finite)).filter(points=>points.length>1);

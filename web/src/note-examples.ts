@@ -21,7 +21,7 @@ export class NoteExamples {
       example:(source,ops)=>this.example(source,ops,active),
       circleExample:(x,y,radius,goals=[])=>this.circleExample(x,y,radius,goals,active),
       puzzle:source=>this.cached(this.results,`puzzle:${source}`,active,needed=>this.run(needed,async()=>{
-        const reply=await this.kernel.run(undefined,{type:'level',sourceId:source,mode:'puzzle'});
+        const reply=await this.kernel.run(undefined,{type:'level',sourceId:source,mode:'puzzle'},'background');
         if(reply.status!=='ok'||!reply.result)throw new Error('Puzzle targets unavailable');
         return reply.result;
       }))
@@ -67,7 +67,7 @@ export class NoteExamples {
 
   private start(sourceId:number,active:Reader) {
     return this.cached(this.starts,String(sourceId),active,needed=>this.run(needed,async()=>{
-      const initial=await this.kernel.run(undefined,{type:'level',sourceId,mode:'remix'});
+      const initial=await this.kernel.run(undefined,{type:'level',sourceId,mode:'remix'},'background');
       if(initial.status!=='ok'||!initial.state||!initial.result)throw new Error('Example unavailable');
       return {state:initial.state,result:initial.result};
     }));
@@ -79,7 +79,7 @@ export class NoteExamples {
       if(!ops)return initial.result;
       const state={...initial.state,nodes:[...ops].map((op,i)=>({id:`note-${i}`,op:op as Op}))};
       return this.run(needed,async()=>{
-        const reply=await this.kernel.run(state,{type:'evaluate'});
+        const reply=await this.kernel.run(state,{type:'evaluate'},'background');
         if(reply.status!=='ok'||!reply.result)throw new Error('Example unavailable');
         return reply.result;
       });
@@ -91,7 +91,7 @@ export class NoteExamples {
       const initial=await this.start(43,needed);
       const state={...initial.state,circle:{x,y,radius},mode:goals.length?'challenge' as const:'remix' as const,goals:goals.map(([x,y])=>({x,y}))};
       return this.run(needed,async()=>{
-        const reply=await this.kernel.run(state,{type:'evaluate'});
+        const reply=await this.kernel.run(state,{type:'evaluate'},'background');
         if(reply.status!=='ok'||!reply.result?.circle)throw new Error('Circle example unavailable');
         return reply.result;
       });

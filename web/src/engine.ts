@@ -1,6 +1,7 @@
 import type { Action, Response, State } from './types';
 
 type Pending = { resolve: (response: Response) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> };
+type Queued = { state: State | undefined; action: Action; resolve: (response: Response) => void; reject: (error: unknown) => void };
 type Epoch = {
   id: number;
   worker?: Worker;
@@ -18,6 +19,8 @@ export class Kernel {
   private current!: Epoch;
   private sequence = 0;
   private epoch = 0;
+  private queued = { interactive: [] as Queued[], background: [] as Queued[] };
+  private dispatching = false;
   readonly measurements = { ready: [] as number[], edits: [] as number[], restarts: 0 };
 
   constructor(private status: (message: string, recovering: boolean) => void) { this.start(false); }
@@ -90,8 +93,31 @@ export class Kernel {
     });
   }
 
+  /** Waiting jobs have no deadline or retry cost until admitted to the worker. */
+  run(state: State | undefined, action: Action, priority: 'interactive' | 'background' = 'interactive'): Promise<Response> {
+    if (this.queued.interactive.length + this.queued.background.length >= 256) {
+      return Promise.reject(new Error('The math engine is busy. Try again.'));
+    }
+    const response = new Promise<Response>((resolve, reject) => this.queued[priority].push({state, action, resolve, reject}));
+    void this.dispatch();
+    return response;
+  }
+
+  private async dispatch() {
+    if (this.dispatching) return;
+    this.dispatching = true;
+    try {
+      for (;;) {
+        const job = this.queued.interactive.shift() ?? this.queued.background.shift();
+        if (!job) return;
+        try { job.resolve(await this.execute(job.state, job.action)); }
+        catch (error) { job.reject(error); }
+      }
+    } finally { this.dispatching = false; }
+  }
+
   /** Each retry uses the same unacknowledged snapshot; the stateless kernel cannot double-commit it. */
-  async run(state: State | undefined, action: Action): Promise<Response> {
+  private async execute(state: State | undefined, action: Action): Promise<Response> {
     let epoch = this.current.failure ? this.recover(this.current) : this.current;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
