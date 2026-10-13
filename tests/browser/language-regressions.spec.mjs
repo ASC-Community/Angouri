@@ -1,8 +1,9 @@
+import {clearStorage,snapshotWithProgress} from './storage-fixtures.mjs';
 import {test,expect} from '@playwright/test';
 
 const idle=page=>page.evaluate(()=>window.angouri.whenIdle());
 async function ready(page,source) {
-  await page.goto('/about/');await page.evaluate(()=>localStorage.clear());await page.goto(`/#level=${source}&view=flight`);
+  await page.goto('/about/');await clearStorage(page);await page.goto(`/#level=${source}&view=flight`);
   await page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
 }
 async function add(page,op,slot) {
@@ -45,7 +46,7 @@ test('a terminal worker interruption preserves the acknowledged recipe and expla
     };
   });
   await ready(page,3);await add(page,'A');
-  const workspace=()=>page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history,save:localStorage.getItem('angouri:vine:v1:progress')}));
+  const workspace=()=>snapshotWithProgress(page,()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}),'save');
   const before=await workspace();await page.evaluate(()=>window.failLanguageMoves=2);
   await add(page,'H');
   await expect(page.locator('#feedback')).toHaveText('That move could not finish. Your previous recipe is unchanged. Try the move again.');

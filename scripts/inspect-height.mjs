@@ -1,15 +1,15 @@
+import {clearStorage} from '../tests/browser/storage-fixtures.mjs';
 import {launchChromium,previewURL} from './browser.mjs';
 import {mkdir,writeFile} from 'node:fs/promises';
 
 const browser=await launchChromium();
 const page=await browser.newPage({baseURL:previewURL(),reducedMotion:'reduce'}),errors=[],layouts=[];
-await page.addInitScript(()=>localStorage.clear());
 page.on('pageerror',error=>errors.push(String(error)));
 const idle=()=>page.evaluate(()=>window.angouri.whenIdle());
 try {
   await mkdir('artifacts',{recursive:true});
   for(const [level,ops,name] of [[3,'HA','order'],[24,'AHAH','pieces'],[25,'HHH','gap'],[25,'AHHAHA','placed'],[26,'','raised-bowl'],[26,'HHHN','reflected-gap'],[26,'AHHHNA','reflected-placed']]) {
-    await page.goto('/about/');
+    await page.goto('/about/');await clearStorage(page);
     await page.goto(`/#level=${level}&view=function`);
     await page.waitForFunction(id=>window.angouri?.state?.sourceId===id,level);
     for(const op of ops){await page.locator(`[data-op="${op}"]`).click();await idle();}

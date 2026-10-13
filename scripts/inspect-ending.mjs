@@ -1,6 +1,7 @@
 import {launchChromium,previewURL} from './browser.mjs';
 import {mkdir,readFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
+import {STORAGE_KEYS,readStoredJSON,writeStoredJSON} from '../tests/browser/storage-fixtures.mjs';
 
 const {chapters}=JSON.parse(await readFile(new URL('../content/learning-path.json',import.meta.url),'utf8'));
 const mainPuzzles=chapters.flat(),finalLevel=mainPuzzles.at(-1),finalRecipe='DAHFISQ';
@@ -15,7 +16,7 @@ const shot=name=>page.screenshot({path:`artifacts/${name}.png`});
 const ready=()=>page.waitForFunction(id=>window.angouri?.state?.sourceId===id&&document.querySelector('#playground').getAttribute('aria-busy')==='false',finalLevel);
 const finish=async()=>{
   assert.equal(await page.evaluate(()=>window.angouri.result.solved),true,'The final recipe must solve the authored puzzle.');
-  await page.locator('#launch').click();await page.waitForFunction(()=>window.angouri.flight.phase==='landed');
+  await page.locator('#launch').click();await page.waitForFunction(()=>window.angouri.flight.phase==='landed');await idle();
   assert.equal(await page.locator('#launch').getAttribute('aria-label'),'Finish');
   await page.locator('#launch').click();await page.locator('#ending-dialog').waitFor({state:'visible'});
 };
@@ -33,11 +34,11 @@ try {
   await finish();
   assert.equal(await page.locator('#ending-progress').textContent(),`1 of ${mainPuzzles.length} puzzles complete`);
   assert.equal(await page.locator('.ending-chapter.complete').count(),0);
-  assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed),[finalLevel]);
+  assert.deepEqual((await readStoredJSON(page,STORAGE_KEYS.progress)).completed,[finalLevel]);
   await shot('ending-partial');await page.keyboard.press('Escape');
   // Visual fixture only: seed the current main-puzzle manifest to inspect the
   // all-complete ending. This does not play or verify those other puzzles.
-  await page.evaluate(completed=>{const key='angouri:vine:v1:progress',saved=JSON.parse(localStorage.getItem(key));saved.completed=completed;localStorage.setItem(key,JSON.stringify(saved));},mainPuzzles);
+  const saved=await readStoredJSON(page,STORAGE_KEYS.progress);saved.completed=mainPuzzles;await writeStoredJSON(page,STORAGE_KEYS.progress,saved);
   await page.reload();await ready();await finish();
   assert.equal(await page.locator('#ending-progress').textContent(),`${mainPuzzles.length} of ${mainPuzzles.length} puzzles complete`);
   assert.equal(await page.locator('.ending-chapter.complete').count(),chapters.length);

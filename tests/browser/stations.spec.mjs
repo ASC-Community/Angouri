@@ -1,3 +1,4 @@
+import {STORAGE_KEYS,readStoredJSON} from './storage-fixtures.mjs';
 import {test,expect} from '@playwright/test';
 
 async function ready(page,id,view='flight') {
@@ -144,7 +145,7 @@ test('the final station rewards its input/output solution and advances to Loops'
   expect(await order(page)).toBe('HHNAINA');expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(true);
   await page.locator('#launch').click();await expect(page.locator('#launch')).toHaveText('Next chapter');await expect(page.locator('.equation-verdict[data-status="hit"]')).toHaveCount(5);
   await page.locator('#launch').click();await idle(page);expect((await state(page)).sourceId).toBe(43);await expect(page.locator('#level-category')).toContainText('LOOPS');
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([42]);
+  expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual([42]);
 });
 
 test('Safari-compatible Flight labels stay tied to the plot at compact and wide sizes',async({page})=>{

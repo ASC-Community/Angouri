@@ -1,3 +1,4 @@
+import {STORAGE_KEYS,clearStorage,readStorage,writeStorage} from './storage-fixtures.mjs';
 import { test, expect } from '@playwright/test';
 
 async function ready(page,path='/#level=3&view=flight') {
@@ -317,14 +318,14 @@ test('Tab during loading remains deliberate focus after arrival',async({page})=>
 test('loading enables a populated puzzle list and preserves the open menu and its focus',async({page})=>{
   test.setTimeout(90000);
   await ready(page);
-  const saved=await page.evaluate(()=>localStorage.getItem('angouri:vine:v1:progress'));
+  const saved=await readStorage(page,STORAGE_KEYS.progress);
   for(const entry of [
     {path:'/',dialog:'menu-dialog'},
     {path:'/#level=54',destination:'help-open',dialog:'help-dialog'},
     {path:'/',saved,destination:'library-open',dialog:'library-dialog'}
   ]) {
     await page.goto('/about/');
-    await page.evaluate(saved=>{localStorage.clear();if(saved)localStorage.setItem('angouri:vine:v1:progress',saved);},entry.saved);
+    await clearStorage(page);if(entry.saved)await writeStorage(page,STORAGE_KEYS.progress,entry.saved);
     let release;const gate=new Promise(resolve=>{release=resolve;});
     const hold=async route=>{await gate;await route.continue();};
     await page.route('**/engine-worker.js',hold);

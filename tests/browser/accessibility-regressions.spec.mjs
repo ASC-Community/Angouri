@@ -1,9 +1,10 @@
+import {STORAGE_KEYS,clearStorage,readStorage} from './storage-fixtures.mjs';
 import {test,expect} from '@playwright/test';
 
 const idle=page=>page.evaluate(()=>window.angouri.whenIdle());
 const snapshot=page=>page.evaluate(()=>({state:window.angouri.state,history:window.angouri.history}));
 async function ready(page,id=1) {
-  await page.goto('/about/');await page.evaluate(()=>localStorage.clear());
+  await page.goto('/about/');await clearStorage(page);
   await page.goto(`/#level=${id}&view=flight`);
   await page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
 }
@@ -64,14 +65,14 @@ for(const kind of ['crop','circle'])test(`${kind} exact fields preserve drafts f
 test('rename keeps the draft during composing, modified and handled Escape',async({page})=>{
   await ready(page,4);await page.locator('#menu-open').click();await page.locator('#library-open').click();
   await page.locator('#seed-name').fill('Original recipe');await page.locator('#favorite-save').click();await idle(page);
-  const saved=await page.evaluate(()=>localStorage.getItem('angouri:vine:v1:seeds'));
+  const saved=await readStorage(page,STORAGE_KEYS.seeds);
   await page.locator('[data-rename-seed="0"]').click();
   const input=page.locator('#rename-seed');await input.fill('Rename draft');
   for(const options of guardedKeys) {
     expect(await guardedKey(input,'Escape',options),JSON.stringify(options)).toEqual({prevented:!!options.handled,connected:true});
     await expect(input).toHaveValue('Rename draft');await expect(input).toBeFocused();
     await expect(page.locator('#library-dialog')).toBeVisible();
-    expect(await page.evaluate(()=>localStorage.getItem('angouri:vine:v1:seeds'))).toBe(saved);
+    expect(await readStorage(page,STORAGE_KEYS.seeds)).toBe(saved);
   }
   await input.press('Escape');await expect(input).toHaveCount(0);
   await expect(page.locator('#library-dialog')).toBeVisible();await expect(page.locator('[data-rename-seed="0"]')).toBeFocused();

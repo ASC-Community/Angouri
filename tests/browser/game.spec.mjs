@@ -1,3 +1,4 @@
+import {STORAGE_KEYS,failStorageWrites,readStorage,readStoredJSON,removeStorage,snapshotWithProgress,writeStoredJSON} from './storage-fixtures.mjs';
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 const {version:appVersion}=JSON.parse(await readFile(new URL('../../package.json',import.meta.url),'utf8'));
@@ -64,7 +65,7 @@ test('replayed and directly linked opening puzzles stay focused without a full-e
   await ready(page);await place(page,'H');await throwIt(page);await page.reload();await page.waitForFunction(()=>window.angouri?.state);
   await expect(page.locator('.game-shell')).toHaveClass(/intro/);expect((await snapshot(page)).nodes.map(n=>n.op)).toEqual(['H']);
   await ready(page,'/#level=1&view=function');await expect(page.locator('.game-shell')).toHaveClass(/intro/);expect(await page.evaluate(()=>window.angouri.view)).toBe('function');
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([1]);
+  expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual([1]);
   await expect(page.locator('#scene')).toHaveAttribute('data-view','flight');await expect(page.locator('#flight-svg')).toBeVisible();
   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:preferences')).view)).toBe('function');
   for(const selector of ['.view-tabs','#ideas-open','.construction','.recipe-heading','#undo','#redo','#reset'])await expect(page.locator(selector)).toBeHidden();
@@ -151,19 +152,19 @@ test('adjacent lessons advance separately and award only the sources actually so
   await expect(reflection.locator('.chapter-progress')).toHaveAttribute('aria-label','1 of 4 puzzles complete');
   await expect(puzzleOption(page,8)).toHaveAttribute('aria-label',/completed/);await expect(puzzleOption(page,9)).not.toHaveAttribute('aria-label',/completed/);
   await page.keyboard.press('Escape');await page.locator('#launch').click();await idle(page);
-  expect((await snapshot(page)).sourceId).toBe(9);expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([8]);
+  expect((await snapshot(page)).sourceId).toBe(9);expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual([8]);
   await placeRecipe(page,'NHA');expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(true);await throwIt(page);await menu(page,'puzzles-open');
   await expect(page.locator('.chapter-group').nth(1).locator('.chapter-progress')).toHaveAttribute('aria-label','2 of 4 puzzles complete');
   await expect(puzzleOption(page,8)).toHaveAttribute('aria-label',/completed/);await expect(puzzleOption(page,9)).toHaveAttribute('aria-label',/completed/);
   await page.keyboard.press('Escape');await page.locator('#launch').click();await idle(page);expect((await snapshot(page)).sourceId).toBe(26);
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([8,9]);
+  expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual([8,9]);
 });
 
 test('shape notes connect earlier lessons without changing a recipe, history, view or inspection scroll',async({page})=>{
   await page.setViewportSize({width:390,height:844});await ready(page,'/#level=4&view=flow');
   for(const op of ['H','Q','N'])await place(page,op);
   await page.locator('.flow-line').evaluate(el=>el.scrollTop=el.scrollHeight);
-  const before=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history,view:window.angouri.view,scroll:document.querySelector('.flow-line').scrollTop,save:localStorage.getItem('angouri:vine:v1:progress')}));
+  const before=await snapshotWithProgress(page,()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history,view:window.angouri.view,scroll:document.querySelector('.flow-line').scrollTop}),'save');
   await page.locator('#ideas-open').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
   await expect(page.locator('#notes-content [data-note-target]')).toHaveCount(0);
   expect(await page.locator('#notes-content .note-plot').count()).toBeGreaterThan(0);
@@ -174,7 +175,7 @@ test('shape notes connect earlier lessons without changing a recipe, history, vi
   expect(await page.locator('#notes-content').innerHTML()).toBe(original);
   await expect(page.locator('[data-note-lesson="4"]')).toHaveAttribute('aria-selected','true');await expect(page.locator('.katex-error')).toHaveCount(0);
   await page.getByRole('button',{name:'Back to puzzle',exact:true}).click();await expect(page.locator('#ideas-open')).toBeFocused();
-  expect(await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history,view:window.angouri.view,scroll:document.querySelector('.flow-line').scrollTop,save:localStorage.getItem('angouri:vine:v1:progress')}))).toEqual(before);
+  expect(await snapshotWithProgress(page,()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history,view:window.angouri.view,scroll:document.querySelector('.flow-line').scrollTop}),'save')).toEqual(before);
   await page.locator('#ideas-open').click();await page.keyboard.press('Escape');await expect(page.locator('#ideas-open')).toBeFocused();
   await choosePuzzle(page,25);await placeRecipe(page,'AAHHHH');
   await page.locator('.flow-line').evaluate(el=>el.scrollTop=el.scrollHeight);
@@ -256,7 +257,7 @@ test('minimal openings hide notes, while later puzzles scope them and Create sho
   const chapters=[[1,2,3,24,25],[6,8,9,26],[7,10,4,27,28],[12,13,29,30,31,11],[32,33,34,35,36],[37,38,39,40,41,42],[43,44,48,78,68,69,70,66,49,71],[50,51,52,79,81,53,54,80,84,55],[56,57,58,59,60,61,62,63],[82,72,73,74,75,83,76,77,64,65,85]];
   const route=chapters.flat();
   for(const level of route.slice(2)) {
-    await choosePuzzle(page,level);const before=await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history,save:localStorage.getItem('angouri:vine:v1:progress')}));
+    await choosePuzzle(page,level);const before=await snapshotWithProgress(page,()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}),'save');
     await openNotes();const allowed=route.slice(0,route.indexOf(level)+1),chapter=chapters.findIndex(ids=>ids.includes(level));
     await expect(page.locator('[data-note]')).toHaveCount(0);
     expect(await page.locator('[data-note-lesson]').count()).toBeGreaterThan(0);
@@ -273,7 +274,7 @@ test('minimal openings hide notes, while later puzzles scope them and Create sho
       await expect(page.locator('#notes-content [data-note-target],#notes-content details')).toHaveCount(0);
       await expect(page.locator('.katex-error')).toHaveCount(0);
     }
-    await closeNotes();expect(await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history,save:localStorage.getItem('angouri:vine:v1:progress')}))).toEqual(before);
+    await closeNotes();expect(await snapshotWithProgress(page,()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}),'save')).toEqual(before);
   }
   await choosePuzzle(page,1);await expect(page.locator('#ideas-open')).toBeHidden();
   await choosePuzzle(page,6);await place(page,'N');await throwIt(page);await choosePuzzle(page,1);
@@ -308,7 +309,7 @@ test('full recipes can reorder, and Undo during a pickup cancels that pickup',as
 test('throw reveals targets in sequence, lands once, and only then awards completion',async({page})=>{
   await page.emulateMedia({reducedMotion:'no-preference'});await ready(page,'/#level=3&view=flight');await place(page,'A');await place(page,'H');
   await expect(page.locator('.ring.hit')).toHaveCount(0);await expect(page.locator('#success')).toBeHidden();
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([]);
+  expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual([]);
   await page.locator('#launch').click();await expect(page.locator('#launch')).toBeDisabled();
   await page.waitForFunction(()=>window.angouri.flight.position>.2&&window.angouri.flight.position<.48);
   await expect(page.locator('[data-ring="0"]')).toHaveAttribute('data-status','hit');await expect(page.locator('[data-ring="1"]')).toHaveAttribute('data-status','waiting');
@@ -318,7 +319,7 @@ test('throw reveals targets in sequence, lands once, and only then awards comple
   await page.waitForFunction(()=>window.angouri.flight.phase==='landed');
   await expect(page.locator('.ring.hit')).toHaveCount(3);await expect(page.locator('#launch')).toHaveAccessibleName('Next puzzle');
   await expect(page.locator('#launch')).toBeEnabled();await expect(page.locator('#launch')).toHaveClass(/continue-ready/);
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([3]);
+  expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual([3]);
   const resting=await page.locator('#cucumber').getAttribute('transform');await page.waitForTimeout(350);await expect(page.locator('#cucumber')).toHaveAttribute('transform',resting);
   const again=await page.locator('#rethrow').boundingBox(),next=await page.locator('#launch').boundingBox();expect(again.x+again.width).toBeLessThan(next.x);
   await page.locator('#rethrow').click();await page.waitForFunction(()=>window.angouri.flight.position>.05);await expect(page.locator('#launch')).toHaveAccessibleName('Next puzzle');await expect(page.locator('#launch')).toBeEnabled();await expect(page.locator('#rethrow')).toBeDisabled();
@@ -430,7 +431,7 @@ test('a miss can be revised, and an edit during flight resets the throw without 
   await page.locator('#launch').click();await page.waitForFunction(()=>window.angouri.flight.position>.1);
   await page.locator('#undo').click();await idle(page);expect(await page.evaluate(()=>window.angouri.flight)).toEqual({phase:'ready',position:0});
   await expect(page.locator('.ring.hit')).toHaveCount(0);await expect(page.locator('#success')).toBeHidden();
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([]);
+  expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual([]);
 });
 
 test('fullscreen keeps three views visible and occasional tasks in the visual menu',async({page})=>{
@@ -540,7 +541,7 @@ test('ten chapters cover 70 puzzles, then end with a chapter record and AngouriM
     if(step===total&&chapter<10)await expect(page.locator('#launch')).toHaveAccessibleName('Next chapter');
     if(step===total-1)await expect(page.locator('#launch')).toHaveAccessibleName(chapter===10?'Final mastery':'Chapter challenge');
   }
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual(lessons.map(({level})=>level));
+  expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual(lessons.map(({level})=>level));
   await expect(page.locator('#launch')).toHaveAccessibleName('Finish');await expect(page.locator('#chapter-step')).toContainText('FINAL MASTERY');
   const finalRecipe=await snapshot(page),history=await page.evaluate(()=>window.angouri.history);
   await page.locator('#launch').click();await expect(page.locator('#ending-dialog')).toBeVisible();await expect(page.locator('#ending-title')).toHaveText('A whole garden of ideas.');
@@ -564,7 +565,7 @@ test('finishing after jumping ahead celebrates that flight without claiming unfi
   }
   await page.locator('#ending-revisit').click();await expect(page.locator('#puzzles-dialog')).toBeVisible();await expect(page.locator('.chapter-group[open]>summary')).toContainText('The moonlit garden');
   await page.keyboard.press('Escape');await expect(page.locator('#launch')).toHaveAccessibleName('Finish');await page.reload();await page.waitForFunction(()=>window.angouri?.state);
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([85]);
+  expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual([85]);
 });
 
 test('empty slots can move, fill in place, persist, and undo with the recipe',async({page})=>{
@@ -749,7 +750,8 @@ test('creation and hidden-solution challenge links reproduce in fresh contexts',
 
 test('reload, progress files, saved recipes, and invalid imports preserve work',async({page})=>{
   await ready(page,'/#level=3&view=flight');await place(page,'A');await place(page,'H');await throwIt(page);await changeView(page,'function');const original=await snapshot(page);
-  await page.evaluate(()=>{for(const key of ['angouri:vine:v1:progress','angouri:vine:v1:preferences']){const saved=JSON.parse(localStorage.getItem(key));saved.view='equations';localStorage.setItem(key,JSON.stringify(saved));}});
+  const legacyView=await readStoredJSON(page,STORAGE_KEYS.progress);legacyView.view='equations';await writeStoredJSON(page,STORAGE_KEYS.progress,legacyView);
+  await page.evaluate(()=>{const key='angouri:vine:v1:preferences',saved=JSON.parse(localStorage.getItem(key));saved.view='equations';localStorage.setItem(key,JSON.stringify(saved));});
   await page.reload();await page.waitForFunction(()=>window.angouri?.state);expect(await snapshot(page)).toEqual(original);expect(await page.evaluate(()=>window.angouri.view)).toBe('function');
   await menu(page,'library-open');const downloadPromise=page.waitForEvent('download');await page.locator('#download-save').click();const file=await downloadPromise;const filePath=await file.path();await page.locator('#library-dialog .close-dialog').click();
   await page.locator('#reset').click();await idle(page);expect((await snapshot(page)).nodes).toHaveLength(0);
@@ -776,7 +778,7 @@ test('workspace changes can cancel, save the exact puzzle or creation, or explic
   await expect(page.locator('.favorite-context')).toHaveText(['Puzzle 3.3','Create']);
   const savedTimes=await page.locator('.favorite-meta time').evaluateAll(items=>items.map(el=>el.dateTime));
   expect(savedTimes).toHaveLength(2);expect(savedTimes.every(value=>Number.isFinite(Date.parse(value)))).toBe(true);
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:seeds')).map(seed=>seed.savedAt))).toEqual(savedTimes);
+  expect((await readStoredJSON(page,STORAGE_KEYS.seeds)).map(seed=>seed.savedAt)).toEqual(savedTimes);
   for(const row of await page.locator('.favorite-row').all()) {
     const name=await row.locator('.favorite-name').boundingBox(),meta=await row.locator('.favorite-meta').boundingBox();expect(meta.y).toBeGreaterThanOrEqual(name.y+name.height);
     await expect(row.locator('.favorite-meta')).toContainText('·');
@@ -787,10 +789,12 @@ test('workspace changes can cancel, save the exact puzzle or creation, or explic
   expect(await snapshot(page)).toEqual(creation);expect(await page.evaluate(()=>window.angouri.slots)).toEqual(creationSlots);
   await place(page,'A');await selectThird();await expect(page.locator('#leave-dialog')).toBeVisible();await page.locator('#leave-discard').click();await idle(page);
   expect((await snapshot(page)).sourceId).toBe(3);expect((await snapshot(page)).nodes).toEqual([]);
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:seeds')).length)).toBe(2);
-  // Old libraries contain only creation artifacts; they remain openable.
-  await page.evaluate(()=>{const key='angouri:vine:v1:seeds',saved=JSON.parse(localStorage.getItem(key));localStorage.setItem(key,JSON.stringify([{name:saved[0].name,artifact:saved[0].artifact}]));});
-  await page.reload();await page.waitForFunction(()=>window.angouri?.state);await menu(page,'library-open');await expect(page.locator('.favorite-context')).toHaveText('Create');await expect(page.locator('.favorite-meta')).toContainText('Date unavailable');await page.locator('[data-seed="0"]').click();await idle(page);
+  expect((await readStoredJSON(page,STORAGE_KEYS.seeds)).length).toBe(2);
+  // A legacy localStorage library migrates once when no primary record exists.
+  const savedLibrary=await readStoredJSON(page,STORAGE_KEYS.seeds);
+  await page.goto('/about/');await removeStorage(page,STORAGE_KEYS.seeds);
+  await page.evaluate(saved=>localStorage.setItem('angouri:vine:v1:seeds',JSON.stringify([{name:saved[0].name,artifact:saved[0].artifact}])),savedLibrary);
+  await ready(page);await menu(page,'library-open');await expect(page.locator('.favorite-context')).toHaveText('Create');await expect(page.locator('.favorite-meta')).toContainText('Date unavailable');await page.locator('[data-seed="0"]').click();await idle(page);
   expect((await snapshot(page)).mode).toBe('remix');expect((await snapshot(page)).nodes).toEqual(puzzle.nodes);
 });
 
@@ -798,28 +802,28 @@ test('saved recipes rename in place with keyboard cancellation and retain their 
   await ready(page,'/#level=4&view=flow');await place(page,'H');
   const before=await snapshot(page),history=await page.evaluate(()=>window.angouri.history);
   await menu(page,'library-open');await page.locator('#seed-name').fill('A bowl');await page.locator('#favorite-save').click();await idle(page);
-  const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:seeds'))[0]);
+  const stored=(await readStoredJSON(page,STORAGE_KEYS.seeds))[0];
   await page.locator('[data-rename-seed="0"]').click();await expect(page.locator('#rename-seed')).toBeFocused();
   await page.locator('#rename-seed').fill('Cancelled');await page.keyboard.press('Escape');
   await expect(page.locator('#library-dialog')).toBeVisible();await expect(page.locator('[data-rename-seed="0"]')).toBeFocused();await expect(page.locator('.favorite-name')).toHaveText('A bowl');
   await page.locator('[data-rename-seed="0"]').click();await page.locator('#rename-seed').fill('  My shifted bowl  ');await page.keyboard.press('Enter');
   await expect(page.locator('.favorite-name')).toHaveText('My shifted bowl');await expect(page.locator('[data-rename-seed="0"]')).toBeFocused();
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:seeds'))[0])).toEqual({...stored,name:'My shifted bowl'});
+  expect((await readStoredJSON(page,STORAGE_KEYS.seeds))[0]).toEqual({...stored,name:'My shifted bowl'});
   expect(await snapshot(page)).toEqual(before);expect(await page.evaluate(()=>window.angouri.history)).toEqual(history);
   await page.reload();await page.waitForFunction(()=>window.angouri?.state);await menu(page,'library-open');await expect(page.locator('.favorite-name')).toHaveText('My shifted bowl');
   await page.setViewportSize({width:320,height:568});await page.locator('[data-rename-seed="0"]').click();
   await page.locator('#rename-seed').fill(' ');await page.getByRole('button',{name:'Save name',exact:true}).click();await expect(page.locator('#rename-error')).toContainText('Enter a recipe name');
-  await page.evaluate(()=>{const set=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(key==='angouri:vine:v1:seeds')throw new DOMException('Full','QuotaExceededError');return set.call(this,key,value);};});
+  await failStorageWrites(page,STORAGE_KEYS.seeds);
   await page.locator('#rename-seed').fill('Keep draft on failure');await page.getByRole('button',{name:'Save name',exact:true}).click();
   await expect(page.locator('#rename-error')).toContainText('Could not save the name');await expect(page.locator('#rename-seed')).toHaveValue('Keep draft on failure');
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:seeds'))[0])).toEqual({...stored,name:'My shifted bowl'});
+  expect((await readStoredJSON(page,STORAGE_KEYS.seeds))[0]).toEqual({...stored,name:'My shifted bowl'});
   expect(await page.locator('#library-dialog').evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
   await page.getByRole('button',{name:'Cancel',exact:true}).click();await expect(page.locator('.favorite-name')).toHaveText('My shifted bowl');
 });
 
 test('a failed Save and continue leaves the recipe open and recoverable',async({page})=>{
   await ready(page);await place(page,'H');const before=await snapshot(page);
-  await page.evaluate(()=>{const set=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(key==='angouri:vine:v1:seeds')throw new DOMException('Full','QuotaExceededError');return set.call(this,key,value);};});
+  await failStorageWrites(page,STORAGE_KEYS.seeds);
   await page.locator('#menu-open').click();await page.locator('#nav-create').click();await page.locator('#leave-save').click();
   await expect(page.locator('#leave-error')).toContainText('Could not save on this device');await expect(page.locator('#leave-dialog')).toBeVisible();
   expect(await snapshot(page)).toEqual(before);await expect(page.locator('#leave-save')).toBeEnabled();await page.locator('#leave-cancel').click();
@@ -831,18 +835,18 @@ test('a failed Save and continue leaves the recipe open and recoverable',async({
 test('restart affects the current recipe while confirmed global reset clears puzzle progress and keeps the library and preferences',async({page})=>{
   await ready(page,'/#level=3&view=flight');await place(page,'A');await place(page,'H');await throwIt(page);const solved=await snapshot(page);
   await expect(page.locator('#reset')).toHaveAccessibleName('Restart puzzle');await page.locator('#reset').click();await idle(page);
-  expect((await snapshot(page)).nodes).toEqual([]);expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([3]);
+  expect((await snapshot(page)).nodes).toEqual([]);expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual([3]);
   await page.locator('#undo').click();await idle(page);expect(await snapshot(page)).toEqual(solved);
   await menu(page,'library-open');await page.locator('#seed-name').fill('Keep this recipe');await page.locator('#favorite-save').click();await idle(page);await page.keyboard.press('Escape');
   await choosePuzzle(page,4);await place(page,'H');await changeView(page,'flow');const before=await snapshot(page);
   await menu(page,'settings-open');await page.locator('#motion-toggle').uncheck();
-  const kept=await page.evaluate(()=>({seeds:localStorage.getItem('angouri:vine:v1:seeds'),preferences:localStorage.getItem('angouri:vine:v1:preferences')}));
+  const kept={seeds:await readStorage(page,STORAGE_KEYS.seeds),preferences:await page.evaluate(()=>localStorage.getItem('angouri:vine:v1:preferences'))};
   await page.locator('#reset-progress-open').click();await expect(page.locator('#reset-progress-dialog')).toBeVisible();await page.locator('#reset-progress-cancel').click();
   await expect(page.locator('#settings-dialog')).toBeVisible();await expect(page.locator('#reset-progress-open')).toBeFocused();expect(await snapshot(page)).toEqual(before);
   await page.locator('#reset-progress-open').click();await page.locator('#reset-progress-confirm').click();await idle(page);
   expect((await snapshot(page)).sourceId).toBe(1);expect((await snapshot(page)).nodes).toEqual([]);expect(await page.evaluate(()=>window.angouri.history)).toEqual({undo:0,redo:0});
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([]);
-  expect(await page.evaluate(()=>({seeds:localStorage.getItem('angouri:vine:v1:seeds'),preferences:localStorage.getItem('angouri:vine:v1:preferences')}))).toEqual(kept);
+  expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual([]);
+  expect({seeds:await readStorage(page,STORAGE_KEYS.seeds),preferences:await page.evaluate(()=>localStorage.getItem('angouri:vine:v1:preferences'))}).toEqual(kept);
   await page.reload();await page.waitForFunction(()=>window.angouri?.state);expect((await snapshot(page)).sourceId).toBe(1);
   await menu(page,'library-open');await expect(page.locator('#favorites-list')).toContainText('Keep this recipe');
 });
@@ -856,7 +860,10 @@ test('worker restart with an edit and undo queued restores the acknowledged snap
 });
 
 test('mobile reduced motion and unavailable storage remain playable',async({page,context})=>{
-  await context.addInitScript(()=>{Object.defineProperty(window,'localStorage',{get(){throw new DOMException('Storage disabled','SecurityError')}});});
+  await context.addInitScript(()=>{
+    Object.defineProperty(window,'localStorage',{get(){throw new DOMException('Storage disabled','SecurityError')}});
+    IDBFactory.prototype.open=function(){throw new DOMException('Storage disabled','SecurityError');};
+  });
   await page.setViewportSize({width:390,height:844});await ready(page,'/#level=3&view=flight');await place(page,'A');await place(page,'H');await throwIt(page);
   await expect(page.locator('#success')).toBeVisible();await page.locator('#menu-open').click();await expect(page.locator('#save-status')).toContainText('Session only');await page.keyboard.press('Escape');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -972,7 +979,7 @@ test('Reflection carries signed gap tracking from its introduction to the raised
   expect(spans[3].height).toBeCloseTo(spans[4].height,4);expect(spans[4].height).toBeCloseTo(spans[5].height,4);expect(spans[5].y).toBeLessThan(spans[4].y);
   expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(false);
   await page.locator('#reset').click();await idle(page);for(const op of 'AHHHNA')await place(page,op);
-  expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(true);expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([]);
+  expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(true);expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual([]);
   await page.locator('#ideas-open').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
   expect(await page.locator('[data-note-lesson]').evaluateAll((items)=>items.map((item)=>item.getAttribute('data-note-lesson')))).toEqual(['26','9','24']);
   await expect(page.locator('#notes-content')).toContainText(/existing offset|negated/i);

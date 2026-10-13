@@ -1,3 +1,4 @@
+import {snapshotWithProgress} from './storage-fixtures.mjs';
 import {test,expect} from '@playwright/test';
 
 async function open(page,id,view='flight') {
@@ -8,7 +9,7 @@ async function open(page,id,view='flight') {
   await expect(page.locator('#hints-dialog')).toHaveAccessibleName('Hints');
   await expect(page.locator('[data-retry-notes]')).toHaveCount(0);
 }
-const construction=page=>page.evaluate(()=>({state:window.angouri.state,history:window.angouri.history,slots:window.angouri.slots,save:localStorage.getItem('angouri:vine:v1:progress')}));
+const construction=page=>snapshotWithProgress(page,()=>({state:window.angouri.state,history:window.angouri.history,slots:window.angouri.slots}),'save');
 const visiblePanel=box=>box.locator('[data-note-panel]:visible');
 
 test('an explicit 4.5 hint sketch compares fourth and eighth powers with exact anchors and preserves the player workspace',async({page})=>{

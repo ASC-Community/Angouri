@@ -1,9 +1,9 @@
+import {clearStorage} from '../tests/browser/storage-fixtures.mjs';
 import {launchChromium,previewURL} from './browser.mjs';
 import {mkdir,writeFile} from 'node:fs/promises';
 
 const browser=await launchChromium();
 const page=await browser.newPage({baseURL:previewURL(),reducedMotion:'reduce'}),errors=[],states=[];
-await page.addInitScript(()=>localStorage.clear());
 page.on('pageerror',error=>errors.push(String(error)));
 const idle=()=>page.evaluate(()=>window.angouri.whenIdle());
 const shot=name=>page.screenshot({path:`artifacts/${name}.png`,fullPage:true});
@@ -13,7 +13,7 @@ try {
   for(const [size,viewport] of Object.entries({desktop:{width:1440,height:900},compact:{width:320,height:568}})) {
     await page.setViewportSize(viewport);
     for(const [level,ops] of lessons) {
-      await page.goto('/about/');
+      await page.goto('/about/');await clearStorage(page);
       await page.goto(`/#level=${level}&view=flight`);
       await page.waitForFunction(id=>window.angouri?.state?.sourceId===id&&document.querySelector('#playground').getAttribute('aria-busy')==='false',level);
       await shot(`capstone-${level}-start-${size}`);

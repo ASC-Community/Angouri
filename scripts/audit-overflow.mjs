@@ -1,9 +1,9 @@
+import {clearStorage} from '../tests/browser/storage-fixtures.mjs';
 import { launchChromium, previewURL } from './browser.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 
 const browser=await launchChromium();
 const page=await browser.newPage({baseURL:previewURL(),reducedMotion:'reduce'}),states=[],errors=[];
-await page.addInitScript(()=>localStorage.clear());
 page.on('pageerror',error=>errors.push(String(error)));
 const idle=()=>page.evaluate(()=>window.angouri.whenIdle());
 const place=async op=>{await page.locator(`[data-op="${op}"]`).click();await idle();};
@@ -22,7 +22,7 @@ const openMenu=()=>page.locator('#menu-open').click();
 try {
   await mkdir('artifacts',{recursive:true});
   for(const [name,viewport] of Object.entries({desktop:{width:1440,height:900},short:{width:1280,height:720},mobile:{width:390,height:844},compact:{width:320,height:568},landscape:{width:844,height:390}})) {
-    await page.setViewportSize(viewport);await page.goto('/about/');await page.goto('/#level=4&view=flight');
+    await page.setViewportSize(viewport);await page.goto('/about/');await clearStorage(page);await page.goto('/#level=4&view=flight');
     await page.waitForFunction(()=>window.angouri?.state&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
     for(const op of ['H','Q','N','A'])await place(op);
     for(const view of ['flight','function','flow']){await page.locator(`#tab-${view}`).click();await inspect(`${name}: ${view}`);if(['desktop','short','compact'].includes(name))await page.screenshot({path:`artifacts/${view}-audit-${name}.png`});}

@@ -1,8 +1,9 @@
+import {clearStorage} from './storage-fixtures.mjs';
 import {test,expect} from '@playwright/test';
 
 const idle=page=>page.evaluate(()=>window.angouri.whenIdle());
 async function ready(page,id=25) {
-  await page.goto('/about/');await page.evaluate(()=>localStorage.clear());
+  await page.goto('/about/');await clearStorage(page);
   await page.goto(`/#level=${id}&view=flight`);
   await page.waitForFunction(()=>window.angouri?.state&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
 }

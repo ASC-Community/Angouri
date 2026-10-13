@@ -1,12 +1,11 @@
 import {test,expect} from '@playwright/test';
+import {STORAGE_KEYS,readStoredJSON,writeStoredJSON} from './storage-fixtures.mjs';
 
 async function completedGarden(page) {
   await page.goto('/#level=72');
   await page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground')?.getAttribute('aria-busy')==='false');
-  await page.evaluate(()=>{
-    const key='angouri:vine:v1:progress',save=JSON.parse(localStorage.getItem(key));
-    save.completed=[82,72,73,74,75,83,76,77];localStorage.setItem(key,JSON.stringify(save));
-  });
+  const save=await readStoredJSON(page,STORAGE_KEYS.progress);
+  save.completed=[82,72,73,74,75,83,76,77];await writeStoredJSON(page,STORAGE_KEYS.progress,save);
   await page.reload();
   await page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground')?.getAttribute('aria-busy')==='false');
   await page.locator('#picture-open').click();

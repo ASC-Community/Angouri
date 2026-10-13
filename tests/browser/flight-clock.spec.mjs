@@ -1,3 +1,4 @@
+import {STORAGE_KEYS,readStoredJSON} from './storage-fixtures.mjs';
 import {test,expect} from '@playwright/test';
 
 const idle=page=>page.evaluate(()=>window.angouri.whenIdle());
@@ -36,7 +37,7 @@ test('the finite flight clock stops while idle, paused, cancelled, or skipped',a
   await page.waitForFunction(position=>window.angouri.flight.position>position+.05,paused.position);
   await page.locator('#tab-function').click();
   await page.waitForFunction(()=>window.angouri.flight.phase==='landed');await noIdleFrames(page);
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([3]);
+  expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual([3]);
   await expect(page.locator('#launch')).toHaveAttribute('data-action','continue');
   await startFlight(page);await page.keyboard.press('Control+z');await idle(page);
   expect(await playback(page)).toEqual({phase:'ready',position:0});await noIdleFrames(page);
@@ -46,7 +47,7 @@ test('the finite flight clock stops while idle, paused, cancelled, or skipped',a
   expect(await playback(page)).toEqual({phase:'landed',position:1});await noIdleFrames(page);
   await page.keyboard.press('Escape');await page.keyboard.press('Enter');
   expect(await playback(page)).toEqual({phase:'landed',position:1});await noIdleFrames(page);
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([3]);
+  expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual([3]);
 });
 
 test('visibility events pause the shared flight and resume without counting hidden time',async({page})=>{
@@ -67,5 +68,5 @@ test('visibility events pause the shared flight and resume without counting hidd
   expect(resumed.phase).toBe('flying');expect(resumed.position).toBeGreaterThanOrEqual(paused.position);
   expect(resumed.position-paused.position).toBeLessThanOrEqual(50/2600+1e-8);
   await page.waitForFunction(()=>window.angouri.flight.phase==='landed');await noIdleFrames(page);
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([3]);
+  expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual([3]);
 });

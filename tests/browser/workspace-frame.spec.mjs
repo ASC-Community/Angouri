@@ -1,8 +1,9 @@
+import {clearStorage} from './storage-fixtures.mjs';
 import {test,expect} from '@playwright/test';
 const idle=page=>page.evaluate(()=>window.angouri.whenIdle());
 const paint=page=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
 async function ready(page,id,view='flight'){
-  await page.goto('/about/');await page.evaluate(()=>localStorage.clear());await page.goto(`/#level=${id}&view=${view}`);
+  await page.goto('/about/');await clearStorage(page);await page.goto(`/#level=${id}&view=${view}`);
   await page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground').getAttribute('aria-busy')==='false');await paint(page);
 }
 const rect=el=>{const r=el.getBoundingClientRect();return {x:r.x+scrollX,y:r.y+scrollY,width:r.width,height:r.height};};

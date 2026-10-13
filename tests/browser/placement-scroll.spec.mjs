@@ -1,3 +1,4 @@
+import {clearStorage} from './storage-fixtures.mjs';
 import {test,expect} from '@playwright/test';
 
 const idle=page=>page.evaluate(()=>window.angouri.whenIdle());
@@ -26,7 +27,7 @@ for(const view of ['flight','function','flow'])test(`8.7 ${view} edits keep the 
   await page.emulateMedia({reducedMotion:'no-preference'});
   for(const viewport of [{width:1146,height:610},{width:390,height:844},{width:844,height:390}]) {
     await page.setViewportSize(viewport);
-    await page.goto('/about/');await page.evaluate(()=>localStorage.clear());
+    await page.goto('/about/');await clearStorage(page);
     await page.goto(`/#level=54&view=${view}`);
     await page.waitForFunction(()=>window.angouri?.state?.sourceId===54&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
     await page.evaluate(()=>{window.levelButton=document.querySelector('[data-level="54"]');scrollTo(0,document.documentElement.scrollHeight);});

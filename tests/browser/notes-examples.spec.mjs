@@ -1,9 +1,10 @@
+import {snapshotWithProgress} from './storage-fixtures.mjs';
 import {test,expect} from '@playwright/test';
 import {readFile} from 'node:fs/promises';
 
 const learningPath=JSON.parse(await readFile(new URL('../../content/learning-path.json',import.meta.url),'utf8'));
 const idle=page=>page.evaluate(()=>window.angouri.whenIdle());
-const workspace=page=>page.evaluate(()=>({state:window.angouri.state,history:window.angouri.history,slots:window.angouri.slots,progress:localStorage.getItem('angouri:vine:v1:progress')}));
+const workspace=page=>snapshotWithProgress(page,()=>({state:window.angouri.state,history:window.angouri.history,slots:window.angouri.slots}));
 async function ready(page,id) {
   await page.goto('/about/');await page.goto(`/#level=${id}&view=flight`);
   await page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground').getAttribute('aria-busy')==='false');

@@ -1,3 +1,4 @@
+import {STORAGE_KEYS,clearStorage,readStoredJSON,snapshotWithProgress,writeStoredJSON} from './storage-fixtures.mjs';
 import {test,expect} from '@playwright/test';
 
 const idle=page=>page.evaluate(()=>window.angouri.whenIdle());
@@ -5,7 +6,7 @@ async function ready(page,id=72) {
   await page.goto(`/#level=${id}&view=flight`);
   await page.waitForFunction(()=>window.angouri?.state&&document.querySelector('#playground')?.getAttribute('aria-busy')==='false');
 }
-const snapshot=page=>page.evaluate(()=>({state:window.angouri.state,history:window.angouri.history,progress:localStorage.getItem('angouri:vine:v1:progress')}));
+const snapshot=page=>snapshotWithProgress(page,()=>({state:window.angouri.state,history:window.angouri.history}));
 const screenPoint=(page,x,y)=>page.locator('.garden-paper').evaluate((svg,[x,y])=>{
   const point=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return {x:point.x,y:point.y};
 },[x,y]);
@@ -40,7 +41,7 @@ test('picture silhouettes link to actual construction without awarding progress'
   await page.locator('[data-garden-piece="75"]').focus();await page.keyboard.press('Enter');await idle(page);
   expect(await page.evaluate(()=>window.angouri.state.sourceId)).toBe(75);
   await expect(page.locator('#garden-dialog')).toBeHidden();
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([]);
+  expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual([]);
 });
 
 test('garden Tab order follows labels across the top and bottom without changing paint order',async({page})=>{
@@ -88,7 +89,7 @@ for(const [edit,cancel,restore,remaining] of [['Undo','Control+z','Control+Shift
     await expect(page.locator('#menu-open')).toBeFocused();await expect(page.locator('#garden-dialog')).toBeHidden();
     await expect(page.locator('.garden-collection,.curve-change-ghost,.slot-underlay')).toHaveCount(0);
     expect(await page.locator('#scene').getAttribute('data-curve-transition')).toBeNull();
-    expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([74]);
+    expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual([74]);
     await page.keyboard.press(restore);await idle(page);
     expect(await page.evaluate(()=>window.angouri.state)).toEqual(solved);
     await page.clock.resume();await page.keyboard.press('Enter');
@@ -100,7 +101,7 @@ for(const [edit,cancel,restore,remaining] of [['Undo','Control+z','Control+Shift
     await page.keyboard.press('Space');await expect(page.locator('#garden-dialog')).toBeHidden();await expect(page.locator('#launch')).toBeFocused();
     await page.keyboard.press('Enter');await page.waitForFunction(()=>window.angouri.flight.phase==='landed');
     await expect(page.locator('#garden-dialog')).toBeHidden();await expect(page.locator('#launch')).toHaveAttribute('data-action','continue');
-    expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([74]);
+    expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual([74]);
     await page.keyboard.press('Space');await idle(page);expect(await page.evaluate(()=>window.angouri.state.sourceId)).toBe(75);
   });
 }
@@ -109,7 +110,7 @@ test('garden completion honors deliberate focus navigation and reduced motion',a
   await page.emulateMedia({reducedMotion:'no-preference'});await ready(page,82);await page.locator('[data-op="H"]').click();await idle(page);await page.keyboard.press('Enter');
   await expect(page.locator('[data-garden-piece]')).toHaveCount(8);await page.keyboard.press('Tab');const moon=page.locator('[data-garden-piece="74"]');await expect(moon).toBeFocused();
   await expect(page.locator('[data-garden-done]')).toBeEnabled();await expect(moon).toBeFocused();await page.keyboard.press('Escape');await expect(page.locator('#launch')).toBeFocused();
-  await page.emulateMedia({reducedMotion:'reduce'});await page.goto('/about/');await page.evaluate(()=>localStorage.clear());await ready(page,82);await page.locator('[data-op="H"]').click();await idle(page);await page.keyboard.press('Enter');
+  await page.emulateMedia({reducedMotion:'reduce'});await page.goto('/about/');await clearStorage(page);await ready(page,82);await page.locator('[data-op="H"]').click();await idle(page);await page.keyboard.press('Enter');
   await expect(page.locator('[data-garden-done]')).toBeEnabled();await expect(page.locator('[data-garden-done]')).toBeFocused();await expect(page.locator('.garden-collection')).toHaveCount(0);
 });
 
@@ -128,7 +129,7 @@ test('the cucumber completion waits for its final artwork crossfade before enabl
 
 test('earned curves reveal the cucumber, preserve the recipe, and fit compact layouts',async({page})=>{
   test.setTimeout(180000);await ready(page,77);
-  await page.evaluate(()=>{const key='angouri:vine:v1:progress',save=JSON.parse(localStorage.getItem(key));save.completed=[82,72,73,74,75,83,76];localStorage.setItem(key,JSON.stringify(save));});
+  const save=await readStoredJSON(page,STORAGE_KEYS.progress);save.completed=[82,72,73,74,75,83,76];await writeStoredJSON(page,STORAGE_KEYS.progress,save);
   await page.reload();await page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
   for(const op of 'HQQQNAHH'){await page.locator(`[data-op="${op}"]`).click();await idle(page);}
   await page.locator('#launch').click();await page.waitForFunction(()=>window.angouri.flight.phase==='landed');
@@ -180,9 +181,7 @@ test('earned curves reveal the cucumber, preserve the recipe, and fit compact la
 test('nearest garden shapes own pointer hover and clicks independently of drawing order',async({page})=>{
   test.setTimeout(120000);await ready(page);
   for(const completed of [[],[82,72,73,74,75,83,76,77]]) {
-    await page.evaluate(completed=>{
-      const key='angouri:vine:v1:progress',save=JSON.parse(localStorage.getItem(key));save.completed=completed;localStorage.setItem(key,JSON.stringify(save));
-    },completed);
+    const save=await readStoredJSON(page,STORAGE_KEYS.progress);save.completed=completed;await writeStoredJSON(page,STORAGE_KEYS.progress,save);
     await page.reload();await page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
     await page.locator('#picture-open').click();await expect(page.locator('[data-garden-piece]')).toHaveCount(8);
     const before=await snapshot(page);
@@ -282,7 +281,7 @@ test('every earned piece settles into the garden once and leaves the constructio
     await page.locator('[data-garden-done]').click();await expect(page.locator('#launch')).toHaveAccessibleName(id===77?'Mastery challenge':'Next puzzle');
     await page.locator('#rethrow').click();await page.waitForFunction(()=>window.angouri.flight.phase==='landed');
     await expect(page.locator('#garden-dialog')).toBeHidden();
-    expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual(pieces.slice(0,index+1).map(([source])=>source));
+    expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual(pieces.slice(0,index+1).map(([source])=>source));
   }
 });
 

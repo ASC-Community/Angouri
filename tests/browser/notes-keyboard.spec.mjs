@@ -1,7 +1,8 @@
+import {clearStorage} from './storage-fixtures.mjs';
 import {test,expect} from '@playwright/test';
 
 async function ready(page,id=54) {
-  await page.goto('/about/');await page.evaluate(()=>localStorage.clear());await page.goto(`/#level=${id}`);
+  await page.goto('/about/');await clearStorage(page);await page.goto(`/#level=${id}`);
   await page.waitForFunction(()=>window.angouri?.state&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
 }
 const workspace=page=>page.evaluate(()=>({state:window.angouri.state,history:window.angouri.history,slots:window.angouri.slots}));

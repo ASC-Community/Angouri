@@ -1,3 +1,4 @@
+import {snapshotWithProgress} from './storage-fixtures.mjs';
 import {test,expect} from '@playwright/test';
 const idle=page=>page.evaluate(()=>window.angouri.whenIdle());
 async function ready(page,id){await page.goto('/about/');await page.goto(`/#level=${id}&view=flight`);await page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground').getAttribute('aria-busy')==='false');}
@@ -5,7 +6,7 @@ async function recipe(page,ops){
   const station=await page.evaluate(()=>window.angouri.state.station);let after=false,beforeIndex=0,afterIndex=station?.before+1;
   for(const op of ops){if(station&&!after&&op===station.op){after=true;continue;}if(station)await page.locator(`[data-empty="${after?afterIndex++:beforeIndex++}"]`).click();await page.locator(`[data-op="${op}"]`).click();await idle(page);}
 }
-const workspace=page=>page.evaluate(()=>({state:window.angouri.state,history:window.angouri.history,slots:window.angouri.slots,progress:localStorage.getItem('angouri:vine:v1:progress')}));
+const workspace=page=>snapshotWithProgress(page,()=>({state:window.angouri.state,history:window.angouri.history,slots:window.angouri.slots}));
 
 test('reflection Notes connect the chosen operation, both curves and a purposeful view link',async({page})=>{
   await ready(page,8);const before=await workspace(page);

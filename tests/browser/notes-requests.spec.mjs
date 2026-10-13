@@ -1,3 +1,4 @@
+import {snapshotWithProgress} from './storage-fixtures.mjs';
 import {test,expect} from '@playwright/test';
 
 async function ready(page,source) {
@@ -20,7 +21,7 @@ async function ready(page,source) {
   await page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
   await page.evaluate(()=>{window.noteWork.record=true;});
 }
-const workspace=page=>page.evaluate(()=>({state:window.angouri.state,history:window.angouri.history,slots:window.angouri.slots,progress:localStorage.getItem('angouri:vine:v1:progress')}));
+const workspace=page=>snapshotWithProgress(page,()=>({state:window.angouri.state,history:window.angouri.history,slots:window.angouri.slots}));
 const requests=page=>page.evaluate(()=>window.noteWork.requests.map(({type,source,ops})=>({type,source,...(ops===undefined?{}:{ops})})));
 const loaded=page=>expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
 const release=page=>page.evaluate(()=>{window.noteWork.hold=false;window.noteWork.held.splice(0).forEach(send=>send());});

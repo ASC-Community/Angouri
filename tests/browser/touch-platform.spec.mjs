@@ -1,3 +1,4 @@
+import {STORAGE_KEYS,readStoredJSON} from './storage-fixtures.mjs';
 import {test,expect} from '@playwright/test';
 
 const PREF='angouri:vine:v1:preferences';
@@ -97,7 +98,7 @@ test('a live system motion change settles a Garden transfer and releases its com
   await expect(page.locator('[data-garden-done]')).toBeEnabled();
   await expect(page.locator('[data-garden-done]')).toBeFocused();
   expect(await acknowledged(page)).toEqual(before);
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('angouri:vine:v1:progress')).completed)).toEqual([82]);
+  expect((await readStoredJSON(page,STORAGE_KEYS.progress)).completed).toEqual([82]);
   await page.keyboard.press('Space');await expect(page.locator('#garden-dialog')).toBeHidden();
   await expect(page.locator('#launch')).toBeEnabled();await expect(page.locator('#launch')).toHaveAttribute('data-action','continue');
 });

@@ -1,8 +1,9 @@
+import {clearStorage} from './storage-fixtures.mjs';
 import {test,expect} from '@playwright/test';
 
 const sizes=[{width:1146,height:850},{width:320,height:568},{width:844,height:390}];
 async function ready(page,id=3,view='flight') {
-  await page.goto('/about/');await page.evaluate(()=>localStorage.clear());
+  await page.goto('/about/');await clearStorage(page);
   await page.goto(`/#level=${id}&view=${view}`);
   await page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
 }
