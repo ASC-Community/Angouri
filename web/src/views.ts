@@ -1,7 +1,7 @@
 import katex from 'katex';
 import { decimalTex, fraction, isRelationSource, targetHeight, OPS, type Checkpoint, type CurvePath, type Point, type Op, type Result, type State } from './types';
 import { icon } from './icons';
-import { drawnPaths, flightStrokes, heightsAt } from './geometry';
+import { curveEndpointMarks, drawnPaths, flightStrokes, heightsAt } from './geometry';
 import { stationScene, updateStationScene } from './station-scene';
 import { cropVerdict, cropWindow, updateCropWindow, probePoints } from './crop';
 export type Camera = { min: number; max: number; minX?:number; maxX?:number };
@@ -225,15 +225,9 @@ export function transform(state:State,camera:Camera,point:[number,number]) {
   return [120+point[0]/end*(width-210),bottom-(point[1]-camera.min)/(camera.max-camera.min)*(bottom-top)];
 }
 export const path=(points:[number,number][],state:State,camera:Camera)=>points.map((v,i)=>`${i?'L':'M'}${transform(state,camera,v).map(n=>n.toFixed(2)).join(',')}`).join(' ');
-/** Endpoint dots explain ownership at a jump. Continuous joins need no dots. */
+/** Paint endpoint ownership and zero-dimensional components of the real locus. */
 function pathEnds(paths:CurvePath[]|undefined,project:(p:Point)=>number[]) {
-  if(!paths||paths.length<2)return '';
-  const same=(a:Point|undefined,b:Point)=>!!a&&Math.abs(a[0]-b[0])<1e-8&&Math.abs(a[1]-b[1])<1e-8;
-  return paths.flatMap((p,i)=>{
-    if(p.approximateEnds)return [];
-    const ends:[Point,boolean,boolean][]=[[p.points[0],p.startClosed,i>0&&!same(paths[i-1]?.points.at(-1),p.points[0])],[p.points.at(-1)!,p.endClosed,i<paths.length-1&&!same(paths[i+1]?.points[0],p.points.at(-1)!)]];
-    return ends.filter(([, ,show])=>show).map(([point,closed])=>{const [x,y]=project(point);return `<circle class="path-end ${closed?'closed':'open'}" cx="${x}" cy="${y}" r="2.6"/>`;});
-  }).join('');
+  return curveEndpointMarks(paths).map(({point,closed})=>{const [x,y]=project(point);return `<circle class="path-end ${closed?'closed':'open'}" cx="${x}" cy="${y}" r="2.6"/>`;}).join('');
 }
 export const targetStatus=(checkpoint:Checkpoint,state:State,flight:Flight)=>state.mode!=='remix'&&(flight.phase==='flying'||flight.phase==='landed')&&(checkpoint.phase??fraction(checkpoint.x)/(state.sourceId===5?2:4))<=flight.position+1e-8?(checkpoint.hit?'hit':'miss'):'waiting';
 export const targetDescription=(checkpoint:Checkpoint,index:number,status:string)=>`Target ${index+1}: ${status==='waiting'?(checkpoint.hit?'path matches, ready to throw':'path misses'):(checkpoint.hit?'hit confirmed':'miss confirmed')}`;
@@ -329,7 +323,7 @@ export function functionView(state:State,result:Result,flight:Flight) {
   const puzzle=state.mode!=='remix';
   const guide=result.heightGuide;
   const gap=guide?`<tr class="gap-comparison" data-gap-match="${guide.hit}"><th scope="row"><span>Height gap</span><small title="Heights at the highest and lowest targets' positions" aria-label="Height at x=${guide.toX} minus height at x=${guide.fromX}, the positions of the highest and lowest targets">${tex(heightGapFormula(guide))}</small></th><td>${comparisonValue(guide.target,guide.targetLatex,guide.targetNumber)}</td><td>${comparisonValue(guide.actual,guide.actualLatex,guide.stages.at(-1)?.gapNumber)}</td><td><span class="gap-verdict" aria-label="${guide.hit?'Height gap matches':'Height gap does not match'}">${targetMark(guide.hit?'hit':'miss')}</span></td></tr>`:'';
-  const rows=result.checkpoints.map((c,i)=>{const status=c.hit?'hit':'miss',confirmed=targetStatus(c,state,flight);return `<tr data-status="${puzzle?status:'sample'}"><td>${result.relation?tex(`(${rationalTex(c.x)},${targetLatex(c)})`):comparisonValue(c.x)}</td>${puzzle?`<td>${result.relation?comparisonValue(c.lhs!):comparisonValue(c.target,c.targetLatex,c.targetNumber)}</td>`:''}<td>${comparisonValue(c.actual,c.actualLatex,c.actualNumber)}</td>${puzzle?`<td class="verdict-cell"><span class="equation-verdict" data-target="${i}" data-status="${confirmed}" aria-label="${targetDescription(c,i,confirmed)}">${targetMark(status)}</span></td>`:''}</tr>`;}).join('');
+  const rows=result.checkpoints.map((c,i)=>{const status=c.hit?'hit':'miss',confirmed=targetStatus(c,state,flight);return `<tr data-status="${puzzle?status:'sample'}"><td>${result.relation?tex(`(${rationalTex(c.x)},${targetLatex(c)})`):comparisonValue(c.x)}</td>${puzzle?`<td>${result.relation?comparisonValue(c.lhs!,c.lhsLatex,c.lhsNumber):comparisonValue(c.target,c.targetLatex,c.targetNumber)}</td>`:''}<td>${comparisonValue(c.actual,c.actualLatex,c.actualNumber)}</td>${puzzle?`<td class="verdict-cell"><span class="equation-verdict" data-target="${i}" data-status="${confirmed}" aria-label="${targetDescription(c,i,confirmed)}">${targetMark(status)}</span></td>`:''}</tr>`;}).join('');
   return `<div class="equation-layout"><div class="equation-frame"><section class="final-equation" tabindex="0" aria-label="Final equation"><div class="equation-content">${equationForms(result)}${cropVerdict(result)}</div></section></div><div class="value-table"><table aria-label="${puzzle?'Compare your equation with the targets':'Sample heights'}"><thead><tr><th>${result.relation?'Target '+tex('(x,h)'):'Position '+tex('x')}</th>${puzzle?'<th>Expected '+(result.relation?tex('h^2'):'')+'</th>':''}<th>${result.relation?'Recipe '+tex('h^2'):puzzle?'Actual':'Height'}</th>${puzzle?`<th><span class="sr-only">Matches target</span>${icon('target',16)}</th>`:''}</tr></thead><tbody>${rows}${gap}</tbody></table></div></div>`;
 }
 
@@ -337,7 +331,7 @@ const flowScales=new WeakMap<Result,{min:number;max:number;start:number;end:numb
 function flowScale(result:Result) {
   let scale=flowScales.get(result);
   if(!scale) {
-    const heights=[...result.stages.flatMap(stage=>stage.points.map(point=>point[1])),...result.checkpoints.map(c=>targetHeight(c)),...(result.relation?.playback.map(p=>p[1])??[])];
+    const heights=[...result.stages.flatMap(stage=>stage.points.map(point=>point[1])),...result.checkpoints.map(c=>targetHeight(c)),...(result.relation?[...result.relation.paths,...(result.relation.preCropPaths??[])].flatMap(path=>path.points.map(point=>point[1])):[])];
     const min=Math.min(0,...heights),max=Math.max(0,...heights),padding=Math.max(2,max-min)*.12;
     const points=probePoints(result);
     scale={min:min-padding,max:max+padding,start:points[0][0],end:points.at(-1)![0]};
@@ -352,15 +346,17 @@ function flowPoint(result:Result,[x,y]:[number,number]) {
 const flowPath=(result:Result,points:[number,number][])=>points.map((p,i)=>`${i?'L':'M'}${flowPoint(result,p).map(n=>n.toFixed(2)).join(',')}`).join(' ');
 const stagePath=(result:Result,stage:Result['stages'][number])=>(stage.paths??[{points:stage.points}]).map(p=>flowPath(result,p.points)).join(' ');
 export const cropFlowPath=(result:Result)=>drawnPaths(result).map(p=>flowPath(result,p.points)).join(' ');
+const relationInputPaths=(result:Result)=>result.relation?.preCropPaths??result.relation?.paths??[];
 function cropCard(result:Result,targets:string) {
   const crop=result.crop!,zero=flowPoint(result,[0,0])[1];
-  return `<span class="flow-connector" aria-hidden="true">${icon('arrow',18)}</span><article class="flow-machine crop-machine"><div class="machine-body"><div class="machine-meta"><span class="machine-kicker">CROP · FINISH</span><span class="machine-icon">${icon('crop',20)}<span data-crop-interval data-from="${crop.from}" data-to="${crop.to}">${tex(`${rationalTex(crop.from)}\\le x\\le ${rationalTex(crop.to)}`)}</span></span><span class="machine-sample" data-crop-reading></span><span class="relation-caption">Kept heights stay the same.</span></div><div class="flow-plot-frame"><svg class="flow-plot" viewBox="0 0 184 132" role="img" aria-label="Only the kept interval"><defs><clipPath id="flow-crop-kept"><rect x="${flowPoint(result,[crop.fromNumber,0])[0]}" y="0" width="${flowPoint(result,[crop.toNumber,0])[0]-flowPoint(result,[crop.fromNumber,0])[0]}" height="132"/></clipPath></defs>${cropWindow(crop,x=>flowPoint(result,[x,0])[0],{left:22,right:170,top:18,bottom:109},'flow-crop',result.relation?'':stagePath(result,result.stages.at(-1)!))}<path class="flow-zero-line" d="M26 ${zero}H164"/><path class="flow-curve" clip-path="url(#flow-crop-kept)" d="${cropFlowPath(result)}"/>${targets}<circle class="flow-point" data-crop-probe r="4"/></svg><span class="flow-zero" data-flow-zero="${zero}" aria-hidden="true">${tex('0')}</span></div></div></article>`;
+  return `<span class="flow-connector" aria-hidden="true">${icon('arrow',18)}</span><article class="flow-machine crop-machine"><div class="machine-body"><div class="machine-meta"><span class="machine-kicker">CROP · FINISH</span><span class="machine-icon">${icon('crop',20)}<span data-crop-interval data-from="${crop.from}" data-to="${crop.to}">${tex(`${rationalTex(crop.from)}\\le x\\le ${rationalTex(crop.to)}`)}</span></span><span class="machine-sample" data-crop-reading></span><span class="relation-caption">Kept heights stay the same.</span></div><div class="flow-plot-frame"><svg class="flow-plot" viewBox="0 0 184 132" role="img" aria-label="Only the kept interval"><defs><clipPath id="flow-crop-kept"><rect x="${flowPoint(result,[crop.fromNumber,0])[0]}" y="0" width="${flowPoint(result,[crop.toNumber,0])[0]-flowPoint(result,[crop.fromNumber,0])[0]}" height="132"/></clipPath></defs>${cropWindow(crop,x=>flowPoint(result,[x,0])[0],{left:22,right:170,top:18,bottom:109},'flow-crop',result.relation?relationInputPaths(result).map(path=>flowPath(result,path.points)).join(' '):stagePath(result,result.stages.at(-1)!))}<path class="flow-zero-line" d="M26 ${zero}H164"/><path class="flow-curve" clip-path="url(#flow-crop-kept)" d="${cropFlowPath(result)}"/><g data-crop-path-ends>${pathEnds(drawnPaths(result),point=>flowPoint(result,point))}</g>${targets}<circle class="flow-point" data-crop-probe r="4"/>${result.relation?'<circle class="flow-point" data-crop-probe r="4"/>':''}</svg><span class="flow-zero" data-flow-zero="${zero}" aria-hidden="true">${tex('0')}</span></div></div></article>`;
 }
 export function updateFlowCrop(root:HTMLElement,result:Result,crop:NonNullable<Result['crop']>,instant=false) {
   updateCropWindow(root,crop,x=>flowPoint(result,[x,0])[0]);
   const left=flowPoint(result,[fraction(crop.from),0])[0],right=flowPoint(result,[fraction(crop.to),0])[0];
   const clip=root.querySelector('#flow-crop-kept rect');clip?.setAttribute('x',String(left));clip?.setAttribute('width',String(right-left));
-  if(instant&&!result.relation)root.querySelector('.crop-machine .flow-curve')?.setAttribute('d',stagePath(result,result.stages.at(-1)!));
+  if(instant)root.querySelector('.crop-machine .flow-curve')?.setAttribute('d',result.relation?relationInputPaths(result).map(path=>flowPath(result,path.points)).join(' '):stagePath(result,result.stages.at(-1)!));
+  const ends=root.querySelector('[data-crop-path-ends]');if(ends)ends.innerHTML=instant?'':pathEnds(drawnPaths(result),point=>flowPoint(result,point));
   const interval=root.querySelector<HTMLElement>('[data-crop-interval]');
   if(interval&&(interval.dataset.from!==crop.from||interval.dataset.to!==crop.to)) {
     interval.innerHTML=tex(`${rationalTex(crop.from)}\\le x\\le ${rationalTex(crop.to)}`);
@@ -368,13 +364,20 @@ export function updateFlowCrop(root:HTMLElement,result:Result,crop:NonNullable<R
   }
 }
 function relationCard(result:Result,targets:string) {
-  const relation=result.relation!,zero=flowPoint(result,[0,0])[1];
-  return `<span class="flow-connector" aria-hidden="true">${icon('arrow',18)}</span><article class="flow-machine relation-machine"><div class="machine-body"><div class="machine-meta"><span class="machine-kicker">BOTH HEIGHTS</span><span class="machine-icon">${tex('h^2 \\longrightarrow h')}</span><span class="machine-sample" data-relation-values></span><span class="relation-caption">Solve for both real heights.</span></div><div class="flow-plot-frame"><svg class="flow-plot" viewBox="0 0 184 132" role="img" aria-label="Both real heights of the recipe equation"><path class="flow-zero-line" d="M26 ${zero}H164"/><path class="flow-curve" d="${relation.paths.map(p=>flowPath(result,p.points)).join(' ')}"/>${targets}<circle class="flow-point" data-relation-probe r="4"/><circle class="flow-point" data-relation-probe r="4"/></svg><span class="flow-zero" data-flow-zero="${zero}" aria-hidden="true">${tex('0')}</span></div></div></article>`;
+  const paths=relationInputPaths(result),zero=flowPoint(result,[0,0])[1];
+  return `<span class="flow-connector" aria-hidden="true">${icon('arrow',18)}</span><article class="flow-machine relation-machine"><div class="machine-body"><div class="machine-meta"><span class="machine-kicker">BOTH HEIGHTS</span><span class="machine-icon">${tex('h^2 \\longrightarrow h')}</span><span class="machine-sample" data-relation-values></span><span class="relation-caption">Solve for both real heights.</span></div><div class="flow-plot-frame"><svg class="flow-plot" viewBox="0 0 184 132" role="img" aria-label="Both real heights of the recipe equation"><path class="flow-zero-line" d="M26 ${zero}H164"/><path class="flow-curve" d="${paths.map(p=>flowPath(result,p.points)).join(' ')}"/>${pathEnds(paths,point=>flowPoint(result,point))}${targets}<circle class="flow-point" data-relation-probe r="4"/><circle class="flow-point" data-relation-probe r="4"/></svg><span class="flow-zero" data-flow-zero="${zero}" aria-hidden="true">${tex('0')}</span></div></div></article>`;
 }
 const sampleTex=(value:number)=>{
   if(Math.abs(value)>=10000)return decimalTex(value.toExponential(2));
   return (Math.abs(value)<.005?0:value).toFixed(2);
 };
+const realHeightReading=(values:Point[])=>tex(values.length?'h \\approx '+values.map(value=>sampleTex(value[1])).join(',\\;'):'\\nexists h\\in\\mathbb{R}');
+function updateHeightProbes(root:HTMLElement,selector:string,result:Result,values:Point[]) {
+  root.querySelectorAll<SVGCircleElement>(selector).forEach((point,i)=>{
+    const value=values[i];point.style.display=value?'':'none';
+    if(value){const [x,y]=flowPoint(result,value);point.setAttribute('cx',String(x));point.setAttribute('cy',String(y));}
+  });
+}
 const positionText=(value:number)=>String(Number(value.toFixed(3)));
 export function flow(state:State,result:Result,selectedStage:string,probeIndex:number,flight:Flight) {
   const scale=flowScale(result),points=probePoints(result),x=points[Math.max(0,Math.min(points.length-1,probeIndex))][0];
@@ -410,16 +413,16 @@ export function updateFlowProbe(root:HTMLElement,state:State,result:Result,index
   index=Math.max(0,Math.min(points.length-1,index));
   updateStationScene(root,state,result.crop?{...result,points}:result,index,tex);
   if(result.relation){
-    const values=heightsAt(result.relation.paths,points[index][0]);
-    root.querySelectorAll<SVGCircleElement>('[data-relation-probe]').forEach((point,i)=>{const value=values[i];point.style.display=value?'':'none';if(value){const [x,y]=flowPoint(result,value);point.setAttribute('cx',String(x));point.setAttribute('cy',String(y));}});
-    const label=root.querySelector('[data-relation-values]');if(label)label.innerHTML=tex(values.length?'h \\approx '+values.map(v=>sampleTex(v[1])).join(',\\;'):'\\nexists h\\in\\mathbb{R}');
+    const values=heightsAt(relationInputPaths(result),points[index][0]);
+    updateHeightProbes(root,'[data-relation-probe]',result,values);
+    const label=root.querySelector('[data-relation-values]');if(label)label.innerHTML=realHeightReading(values);
   }
   const scale=flowScale(result),x=points[index][0],zero=flowPoint(result,[x,0])[1];
   if(result.crop) {
-    const kept=x>=result.crop.fromNumber&&x<=result.crop.toNumber,point=root.querySelector<SVGCircleElement>('[data-crop-probe]');
-    if(point){const [px,py]=flowPoint(result,points[index]);point.style.display=kept&&!result.relation?'':'none';point.setAttribute('cx',String(px));point.setAttribute('cy',String(py));}
-    const label=root.querySelector('[data-crop-reading]');if(label)label.innerHTML=kept?`Kept: ${tex((result.relation?'h^2':'h')+'\\approx '+sampleTex(points[index][1]))}`:`${tex('x='+positionText(x))} is outside`;
-    const range=root.querySelector('.crop-machine .machine-icon');if(range)range.innerHTML=`${icon('crop',20)}${tex(`${rationalTex(result.crop.from)}\\le x\\le ${rationalTex(result.crop.to)}`)}`;
+    const kept=x>=result.crop.fromNumber&&x<=result.crop.toNumber;
+    const values=kept?(result.relation?heightsAt(result.relation.paths,x):[points[index]]):[];
+    updateHeightProbes(root,'[data-crop-probe]',result,values);
+    const label=root.querySelector('[data-crop-reading]');if(label)label.innerHTML=kept?`${values.length?'Kept: ':''}${realHeightReading(values)}`:`${tex('x='+positionText(x))} is outside`;
   }
   const slider=root.querySelector<HTMLInputElement>('#flow-position');
   if(slider){slider.dataset.probeIndex=String(index);slider.value=String(x);slider.setAttribute('aria-valuetext',`x = ${positionText(x)}`);slider.style.setProperty('--position',`${100*(x-scale.start)/(scale.end-scale.start)}%`);}

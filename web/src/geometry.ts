@@ -57,6 +57,28 @@ export function travelledPaths(result:Result,position:number):Point[][] {
 }
 export const drawnPaths=(result:Result):CurvePath[]=>result.relation?.paths??result.paths??[{points:result.points,startClosed:true,endClosed:true}];
 
+/** Endpoint ownership belongs to the kernel paths, not their traversal order.
+ * A joined relation can turn back in x. Match coincident endpoints instead of
+ * assuming adjacent paths are consecutive horizontal intervals. */
+export function curveEndpointMarks(paths:CurvePath[]=[]):{point:Point;closed:boolean}[] {
+  const groups:{point:Point;closed:boolean;singleton:boolean;count:number}[]=[];
+  const same=(a:Point,b:Point)=>a[0]===b[0]&&a[1]===b[1];
+  for(const path of paths) {
+    if(path.approximateEnds||!path.points.length)continue;
+    const singleton=path.points.length===1;
+    if(singleton&&!(path.startClosed&&path.endClosed))continue;
+    const ends:[Point,boolean][]=singleton?[[path.points[0],true]]:[[path.points[0],path.startClosed],[path.points.at(-1)!,path.endClosed]];
+    for(const [point,closed] of ends) {
+      const group=groups.find(group=>same(group.point,point));
+      if(group){group.closed ||= closed;group.singleton ||= singleton;group.count++;}
+      else groups.push({point,closed,singleton,count:1});
+    }
+  }
+  const ownership=paths.length>1||groups.some(group=>!group.closed);
+  return groups.filter(group=>group.singleton||!group.closed||ownership&&group.count===1)
+    .map(({point,closed})=>({point,closed}));
+}
+
 /** Intersect the drawn polylines with the probe, including both sides of a loop.
  * This interpolates kernel geometry only; it never solves or validates an equation. */
 export function heightsAt(paths:CurvePath[],x:number):Point[] {

@@ -1,6 +1,7 @@
 import { CHAPTERS, chapterIndex, escape, fraction, targetHeight, LEVELS, OPS, puzzleLabel, type Checkpoint, type Op, type Result, type Stage } from './types';
 import { icon } from './icons';
 import { heightAtFormula, operationTex, rationalTex, solvedHeights, tex } from './views';
+import { curveEndpointMarks } from './geometry';
 
 export const chapterArt=(index:number)=>{const chapter=CHAPTERS[index];return `<svg viewBox="0 0 36 36" width="36" height="36" fill="none" stroke="currentColor" stroke-linecap="round" aria-hidden="true"><path d="M2 ${chapter.zero}H34" opacity=".2"/><path class="chapter-before" d="${chapter.before}" stroke-width="1.4" stroke-dasharray="2.5 2.5" opacity=".5"/><path class="chapter-after" d="${chapter.after}" stroke-width="1.9"/></svg>`;};
 export const lesson=(sourceId:number)=>{
@@ -18,28 +19,31 @@ const stagePoints=(stage:Stage)=>stage.paths?.flatMap(path=>path.points)??stage.
 const stagePaths=(stage:Stage)=>stage.paths?.length?stage.paths:[{points:stage.points,startClosed:true,endClosed:true}];
 const segmentedStage=(stage:Stage)=>!!stage.paths&&(stage.paths.length>1||stage.paths.some(path=>!path.startClosed||!path.endClosed));
 function drawStage(stage:Stage,xy:(point:[number,number])=>number[],cls:string) {
-  const segmented=segmentedStage(stage);
-  return stagePaths(stage).map(segment=>{
-    const d=segment.points.map((point,i)=>`${i?'L':'M'}${xy(point).map(n=>n.toFixed(2)).join(',')}`).join(' ');
-    if(!d)return '';
-    const ends=segmented&&!segment.approximateEnds&&segment.points.length?[[segment.points[0],segment.startClosed],[segment.points.at(-1)!,segment.endClosed]] as const:[];
-    return `<path d="${d}" class="${cls}"/>${ends.map(([point,closed])=>{const [x,y]=xy(point);return `<circle cx="${x}" cy="${y}" r="2.7" class="note-step-end ${cls==='note-previous'?'previous ':''}${closed?'closed':'open'}"/>`;}).join('')}`;
-  }).join('');
+  return drawPaths(stagePaths(stage),xy,cls);
 }
-export function relationSketch(result:Result,label:string,options:{before?:Result;bounds?:number[]}={}) {
+function drawPaths(paths:NonNullable<Stage['paths']>,xy:(point:[number,number])=>number[],cls:string) {
+  const curves=paths.map(segment=>{
+    const d=segment.points.map((point,i)=>`${i?'L':'M'}${xy(point).map(n=>n.toFixed(2)).join(',')}`).join(' ');
+    return d?`<path d="${d}" class="${cls}"/>`:'';
+  }).join('');
+  const ends=curveEndpointMarks(paths).map(({point,closed})=>{const [x,y]=xy(point);return `<circle cx="${x}" cy="${y}" r="2.7" class="note-step-end ${cls==='note-previous'?'previous ':''}${closed?'closed':'open'}"/>`;}).join('');
+  return curves+ends;
+}
+export function relationSketch(result:Result,label:string,options:{before?:Result;bounds?:number[];goals?:Checkpoint[]}={}) {
   const relation=result.relation;
   if(!relation)return '';
-  const points=[...relation.paths,...(options.before?.relation?.paths??[])].flatMap(path=>path.points);
+  const goals=options.goals??[];
+  const points=[...[...relation.paths,...(options.before?.relation?.paths??[])].flatMap(path=>path.points),...goals.map(goal=>[fraction(goal.x),targetHeight(goal)])];
   const xs=points.map(point=>point[0]),ys=points.map(point=>point[1]);
   const [left,right,low,high]=options.bounds??[Math.min(0,...xs),Math.max(4,...xs),Math.min(0,...ys),Math.max(0,...ys)];
   const pad=Math.max(1,high-low)*.12,min=low-pad,max=high+pad;
   const xy=([x,h]:[number,number])=>[17+(x-left)/Math.max(.001,right-left)*142,99-(h-min)/Math.max(.001,max-min)*84];
   const zero=xy([left,0])[1];
-  const draw=(paths:typeof relation.paths,cls:string)=>paths.map(path=>`<path d="${path.points.map((point,i)=>`${i?'L':'M'}${xy(point).map(n=>n.toFixed(2)).join(',')}`).join(' ')}" class="${cls}"/>`).join('');
-  const paths=draw(options.before?.relation?.paths??[],'note-previous')+draw(relation.paths,'note-curve');
+  const paths=drawPaths(options.before?.relation?.paths??[],xy,'note-previous')+drawPaths(relation.paths,xy,'note-curve');
+  const targets=goals.map(goal=>{const [x,y]=xy([fraction(goal.x),targetHeight(goal)]);return `<circle cx="${x}" cy="${y}" r="3.8" class="note-required" data-note-target/>`;}).join('');
   const formulas=[relation.equationLatex,relation.solvedLatex].filter((formula):formula is string=>Boolean(formula));
   const solutions=solvedHeights(relation);
-  return `<figure class="note-relation"><figcaption>${escape(label)}</figcaption>${notePlot(`${label} ${formulas.join(' ')}`,zero,paths)}<div class="note-formula">${tex(relation.equationLatex)}</div>${solutions?`<div class="note-solutions">${solutions}</div>`:relation.solvedLatex?`<div class="note-formula">${tex(relation.solvedLatex)}</div>`:''}</figure>`;
+  return `<figure class="note-relation"><figcaption>${escape(label)}</figcaption>${notePlot(`${label} ${formulas.join(' ')}`,zero,paths+targets)}<div class="note-formula">${tex(relation.equationLatex)}</div>${solutions?`<div class="note-solutions">${solutions}</div>`:relation.solvedLatex?`<div class="note-formula">${tex(relation.solvedLatex)}</div>`:''}</figure>`;
 }
 let comparisonId=0;
 const comparisonTabs=(title:string,choices:{label:string}[])=>`<div class="note-choices" role="tablist" aria-label="${escape(title)}">${choices.map((choice,i)=>`<button type="button" role="tab" tabindex="${i?-1:0}" data-note-choice="${i}" aria-selected="${i===0}">${escape(choice.label)}</button>`).join('')}</div>`;
