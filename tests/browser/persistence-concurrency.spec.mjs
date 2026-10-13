@@ -1,8 +1,14 @@
 import {test,expect} from '@playwright/test';
+import {readStorage,readStoredJSON,writeStoredJSON,failStorageWrites,restoreStorageWrites} from './storage-fixtures.mjs';
 
 const progressKey='angouri:vine:v1:progress',libraryKey='angouri:vine:v1:seeds';
 const idle=page=>page.evaluate(()=>window.angouri.whenIdle());
-const stored=(page,key=libraryKey)=>page.evaluate(key=>JSON.parse(localStorage.getItem(key)),key);
+const stored=(page,key=libraryKey)=>readStoredJSON(page,key);
+const stopStorageUpdates=()=>{
+  for(const type of ['storage','focus'])window.addEventListener(type,event=>event.stopImmediatePropagation());
+  document.addEventListener('visibilitychange',event=>event.stopImmediatePropagation());
+  Object.defineProperty(window,'BroadcastChannel',{value:undefined});
+};
 async function ready(page,source=4){await page.goto(`/#level=${source}&view=flight`);await page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground').getAttribute('aria-busy')==='false',undefined,{polling:100});}
 async function library(page){await page.locator('#menu-open').click();await page.locator('#library-open').click();}
 async function save(page,name){await page.locator('#seed-name').fill(name);await page.locator('#favorite-save').click();await idle(page);}
@@ -11,8 +17,8 @@ async function resetDialog(page){await page.locator('#menu-open').click();await 
 test('simultaneous saves and stale row actions preserve other tabs and recovery copies',async({context,page})=>{
   const other=await context.newPage();
   // Keep a truly stale display in the second tab; mutations must still read
-  // fresh data under their lock and address IDs rather than displayed indices.
-  await other.addInitScript(()=>window.addEventListener('storage',event=>event.stopImmediatePropagation()));
+  // fresh data in their transaction and address IDs rather than displayed indices.
+  await other.addInitScript(stopStorageUpdates);
   await ready(page);await ready(other);await library(page);await library(other);
   await page.locator('#seed-name').fill('First tab');await other.locator('#seed-name').fill('Second tab');
   // Start both real form handlers together without racing the browser's one
@@ -58,10 +64,8 @@ test('external library refresh retains a focused rename draft and its text selec
 
 test('restoring the last available place during export cannot acknowledge a thirteenth save',async({page})=>{
   await ready(page);await library(page);await save(page,'Template');
-  await page.evaluate(key=>{
-    const seed=JSON.parse(localStorage.getItem(key))[0];
-    localStorage.setItem(key,JSON.stringify([...Array.from({length:11},(_,i)=>({...seed,id:`active-${i}`,name:`Recipe ${i}`})),{...seed,id:'recover',name:'Recover me',deletedAt:'2026-10-01T00:00:00.000Z',deletedIndex:0}]));
-  },libraryKey);
+  const seed=(await stored(page))[0];
+  await writeStoredJSON(page,libraryKey,[...Array.from({length:11},(_,i)=>({...seed,id:`active-${i}`,name:`Recipe ${i}`})),{...seed,id:'recover',name:'Recover me',deletedAt:'2026-10-01T00:00:00.000Z',deletedIndex:0}]);
   await page.reload();await page.waitForFunction(()=>window.angouri?.result);await library(page);
   await page.evaluate(()=>{
     const post=Worker.prototype.postMessage;
@@ -79,7 +83,7 @@ test('restoring the last available place during export cannot acknowledge a thir
 
 test('ordinary stale-tab writes keep earned progress but never resurrect a reset',async({context,page})=>{
   const other=await context.newPage();
-  await other.addInitScript(()=>window.addEventListener('storage',event=>event.stopImmediatePropagation()));
+  await other.addInitScript(stopStorageUpdates);
   await Promise.all([ready(page,1),ready(other,1)]);
   await page.locator('[data-op="H"]').click();await idle(page);await page.locator('#launch').click();await idle(page);
   expect((await stored(page,progressKey)).completed).toEqual([1]);
@@ -95,14 +99,14 @@ test('ordinary stale-tab writes keep earned progress but never resurrect a reset
 
 test('a failed reset preserves the live workspace and durable progress until retry succeeds',async({page})=>{
   await ready(page,1);await page.locator('[data-op="H"]').click();await idle(page);await page.locator('#launch').click();await idle(page);
-  const before=await page.evaluate(key=>({raw:localStorage.getItem(key),state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}),progressKey);
+  const before={raw:await readStorage(page,progressKey),...await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}))};
   await resetDialog(page);
-  await page.evaluate(key=>{window.originalSetItem=Storage.prototype.setItem;Storage.prototype.setItem=function(name,value){if(name===key)throw new DOMException('Full','QuotaExceededError');return window.originalSetItem.call(this,name,value);};},progressKey);
+  await failStorageWrites(page,progressKey);
   await page.locator('#reset-progress-confirm').click();await idle(page);
   await expect(page.locator('#reset-progress-dialog')).toBeVisible();await expect(page.locator('#reset-progress-error')).toContainText('unchanged');
   await expect(page.locator('#move-announcement')).not.toContainText('Puzzle progress reset');
-  expect(await page.evaluate(key=>({raw:localStorage.getItem(key),state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}),progressKey)).toEqual(before);
-  await page.evaluate(()=>Storage.prototype.setItem=window.originalSetItem);await page.locator('#reset-progress-confirm').click();await idle(page);
+  expect({raw:await readStorage(page,progressKey),...await page.evaluate(()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}))}).toEqual(before);
+  await restoreStorageWrites(page);await page.locator('#reset-progress-confirm').click();await idle(page);
   await expect(page.locator('#reset-progress-dialog')).toBeHidden();expect((await stored(page,progressKey)).completed).toEqual([]);
   expect(await page.evaluate(()=>window.angouri.state.nodes)).toEqual([]);
 });
@@ -112,10 +116,8 @@ test('one confirmed permanent deletion frees library space and keeps failed writ
   await ready(page);await library(page);await save(page,'Recovery to remove');await save(page,'Keep active');
   await page.getByRole('button',{name:'Delete Recovery to remove',exact:true}).click();
   await expect(page.getByRole('button',{name:'Undo deletion of Recovery to remove'})).toBeVisible();
-  await page.evaluate(key=>{
-    const entries=JSON.parse(localStorage.getItem(key)),recovery=entries.find(seed=>seed.deletedAt);
-    recovery.padding='';recovery.padding='x'.repeat(1024*1024-128-JSON.stringify(entries).length);localStorage.setItem(key,JSON.stringify(entries));
-  },libraryKey);
+  const entries=await stored(page),recovery=entries.find(seed=>seed.deletedAt);
+  recovery.padding='';recovery.padding='x'.repeat(1024*1024-128-JSON.stringify(entries).length);await writeStoredJSON(page,libraryKey,entries);
   await page.reload();await page.waitForFunction(()=>window.angouri?.result);await library(page);
   await save(page,'After freeing space');await expect(page.locator('#library-error')).toContainText('storage limit');
   const before=await stored(page),workspace=await page.evaluate(()=>window.angouri.state);
@@ -131,12 +133,23 @@ test('one confirmed permanent deletion frees library space and keeps failed writ
     await page.locator('#purge-seed-cancel').click();
   }
   await page.getByRole('button',{name:'Permanently delete Recovery to remove',exact:true}).click();
-  await page.evaluate(key=>{window.originalLibraryWrite=Storage.prototype.setItem;Storage.prototype.setItem=function(name,value){if(name===key)throw new DOMException('Full','QuotaExceededError');return window.originalLibraryWrite.call(this,name,value);};},libraryKey);
+  await failStorageWrites(page,libraryKey);
   await page.locator('#purge-seed-confirm').click();await expect(page.locator('#purge-seed-error')).toContainText('recovery copy is still available');
   expect(await stored(page)).toEqual(before);
-  await page.evaluate(()=>Storage.prototype.setItem=window.originalLibraryWrite);await page.locator('#purge-seed-confirm').click();
+  await restoreStorageWrites(page);await page.locator('#purge-seed-confirm').click();
   await expect(page.locator('#library-dialog')).toBeVisible();await expect(page.getByRole('button',{name:'Open Keep active',exact:true})).toBeVisible();
   expect(await stored(page)).toEqual(before.filter(seed=>!seed.deletedAt));expect(await page.evaluate(()=>window.angouri.state)).toEqual(workspace);
   await expect(page.locator('#seed-name')).toHaveValue('After freeing space');await page.locator('#favorite-save').click();await idle(page);
   await expect(page.getByRole('button',{name:'Open After freeing space',exact:true})).toBeVisible();await expect(page.locator('#library-error')).toBeHidden();
+});
+
+test('a preferences write cannot hide a failed durable progress save',async({page})=>{
+  await ready(page,1);await page.locator('[data-op="H"]').click();await idle(page);
+  const before=await readStorage(page,progressKey);
+  await failStorageWrites(page,progressKey);
+  await page.locator('[data-op="H"]').click();await idle(page);
+  await expect(page.locator('#save-status')).toContainText('Session only');
+  await page.locator('#menu-open').click();await page.locator('#settings-open').click();await page.locator('#motion-toggle').click();
+  await expect(page.locator('#save-status')).toContainText('Session only');
+  expect(await readStorage(page,progressKey)).toBe(before);
 });

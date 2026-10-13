@@ -7,23 +7,93 @@ export interface DeletedSeed extends Seed { deletedAt:string;deletedIndex:number
 export const seedStorageLimit=1024*1024;
 export const isDeletedSeed=(seed:Seed|DeletedSeed):seed is DeletedSeed=>'deletedAt' in seed&&typeof seed.deletedAt==='string';
 
-// A lock covers only the synchronous read/modify/write, never a kernel request
-// or a dialog. No unlocked fallback may report success while losing other tabs.
+// IndexedDB is the only authority after each key's first read. Web Locks do
+// not make process-local localStorage caches coherent (notably in WebKit).
+// Keep raw legacy bytes, including unreadable data, until an explicit change.
+export const deviceDatabase='angouri:device:v1',deviceStore='records';
+type RawChange<T>={raw?:string|null;result:T;backup?:{key:string;raw:string}};
+type LegacyStorage=Pick<Storage,'getItem'|'setItem'|'removeItem'>;
+export class DeviceStorageError extends Error {}
 export class StorageTransactions {
   private pending=new Set<Promise<unknown>>();
-  constructor(private locks:Pick<LockManager,'request'>|undefined) {}
-  run<T>(key:string,work:()=>T):Promise<T> {
-    if(!this.locks)return Promise.reject(new Error('Safe device storage is unavailable. Keep this recipe open and export progress.'));
-    const task=this.locks.request(key,work);
+  private database:Promise<IDBDatabase>|undefined;
+  constructor(private factory:IDBFactory|undefined,private legacy:()=>LegacyStorage) {}
+  private open():Promise<IDBDatabase> {
+    if(!this.factory)return Promise.reject(new DeviceStorageError('Safe device storage is unavailable. Keep this recipe open and export progress.'));
+    if(!this.database)this.database=new Promise<IDBDatabase>((resolve,reject)=>{
+      const request=this.factory!.open(deviceDatabase,1);
+      let failed=false;
+      const fail=()=>{failed=true;this.database=undefined;reject(new DeviceStorageError('Device storage could not be opened. Keep this recipe open and export progress.'));};
+      request.onupgradeneeded=()=>request.result.createObjectStore(deviceStore,{keyPath:'key'});
+      request.onerror=fail;request.onblocked=fail;
+      request.onsuccess=()=>{
+        const database=request.result;
+        if(failed){database.close();return;}
+        database.onversionchange=()=>{database.close();this.database=undefined;};
+        resolve(database);
+      };
+    });
+    const opening=this.database;
+    void opening.catch(()=>{if(this.database===opening)this.database=undefined;});
+    return opening;
+  }
+  private transact<T>(key:string,change:((raw:string|null)=>RawChange<T>)|undefined):Promise<T|string|null> {
+    const task=this.open().then(database=>new Promise<T|string|null>((resolve,reject)=>{
+      let transaction:IDBTransaction;
+      try{transaction=database.transaction(deviceStore,'readwrite');}
+      catch{reject(new DeviceStorageError('Device storage could not be updated.'));return;}
+      const store=transaction.objectStore(deviceStore);
+      let result:T|string|null=null,raw:string|null=null,write=false,failure:unknown,backup:RawChange<T>['backup'];
+      transaction.onabort=()=>reject(failure??new DeviceStorageError('Device storage could not be updated.'));
+      transaction.onerror=()=>{}; // onabort reports the final atomic outcome.
+      transaction.oncomplete=()=>{
+        // A failed mirror must not turn a committed durable save into a reported
+        // failure. No later read ever imports this compatibility copy again.
+        if(write)try{if(raw===null)this.legacy().removeItem(key);else this.legacy().setItem(key,raw);}catch{}
+        resolve(result);
+      };
+      const request=store.get(key);
+      request.onsuccess=()=>{
+        const record=request.result as {raw?:unknown}|undefined,existing=record!==undefined;
+        try {
+          raw=existing?record.raw as string|null:this.legacy().getItem(key);
+          if(raw!==null&&typeof raw!=='string')throw new Error();
+        }catch{failure=new DeviceStorageError('The saved device record could not be read. Keep this recipe open and export progress.');transaction.abort();return;}
+        result=raw;
+        if(change)try{const next=change(raw);result=next.result;backup=next.backup;if(next.raw!==undefined){raw=next.raw;write=true;}}
+        catch(error){failure=error;transaction.abort();return;}
+        // Two tabs racing their first access still migrate only once because
+        // both the read and put belong to this same readwrite transaction.
+        try{
+          // add, rather than put, makes a retained recovery copy immutable.
+          if(backup)store.add(backup);
+          if(!existing||write){store.put({key,raw});write=true;}
+        }catch{failure=new DeviceStorageError('Device storage could not be updated.');try{transaction.abort();}catch{}}
+      };
+    }));
+    return this.track(task);
+  }
+  private track<T>(task:Promise<T>){
     this.pending.add(task);
     void task.then(()=>this.pending.delete(task),()=>this.pending.delete(task));
     return task;
   }
-  async idle(){await Promise.allSettled([...this.pending]);}
+  read(key:string){return this.transact(key,undefined) as Promise<string|null>;}
+  change<T>(key:string,change:(raw:string|null)=>RawChange<T>){return this.transact(key,change) as Promise<T>;}
+  list(prefix:string):Promise<{key:string;raw:string}[]> {
+    return this.track(this.open().then(database=>new Promise<{key:string;raw:string}[]>((resolve,reject)=>{
+      let transaction:IDBTransaction;
+      try{transaction=database.transaction(deviceStore,'readonly');}
+      catch{reject(new DeviceStorageError('Saved recovery copies could not be read.'));return;}
+      const request=transaction.objectStore(deviceStore).getAll(IDBKeyRange.bound(prefix,prefix+'\uffff'));
+      transaction.onabort=()=>reject(new DeviceStorageError('Saved recovery copies could not be read.'));
+      transaction.oncomplete=()=>resolve(request.result.filter(record=>typeof record.key==='string'&&record.key.startsWith(prefix)&&typeof record.raw==='string'));
+    })));
+  }
+  async idle(){while(this.pending.size)await Promise.allSettled([...this.pending]);}
 }
 
-export function readStored(storage:Pick<Storage,'getItem'>,key:string,maxLength=65536):unknown {
-  const raw=storage.getItem(key);
+export function parseStored(raw:string|null,maxLength=65536):unknown {
   if(raw===null)return undefined;
   if(raw.length>maxLength)throw new Error('The saved data is too large to update safely. Export it before changing it.');
   try{return JSON.parse(raw);}catch{throw new Error('The saved data could not be read. Keep this recipe open and export progress.');}

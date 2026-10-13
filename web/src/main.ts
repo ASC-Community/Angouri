@@ -4,7 +4,7 @@ import './crop.css';
 import { CropEditor, cropControl, cropEdited, updateCropWindow, probePoints } from './crop';
 import { renderBrand } from './brand';
 import { Kernel } from './engine';
-import { completionRecord, mergeCompletions, mutateLibrary, readLibrary, readStored, seedStorageLimit, StorageTransactions, type CompletionRecord, type DeletedSeed, type LibraryMutation, type Seed, type Snapshot } from './persistence';
+import { completionRecord, deviceDatabase, DeviceStorageError, mergeCompletions, mutateLibrary, parseStored, readLibrary, seedStorageLimit, StorageTransactions, type CompletionRecord, type DeletedSeed, type LibraryMutation, type Seed, type Snapshot } from './persistence';
 import { icon } from './icons';
 import { adjacentSlot, insertedSlots, movedSlots, normalizeSlots, type RailSlots } from './rail';
 import { sizeEquationTables } from './comparison-layout';
@@ -47,18 +47,22 @@ installBlockTooltip($('palette'));
 const SAVE = 'angouri:vine:v1:progress', PREF = 'angouri:vine:v1:preferences', SEEDS = 'angouri:vine:v1:seeds';
 const views: View[] = ['flight','function','flow'];
 const clone = <T>(value: T): T => structuredClone(value);
-let storageAvailable = true;
+const failedStorage=new Set<string>();
+function storageStatus(key:string,available:boolean) {
+  if(available)failedStorage.delete(key);else failedStorage.add(key);
+  $('save-status').innerHTML=!failedStorage.size?'<span class="status-dot"></span> Saved on this device':'Session only · Export to keep your progress';
+}
 function read(key: string,maxLength=65536): unknown {
   let s: string | null;
   try { s = localStorage.getItem(key); }
-  catch { storageAvailable=false; return undefined; }
+  catch { storageStatus(key,false); return undefined; }
   try {return s && s.length<=maxLength ? JSON.parse(s) : undefined;}catch{return undefined;}
 }
 function write(key: string, value: unknown) {
   let saved=true;
-  try { localStorage.setItem(key,JSON.stringify(value)); storageAvailable=true; }
-  catch { storageAvailable=false;saved=false; }
-  $('save-status').innerHTML = storageAvailable ? '<span class="status-dot"></span> Saved on this device' : 'Session only · Export to keep your progress';
+  try { localStorage.setItem(key,JSON.stringify(value)); }
+  catch { saved=false; }
+  storageStatus(key,saved);
   return saved;
 }
 const isView = (value: unknown): value is View => views.includes(value as View);
@@ -87,9 +91,14 @@ function rememberEquationScroll(){const panels=equationPanels();if(panels.length
 let railSlots:RailSlots=[];
 let undo: Snapshot[] = [], redo: Snapshot[] = [];
 let completed = new Set<number>();
-let progressEpoch=completionRecord(read(SAVE)).progressEpoch;
+let progressEpoch='legacy';
 const pendingWins=new Map<number,string>();
-const storageTransactions=new StorageTransactions(navigator.locks);
+let databaseFactory:IDBFactory|undefined;
+try{databaseFactory=window.indexedDB;}catch{}
+const storageTransactions=new StorageTransactions(databaseFactory,()=>localStorage);
+let storageChannel:BroadcastChannel|undefined;
+try{storageChannel=new BroadcastChannel(deviceDatabase);}catch{}
+function announceStorage(key:string){try{storageChannel?.postMessage({key});}catch{}}
 const introStage=()=>state?.mode==='puzzle'&&[1,2].includes(state.sourceId)?state.sourceId:0;
 const introActive=()=>introStage()>0;
 const choiceActive=()=>!!state&&state.mode!=='remix'&&!state.circle&&!state.station&&state.limit===1;
@@ -122,20 +131,21 @@ function cancelCurveChange(settle=false) {
   if(settle&&state&&result&&displayedView()==='flight'){paintTrajectory(result.points);animatePosition();}
 }
 let seeds:Seed[]=[],deletedSeeds:DeletedSeed[]=[];
-function refreshLibrary(paint=false) {
+async function refreshLibrary(paint=false) {
   try {
-    const library=readLibrary(readStored(localStorage,SEEDS,seedStorageLimit));
+    const library=readLibrary(parseStored(await storageTransactions.read(SEEDS),seedStorageLimit));
     seeds=library.seeds;deletedSeeds=library.deleted;if(paint)renderSeeds();return true;
-  }catch{return false;}
+  }catch{storageStatus(SEEDS,false);return false;}
 }
-refreshLibrary();
 async function changeLibrary(action:LibraryMutation) {
-  const changed=await storageTransactions.run(SEEDS,()=>{
-    const mutation=mutateLibrary(readStored(localStorage,SEEDS,seedStorageLimit),action);
-    if(!write(SEEDS,mutation.entries))throw new Error('Device storage could not be updated.');
-    return mutation.changed!;
-  });
-  refreshLibrary();return changed;
+  let changed:Seed;
+  try {
+    changed=await storageTransactions.change(SEEDS,raw=>{
+      const mutation=mutateLibrary(parseStored(raw,seedStorageLimit),action);
+      return {raw:JSON.stringify(mutation.entries),result:mutation.changed!};
+    });
+  }catch(error){if(error instanceof DeviceStorageError)storageStatus(SEEDS,false);throw error;}
+  storageStatus(SEEDS,true);announceStorage(SEEDS);await refreshLibrary();return changed;
 }
 const kernel = new Kernel((message)=> { notice={text:message,kind:'error'}; showNotice(); });
 const shapeNotes = new ShapeNotes(kernel);
@@ -204,39 +214,40 @@ function adoptCompletions(record:CompletionRecord) {
   for(const [id,epoch] of pendingWins)if(epoch!==progressEpoch)pendingWins.delete(id);
   completed=new Set([...record.completed,...pendingWins.keys()]);
 }
-function refreshCompletions() {
-  try{adoptCompletions(completionRecord(readStored(localStorage,SAVE)));return true;}catch{return false;}
+async function refreshCompletions() {
+  try{adoptCompletions(completionRecord(parseStored(await storageTransactions.read(SAVE))));return true;}
+  catch{storageStatus(SAVE,false);return false;}
 }
-function progress() {
+function progress(award?:number) {
   if(!state)return;
   const snapshot=clone({schema:1,type:'save',state,slots:railSlots,view,entry:acknowledgedEntry.slice(0,8192),confirmed:throwWon});
   const epoch=progressEpoch,additions=[...pendingWins].filter(([,generation])=>generation===epoch).map(([id])=>id);
-  void storageTransactions.run(SAVE,()=>{
-    const merged=mergeCompletions(completionRecord(readStored(localStorage,SAVE)),epoch,additions);
-    if(!write(SAVE,{...snapshot,...merged}))return;
+  void storageTransactions.change(SAVE,raw=>{
+    const merged=mergeCompletions(completionRecord(parseStored(raw)),epoch,additions);
+    // A deliberate new throw awards against the latest durable generation,
+    // including a reset this tab has not observed. Autosave never does that.
+    if(award!==undefined)merged.completed=[...new Set([...merged.completed,award])];
+    return {raw:JSON.stringify({...snapshot,...merged}),result:merged};
+  }).then(async()=>{
     for(const id of additions)if(pendingWins.get(id)===epoch)pendingWins.delete(id);
-    adoptCompletions(merged);renderLevels();
-  }).catch(()=>{storageAvailable=false;$('save-status').textContent='Session only · Export to keep your progress';});
+    storageStatus(SAVE,true);announceStorage(SAVE);await refreshCompletions();renderLevels();
+  }).catch(()=>storageStatus(SAVE,false));
 }
 function recordCompletion(id:number) {
-  // Read the generation when the win occurs. A new win after another tab's
-  // reset counts, while the old tab's previously completed set never returns.
-  refreshCompletions();pendingWins.set(id,progressEpoch);completed.add(id);progress();
+  pendingWins.set(id,progressEpoch);completed.add(id);progress(id);
 }
 async function replaceProgress(reply:Response,slots:RailSlots|undefined,nextView:View,ids:number[],entry:string,owns=()=>true) {
   requireOk(reply);
   const record={progressEpoch:crypto.randomUUID(),completed:[...new Set(ids)]};
   const snapshot={schema:1,type:'save',state:reply.state,slots:normalizeSlots(reply.state,slots),view:nextView,entry,confirmed:false,...record};
-  const written=await storageTransactions.run(SAVE,()=>{
-    // Acquiring the cross-tab lock can outlive the navigation that requested it.
-    if(!owns())return false;
-    if(!write(SAVE,snapshot))throw new Error('Could not save the new progress on this device. Your current recipe and completions are unchanged. Try again.');
-    return true;
-  });
-  if(!written||!owns())return false;
-  pendingWins.clear();
-  if(!refreshCompletions())adoptCompletions(record);
-  return true;
+  let written:boolean;
+  try{written=await storageTransactions.change(SAVE,()=>owns()?{raw:JSON.stringify(snapshot),result:true}:{result:false});}
+  catch{storageStatus(SAVE,false);throw new Error('Could not save the new progress on this device. Your current recipe and completions are unchanged. Try again.');}
+  if(!written)return false;
+  storageStatus(SAVE,true);announceStorage(SAVE);
+  if(!owns())return false;
+  pendingWins.clear();if(!await refreshCompletions())adoptCompletions(record);
+  return owns();
 }
 let feedbackContent:string|undefined;
 function showNotice() {
@@ -890,9 +901,9 @@ function recipeKey(snapshot:Snapshot) {
   const s=snapshot.state;
   return JSON.stringify([s.mode,s.sourceId,s.goals,s.inventory,s.limit,s.circle,s.crop,snapshot.slots.map(id=>id?s.nodes.find(node=>node.id===id)?.op:null)]);
 }
-function unsavedRecipe() {
+async function unsavedRecipe() {
   if(!state||(state.circle?!circleEdited(state,result):!cropEdited(state)&&!state.nodes.some(node=>node.id!==state!.station?.id)))return false;
-  if(!refreshLibrary())return true;
+  if(!await refreshLibrary())return true;
   const current=recipeKey({state,slots:railSlots});
   return !seeds.some(seed=>{try{return seed.snapshot&&recipeKey(seed.snapshot)===current;}catch{return false;}});
 }
@@ -901,7 +912,9 @@ async function changeWorkspace(action:()=>Promise<unknown>,destination:string,ca
   // A queued accepted edit can be the first unsaved work in this workspace.
   while(pending>0)await chain;
   if(!currentIntent(intent))return false;
-  if(!unsavedRecipe()){closeDialogs();return action();}
+  const unsaved=await unsavedRecipe();
+  if(!currentIntent(intent))return false;
+  if(!unsaved){closeDialogs();return action();}
   $('leave-description').textContent=explanation??(carry?'Create carries your construction over. Save this puzzle recipe to resume it later.':`Save your current recipe before opening ${destination}.`);
   $<HTMLInputElement>('leave-name').value=state?.mode==='puzzle'?LEVELS[state.sourceId-1].name:'My flight';
   $('leave-error').hidden=true;
@@ -1520,7 +1533,7 @@ function renderSeeds(preserveDraft=true){
     if(selection&&next instanceof HTMLInputElement)next.setSelectionRange(...selection);
   }
 }
-$('library-open').onclick=()=>{renamingSeed=undefined;renameSeed=undefined;$('library-error').hidden=true;refreshLibrary();renderSeeds();open('library-dialog');};
+$('library-open').onclick=()=>{renamingSeed=undefined;renameSeed=undefined;$('library-error').hidden=true;renderSeeds();open('library-dialog');void refreshLibrary(true);};
 function saveRecipe(name:string) {
   return serial(async()=>{
     if(!state)return;
@@ -1529,7 +1542,7 @@ function saveRecipe(name:string) {
     try {
       await changeLibrary({type:'save',seed:{id:crypto.randomUUID(),name:name.trim().slice(0,60)||'My next great throw',artifact:reply.artifact!,snapshot,view:savedView,savedAt:new Date().toISOString()}});
     }catch(e){
-      if(!storageAvailable)throw new Error('Could not save on this device. Keep this recipe open and export progress from Save & open.');
+      if(e instanceof DeviceStorageError)throw new Error('Could not save on this device. Keep this recipe open and export progress from Save & open.');
       throw e;
     }
     notice={text:'',kind:''};showNotice();renderSeeds();return true;
@@ -1567,13 +1580,13 @@ function libraryRowError(id:string,attribute:string,text:string) {
 $('favorites-list').onclick=async event=>{
   const b=(event.target as Element).closest<HTMLElement>('button'),id=b?.closest<HTMLElement>('[data-library-id]')?.dataset.libraryId;if(!b||!id||b.getAttribute('aria-disabled')==='true')return;
   if(b.dataset.renameSeed!==undefined){
-    refreshLibrary();const seed=seeds.find(seed=>seed.id===id);if(!seed){renderSeeds();return;}
+    await refreshLibrary();if(!$<HTMLDialogElement>('library-dialog').open)return;const seed=seeds.find(seed=>seed.id===id);if(!seed){renderSeeds();return;}
     renamingSeed=id;renameSeed=seed;renameDraft=seed.name;renderSeeds(false);
     const input=$<HTMLInputElement>('rename-seed');input.focus({preventScroll:true});input.select();
   }
   if(b.dataset.cancelRename!==undefined)finishRename(id);
   if(b.dataset.purgeSeed!==undefined){
-    refreshLibrary();const seed=deletedSeeds.find(seed=>seed.id===id);if(!seed){renderSeeds();return;}
+    await refreshLibrary();if(!$<HTMLDialogElement>('library-dialog').open)return;const seed=deletedSeeds.find(seed=>seed.id===id);if(!seed){renderSeeds();return;}
     purgingSeed=id;$('purge-seed-description').textContent=`Permanently delete “${seed.name}” from Recently deleted? You cannot undo this.`;
     $('purge-seed-error').hidden=true;open('purge-seed-dialog',b.id);
   }
@@ -1587,12 +1600,12 @@ $('favorites-list').onclick=async event=>{
       (seedControl(id,restoring?'data-seed':'data-restore-seed')||$('seed-name')).focus();
       $('library-status').textContent=restoring?`${changed.name} restored.`:`${changed.name} deleted. Undo stays available in Recently deleted.`;
     }catch(e){
-      refreshLibrary();renderSeeds();
-      libraryRowError(id,attribute,storageAvailable?(e instanceof Error?e.message:String(e)):restoring?'Could not restore on this device. Your recipe is still available here; try Undo again.':'Could not delete on this device. Your saved recipe is still here.');
+      await refreshLibrary();renderSeeds();
+      libraryRowError(id,attribute,e instanceof DeviceStorageError?(restoring?'Could not restore on this device. Your recipe is still available here; try Undo again.':'Could not delete on this device. Your saved recipe is still here.'):(e instanceof Error?e.message:String(e)));
     }finally{b.removeAttribute('aria-disabled');}
   }
   if(b.dataset.seed!==undefined){
-    refreshLibrary();const seed=seeds.find(seed=>seed.id===id);if(seed)changeWorkspace(()=>openSeed(seed).then(ok=>{if(ok)closeDialogs();}),seed.name);else renderSeeds();
+    await refreshLibrary();if(!$<HTMLDialogElement>('library-dialog').open)return;const seed=seeds.find(seed=>seed.id===id);if(seed)changeWorkspace(()=>openSeed(seed).then(ok=>{if(ok)closeDialogs();}),seed.name);else renderSeeds();
   }
 };
 $('favorites-list').addEventListener('submit',async event=>{
@@ -1602,7 +1615,7 @@ $('favorites-list').addEventListener('submit',async event=>{
   const fail=(message:string)=>{if(renamingSeed!==id)return;$('rename-error').textContent=message;$('rename-error').hidden=false;$('rename-seed').focus({preventScroll:true});};
   if(!name){fail('Enter a recipe name.');return;}
   try{await changeLibrary({type:'rename',id,name});}
-  catch(e){fail(storageAvailable?(e instanceof Error?e.message:String(e)):'Could not save the name on this device. Try again.');return;}
+  catch(e){fail(e instanceof DeviceStorageError?'Could not save the name on this device. Try again.':(e instanceof Error?e.message:String(e)));return;}
   if(renamingSeed===id)finishRename(id);else renderSeeds();$('move-announcement').textContent=`Recipe renamed to ${name}.`;
 });
 $('favorites-list').addEventListener('keydown',event=>{
@@ -1610,8 +1623,8 @@ $('favorites-list').addEventListener('keydown',event=>{
   if(event.key==='Escape'&&renamingSeed!==undefined){event.preventDefault();event.stopPropagation();finishRename(renamingSeed);}
 });
 let purgingSeed:string|undefined;
-function returnFromPurge(id:string|undefined) {
-  refreshLibrary();renderSeeds();open('library-dialog');
+async function returnFromPurge(id:string|undefined) {
+  await refreshLibrary();renderSeeds();open('library-dialog');
   requestAnimationFrame(()=>{if($<HTMLDialogElement>('library-dialog').open)(id&&seedControl(id,'data-purge-seed')||$('seed-name')).focus({preventScroll:true});});
 }
 $('purge-seed-cancel').onclick=()=>returnFromPurge(purgingSeed);
@@ -1622,16 +1635,21 @@ $('purge-seed-confirm').onclick=async()=>{
   try {
     const removed=await changeLibrary({type:'purge',id});
     if(renamingSeed===id){renamingSeed=undefined;renameSeed=undefined;}
-    purgingSeed=undefined;returnFromPurge(undefined);$('library-status').textContent=`${removed.name} permanently deleted.`;
+    purgingSeed=undefined;await returnFromPurge(undefined);$('library-status').textContent=`${removed.name} permanently deleted.`;
   }catch(e){
-    $('purge-seed-error').textContent=storageAvailable?(e instanceof Error?e.message:String(e)):'Could not delete on this device. The recovery copy is still available. Try again.';
+    $('purge-seed-error').textContent=e instanceof DeviceStorageError?'Could not delete on this device. The recovery copy is still available. Try again.':(e instanceof Error?e.message:String(e));
     $('purge-seed-error').hidden=false;
   }finally{confirm.disabled=false;cancel.disabled=false;}
 };
-window.addEventListener('storage',event=>{
-  if(event.key===SEEDS||event.key===null)refreshLibrary(true);
-  if(event.key===SAVE||event.key===null){refreshCompletions();if(initialized){renderLevels();if($<HTMLDialogElement>('ending-dialog').open)renderEnding();}}
-});
+async function refreshDeviceStorage(key:string|null) {
+  if(key===SEEDS||key===null)await refreshLibrary(true);
+  if(key===SAVE||key===null){await refreshCompletions();if(initialized){renderLevels();if($<HTMLDialogElement>('ending-dialog').open)renderEnding();}}
+}
+window.addEventListener('storage',event=>{if(event.key===SEEDS||event.key===SAVE||event.key===null)void refreshDeviceStorage(event.key);});
+storageChannel?.addEventListener('message',event=>{if(event.data?.key===SAVE||event.data?.key===SEEDS)void refreshDeviceStorage(event.data.key);});
+window.addEventListener('focus',()=>void refreshDeviceStorage(null));
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refreshDeviceStorage(null);});
+
 function parseSave(value:unknown) {
   if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Choose an Angouri JSON file.');
   const data={...value,view:canonicalView((value as Record<string,unknown>).view)} as Record<string,unknown>;
@@ -1677,7 +1695,7 @@ function acceptPreparedImport(prepared:PreparedImport,intent:WorkspaceIntent,per
     if(!currentIntent(intent))return false;
     if(prepared.completed&&prepared.origin==='file') {
       if(!await replaceProgress(prepared.reply,prepared.slots,prepared.view??view,prepared.completed,intent.entry,()=>currentIntent(intent)))return false;
-    } else if(prepared.origin==='restore')refreshCompletions();
+    } else if(prepared.origin==='restore')await refreshCompletions();
     if(!currentIntent(intent))return false;
     acknowledgedEntry=intent.entry;replaceEntry(acknowledgedEntry);
     accept(prepared.reply,'clear',prepared.slots,prepared.view,true,undefined,undefined,false,undefined,{persist,confirmed:prepared.confirmed});
@@ -1718,9 +1736,13 @@ $<HTMLInputElement>('import-file').onchange=async()=>{
 };
 async function start(intent=beginWorkspaceChange(location.hash)) {
   palette();
-  const saved=read(SAVE);
+  let saved:unknown,raw:string|null;
+  try{raw=await storageTransactions.read(SAVE);}
+  catch{storageStatus(SAVE,false);try{raw=localStorage.getItem(SAVE);}catch{raw=null;}}
+  try{saved=parseStored(raw);adoptCompletions(completionRecord(saved));}catch{/* Preserve unreadable bytes; an autosave will refuse to replace them. */}
+  await refreshLibrary();
   // A new deep link replaces the open workspace, not the chapter record.
-  refreshCompletions();
+  await refreshCompletions();
   const savedEntry=saved&&typeof saved==='object'&&(saved as {entry?:unknown}).entry;
   const restoreEntry=typeof savedEntry==='string'&&(!savedEntry||savedEntry.startsWith('#'))?savedEntry:'';
   let invalidMessage='',triedSaved=false;

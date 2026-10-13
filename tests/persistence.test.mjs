@@ -54,8 +54,8 @@ test('permanent removal drops only the named recovery copy',()=>{
   assert.throws(()=>mutateLibrary([active,keep],{type:'purge',id:'active'}),/recovery copy changed/);
 });
 
-test('a missing cross-tab lock cannot silently fall back to unsafe writes',async()=>{
+test('unavailable IndexedDB cannot silently fall back to unsafe localStorage writes',async()=>{
   let written=false;
-  await assert.rejects(new StorageTransactions(undefined).run('library',()=>{written=true;}),/Safe device storage is unavailable/);
+  await assert.rejects(new StorageTransactions(undefined,()=>({getItem:()=>null,setItem:()=>{written=true;},removeItem:()=>{written=true;}})).change('library',()=>{written=true;return {raw:'[]',result:undefined};}),/Safe device storage is unavailable/);
   assert.equal(written,false);
 });
