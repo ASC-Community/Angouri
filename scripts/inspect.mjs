@@ -69,7 +69,7 @@ try {
   for(const [name,viewport] of Object.entries({mobile:{width:390,height:844},compact:{width:320,height:568},landscape:{width:844,height:390}})) {await page.setViewportSize(viewport);await shot(`capstone-${name}`);}
   await page.setViewportSize({width:390,height:844});for(const op of ['Q','H','Q','N','A','A'])await place(op);await page.locator('#launch').click();await shot('capstone-complete-mobile');
   await menu('nav-create');await idle();await page.locator('#source-choose').click();await shot('curves-mobile');await page.locator('[data-source="8"]').click();await idle();await shot('creation-source-mobile');
-  await puzzle(9);for(const op of ['H','N','A'])await place(op);await page.locator('#launch').click();await page.setViewportSize({width:320,height:568});await shot('finale-invitation-compact');await page.setViewportSize({width:390,height:844});
+  await puzzle(9);for(const op of ['H','N','A'])await place(op);await page.locator('#launch').click();await page.setViewportSize({width:320,height:568});await shot('reflection-challenge-invitation-compact');await page.setViewportSize({width:390,height:844});
   }
   await page.setViewportSize({width:390,height:844});await page.goto('/about/');await page.evaluate(()=>document.fonts.ready);await shot('about-mobile');await page.screenshot({path:'artifacts/about-mobile-header.png'});await page.setViewportSize({width:1440,height:900});await shot('about-desktop');await page.screenshot({path:'artifacts/about-desktop-header.png'});
   console.log(JSON.stringify({mode:smoke?'smoke':'full',errors,layouts},null,2));
