@@ -14,16 +14,10 @@
 .crop-add { flex: none; font-size: 11px; padding: 8px; }
 .crop-fixed { flex:none; display:flex; align-items:center; gap:7px; padding:9px 11px; border:1px solid #d3ddc9; border-radius:8px; color:#657957; background:#f7f9f1; font-size:11px; }
 .palette[data-count="0"] { display: none; }
-.crop-verdict { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 7px; font-size: 11px; padding: 5px 10px; min-height: 28px; }
-[data-crop-match=true] { color: var(--hit); }
-[data-crop-match=false] { color: var(--miss-ink); }
-.crop-verdict [data-crop-mark],.crop-key { display: inline-flex; }
-.flight-diagram>.crop-verdict { position: absolute; top: 3px; left: 0; right: 0; pointer-events: none; }
 .crop-window { pointer-events: none; }
 .crop-discarded { fill: #839174; opacity: .1; }
 .crop-before { fill: none; stroke: #8d9b7d; stroke-width: 2; stroke-dasharray: 3 6; opacity: .5; }
 .crop-cuts { fill: none; stroke: #6c8460; stroke-width: 1.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
-.crop-goal-bracket { fill: none; stroke: currentColor; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .crop-machine .machine-icon { color: #4b7051; font-size: 15px; }
 .crop-machine .machine-sample { white-space: normal; }
 .crop-omitted { opacity: .3; }

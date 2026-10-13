@@ -1,7 +1,7 @@
 import './style.css';
 import './play.css';
 import './crop.css';
-import { CropEditor, cropControl, cropEdited, updateCropVerdict, updateCropWindow, probePoints } from './crop';
+import { CropEditor, cropControl, cropEdited, updateCropWindow, probePoints } from './crop';
 import { renderBrand } from './brand';
 import { Kernel } from './engine';
 import { completionRecord, mergeCompletions, mutateLibrary, readLibrary, readStored, seedStorageLimit, StorageTransactions, type CompletionRecord, type DeletedSeed, type LibraryMutation, type Seed, type Snapshot } from './persistence';
@@ -166,7 +166,6 @@ const cropEditor=new CropEditor($('construction'),()=>state&&result&&pending===0
       updateFlowProbe($('scene'),state!,preview,probeIndex);
     }
     preview.checkpoints.forEach((checkpoint,i)=>updateTarget($('scene'),checkpoint,i,'waiting'));
-    updateCropVerdict($('scene'),preview);
     updatePrimary();animatePosition();
   },
   (crop,previewed)=>{
