@@ -28,6 +28,8 @@
 .garden-highlight-wash { fill:#fff0c4; opacity:.13; stroke:none; }
 .garden-art-path { fill:none; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke; }
 .garden-piece.is-missing .garden-art-path { stroke:#a4bbb1; stroke-width:1; stroke-dasharray:3 7; opacity:.28; }
+/* This class follows the actual picture width, including short landscape. */
+:where(.garden-paper.compact-labels) .garden-piece.is-missing .garden-art-path { stroke-width:1.15; opacity:.5; }
 .garden-piece.is-missing:is(.is-pointed,:focus-visible) .garden-art-path { opacity:.75; }
 .garden-piece.is-earned .garden-art-path { stroke-width:2.25; vector-effect:none; stroke-dasharray:none; stroke-dashoffset:0; }
 .garden-piece-bank.is-earned .garden-art-path { stroke:none; }
