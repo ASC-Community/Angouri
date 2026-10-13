@@ -3,8 +3,8 @@ import {test,expect} from '@playwright/test';
 async function open(page,id,view='flight') {
   await page.goto('/about/');await page.goto(`/#level=${id}&view=${view}`);
   await page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
-  await page.locator('#hints-open').click();await page.getByRole('button',{name:'Another hint',exact:true}).click();
-  await page.getByRole('button',{name:'Show a sketch',exact:true}).click();await expect(page.locator('#hint-sketch')).toHaveAttribute('aria-busy','false');
+  await page.locator('#hints-open').click();await page.getByRole('button',{name:'Reveal another hint',exact:true}).click();
+  await page.getByRole('button',{name:'Reveal sketch',exact:true}).click();await expect(page.locator('#hint-sketch')).toHaveAttribute('aria-busy','false');
   await expect(page.locator('#hints-dialog')).toHaveAccessibleName('Hints');
   await expect(page.locator('[data-retry-notes]')).toHaveCount(0);
 }

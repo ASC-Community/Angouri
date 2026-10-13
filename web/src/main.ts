@@ -188,8 +188,9 @@ function progress() { if(state) write(SAVE,{schema:1,type:'save',state,slots:rai
 let feedbackContent:string|undefined;
 function showNotice() {
   $('feedback').className=`feedback ${notice.kind}`;
-  const text=insertionIndex!==undefined&&notice.kind!=='error'?'Choose a block.':notice.text;
-  const finding=state&&result&&notice.kind!=='error'?discoveryObservation(state,result,discoveryStage):'';
+  const unavailable=notice.kind!=='error'?emptyPathMessage(result):'';
+  const text=unavailable||(insertionIndex!==undefined&&notice.kind!=='error'?'Choose a block.':notice.text);
+  const finding=state&&result&&!unavailable&&notice.kind!=='error'?discoveryObservation(state,result,discoveryStage):'';
   $('feedback').classList.toggle('discovery-feedback',!!finding);
   const content=finding||`${notice.kind==='error'?'':icon('hand',16)}<span>${escape(text)}</span>`;
   if(content!==feedbackContent){$('feedback').innerHTML=content;feedbackContent=content;}
@@ -203,12 +204,24 @@ function showNotice() {
   $('recipe-guidance').hidden=$('feedback').hidden&&!hints;
 }
 function error(message: string) { notice={text:message,kind:'error'}; showNotice(); }
+function emptyPathMessage(value:Result|undefined) {
+  if(!value||flightPoints(value).length)return '';
+  if(!value.relation)return 'No path to throw yet.';
+  return value.crop?.editable
+    ? 'No real heights in this crop. Expand or remove Crop, or make the right side zero or positive within it.'
+    : 'No real heights in this interval. Make the right side zero or positive.';
+}
 function serial<T>(work: ()=>Promise<T>,retainCirclePreview=false): Promise<T | undefined> {
   cropEditor.cancel();
   if(!retainCirclePreview)cancelCirclePickup();
   pending++; $('playground').setAttribute('aria-busy','true');updatePrimary();
   const task=chain.then(work);
-  chain=task.then(()=>{},e=>error(e instanceof Error ? e.message : String(e))).finally(()=>{
+  chain=task.then(()=>{},e=>{
+    const message=e instanceof Error?e.message:String(e);
+    error(message==='Engine interrupted'||message==='Engine recovery failed'
+      ? 'That move could not finish. Your previous recipe is unchanged. Try the move again.'
+      : message);
+  }).finally(()=>{
     pending--; $('playground').setAttribute('aria-busy',String(!initialized||pending>0));updatePrimary();
   });
   return task.catch(()=>undefined);
@@ -317,7 +330,7 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
   }
   if(completeSelection||!result.stages.some(s=>s.id===selectedStage)) selectedStage='';
   insertionIndex=completeSelection?undefined:emptySelection;
-  notice={text:result.relation&&!result.relation.playback.length?'No real heights yet. Bring the right side to zero or above.':state.circle?'':state.nodes.length?'':choiceActive()?'Choose a block.':'Tap or drag a block.',kind:''};
+  notice={text:emptyPathMessage(result)||(state.circle?'':state.nodes.length?'':choiceActive()?'Choose a block.':'Tap or drag a block.'),kind:''};
   progress();render(move&&(completeSelection||movingEmpty)?move.to:emptySelection);
   if(repeatHint&&hintCue)for(const animation of $('hints-open').getAnimations()) {
     if(animation instanceof CSSAnimation&&animation.animationName==='hint-invite')animation.currentTime=0;
@@ -337,7 +350,7 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
   if(scrollDelta&&emptyRect)emptyRect=new DOMRect(emptyRect.x-scrollDelta,emptyRect.y,emptyRect.width,emptyRect.height);
   if((changed||layoutChanged||move)&&!newSource&&previousState&&previousResult&&previousPoints) {
     const moved=state.nodes.find(node=>node.id===editedId);
-    $('move-announcement').textContent=state.circle?`Centre ${state.circle.x}, ${state.circle.y}. Radius ${state.circle.radius}. ${result.checkpoints.filter(c=>c.hit).length} targets match.`:changed?`${state.nodes.map(n=>OPS[n.op].name).join(', ')||'Recipe cleared'}. Ready to throw.`:moved?`${OPS[moved.op].name} moved to slot ${railSlots.indexOf(moved.id)+1}.`:'Empty slot moved.';
+    $('move-announcement').textContent=state.circle?`Centre ${state.circle.x}, ${state.circle.y}. Radius ${state.circle.radius}. ${result.checkpoints.filter(c=>c.hit).length} targets match.`:changed?`${state.nodes.map(n=>OPS[n.op].name).join(', ')||'Recipe cleared'}. ${flightPoints(result).length?'Ready to throw.':'No real path to throw yet.'}`:moved?`${OPS[moved.op].name} moved to slot ${railSlots.indexOf(moved.id)+1}.`:'Empty slot moved.';
     animateChange(previousState,previousResult,previousPoints,previousRects,previousSlots,previousSlope!,previousVisual,move,emptyRect,completeSelection);
   }
   if(offeredHint)$('move-announcement').textContent+=' Hints can help with this puzzle.';
@@ -472,7 +485,7 @@ function updatePrimary() {
   const next=state?.mode==='puzzle'?followingPuzzle(state.sourceId):undefined;
   const label=advancing?(state?.mode==='puzzle'?next?isMastery(next)?next===PUZZLE_ORDER.at(-1)?'Final mastery':'Mastery challenge':chapterIndex(next)!==chapterIndex(state.sourceId)?'Next chapter':isCapstone(next)?'Chapter challenge':'Next puzzle':OPTIONAL_PUZZLES.includes(state.sourceId)?'More puzzles':'Finish':'Create'):active?'In flight':flight.phase==='landed'?'Throw again':'Throw';
   $<HTMLButtonElement>('launch').disabled=!initialized||pending>0||pictureCollecting||active&&!advancing||!!result&&!flightPoints(result).length;
-  $('launch').title=result?.relation&&!result.relation.playback.length?'No real heights yet. Make the right side reach zero or above.':'';
+  $('launch').title=emptyPathMessage(result);
   $('launch').innerHTML=(advancing?`<span>${label}</span>${icon('arrow',21)}`:`${icon('throw',21)}<span>${label}</span>`)+`<kbd class="button-hotkey"${advancing?' data-hotkey="activate"':''} aria-hidden="true">${advancing?'Space':'Enter'}</kbd>`;
   $('launch').setAttribute('aria-keyshortcuts',advancing?'Space':'Enter');
   $('launch').classList.toggle('continue-ready',advancing);
@@ -480,7 +493,7 @@ function updatePrimary() {
   $('launch').setAttribute('aria-label',label);
   $('playground').dataset.phase=flight.phase;
   $('success').hidden=!won;
-  if(won)$('success').innerHTML=`<span class="success-medal">${icon(state&&isMastery(state.sourceId)?'mastery':'check',22)}<span>${state?.mode==='puzzle'&&isMastery(state.sourceId)?'Mastery earned!':state?.mode==='puzzle'&&isPicture(state.sourceId)?'Picture piece earned!':state?.sourceId===4&&state.nodes.length>4?'Try fewer blocks?':'All targets!'}</span></span>`;
+  if(won)$('success').innerHTML=`<span class="success-medal">${icon(state&&isMastery(state.sourceId)?'mastery':'check',22)}<span>${state?.mode==='puzzle'&&isMastery(state.sourceId)?'Mastery challenge complete!':state?.mode==='puzzle'&&isPicture(state.sourceId)?'Picture piece earned!':'All targets!'}</span></span>`;
   showNotice();
 }
 function render(focusCell?:number) {
@@ -1271,7 +1284,7 @@ $('hints-content').onclick=event=>{
       const source=state.sourceId;panel.dataset.loaded='loading';panel.setAttribute('aria-busy','true');panel.innerHTML='<p class="notes-loading">Opening the sketch…</p>';
       void shapeNotes.hintSketch(source).then(html=>{
         if(panel.isConnected&&state?.sourceId===source){panel.innerHTML=html;panel.dataset.loaded='true';}
-      }).catch(()=>{if(panel.isConnected){delete panel.dataset.loaded;panel.innerHTML='<p>The sketch could not load. Close and reopen it to try again.</p>';}}).finally(()=>panel.setAttribute('aria-busy','false'));
+      }).catch(()=>{if(panel.isConnected){delete panel.dataset.loaded;panel.innerHTML='<p>The sketch could not load. Close Hints and open it again to retry the sketch.</p>';}}).finally(()=>panel.setAttribute('aria-busy','false'));
     }
   }
   if(target.closest('#hint-notes'))openNotes(referenceOrigins.get($<HTMLDialogElement>('hints-dialog'))?.focus);
@@ -1362,7 +1375,8 @@ async function updateShare() {
   const url=new URL(location.pathname,location.origin);
   url.hash=payload.type==='level'?`level=${payload.sourceId}&view=${view}`:`v1=${compact(payload)}`;
   const tooLarge=url.href.length>8192;
-  $<HTMLTextAreaElement>('share-link').value=tooLarge?'This recipe needs a file to travel. Use Download JSON.':url.href;
+  $<HTMLTextAreaElement>('share-link').value=tooLarge?'This recipe is too large for a link. Choose Download puzzle.':url.href;
+  if(tooLarge)$('share-message').textContent='Open the file through Menu → Save & open → Import progress from file.';
   ($('copy-link') as HTMLButtonElement).disabled=tooLarge;($('download-artifact') as HTMLButtonElement).disabled=false;$('download-artifact').hidden=!tooLarge;
   $('share-description').textContent=kind==='level'?'A fresh start on this puzzle.':kind==='challenge'?'Your flight sets their targets. Your recipe stays hidden.':'Your construction, ready to change.';
 }

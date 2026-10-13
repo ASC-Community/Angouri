@@ -254,7 +254,7 @@ test('Notes keep independent reference examples while puzzle sketches require ex
   await page.keyboard.press('Escape');await ready(page,67);const before=await snapshot(page);await page.locator('#hints-open').click();
   await expect(page.locator('#hint-notes')).toBeVisible();
   await expect(page.locator('#hint-sketch-toggle')).toBeHidden();await expect(page.locator('#hint-sketch')).toBeEmpty();
-  await page.getByRole('button',{name:'Another hint',exact:true}).click();
+  await page.getByRole('button',{name:'Reveal another hint',exact:true}).click();
   await expect(page.locator('#hints-content')).toContainText('midpoint');await expect(page.locator('#hints-content')).not.toContainText('x=1');await expect(page.locator('#hints-content')).not.toContainText('DAHFSINAQNAQ');await expect(page.locator('.katex-error')).toHaveCount(0);
   await expect(page.locator('#hint-sketch')).toBeEmpty();await page.locator('#hint-sketch-toggle').click();
   await expect(page.locator('#hint-sketch')).toHaveAttribute('aria-busy','false');await expect(page.locator('#hint-sketch svg').first()).toBeVisible();

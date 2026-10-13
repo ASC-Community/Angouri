@@ -61,10 +61,13 @@ function explicitFinding(state:State,index:number):string|Finding|undefined {
   }
   // The signed-step lesson compares the order of two movable operations before
   // its fixed accumulator. Describe the actual order, not a recipe to copy.
-  if(state.sourceId===62&&ops.includes('F')&&ops.includes('S'))return ops.indexOf('F')<ops.indexOf('S')
-    ?'Sine reads rounded inputs. Accumulate follows those step heights as slopes.'
-    :'Floor rounds the wave into signed steps. Their signs make the accumulated path rise, hold or fall.';
-  if(state.sourceId===61)return `Sine maps the integer steps through the repeating heights ${tex('0,1,0,-1')}.`;
+  if(state.sourceId===62&&ops.includes('F')&&ops.includes('S'))return {
+    text:ops.indexOf('F')<ops.indexOf('S')
+      ?'Sine turns the rounded inputs into step heights. Accumulate uses those heights as slopes.'
+      :'Floor rounds the wave into steps. Accumulate rises, holds or falls with their signs.',
+    indices:ops.map((_,i)=>i)
+  };
+  if(state.sourceId===61)return {text:`The rounded heights feed Sine’s repeating pattern: ${tex('0,1,0,-1')}.`,indices:ops.map((_,i)=>i)};
   if(state.sourceId===58)return before.includes('F')
     ?'Negating the rounded steps reverses their heights; each closed endpoint stays at the same horizontal position.'
     :'Negating before Floor reverses the steps and changes which end of each step is closed.';

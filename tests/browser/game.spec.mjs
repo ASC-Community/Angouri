@@ -549,7 +549,7 @@ test('ten chapters cover 70 puzzles, then end with a chapter record and AngouriM
   expect(await snapshot(page)).toEqual(finalRecipe);expect(await page.evaluate(()=>window.angouri.history)).toEqual(history);
   await page.locator('#ending-create').click();await expect(page.locator('#leave-dialog')).toBeVisible();await discardNavigation(page);await idle(page);expect((await snapshot(page)).mode).toBe('remix');expect((await snapshot(page)).circle).toEqual(finalRecipe.circle);
   await choosePuzzle(page,4);for(const op of ['Q','H','H','N','A'])await place(page,op);await throwIt(page);
-  expect((await snapshot(page)).nodes).toHaveLength(5);await expect(page.locator('#success')).toContainText('Try fewer blocks?');
+  expect((await snapshot(page)).nodes).toHaveLength(5);await expect(page.locator('#success')).toContainText('All targets!');
 });
 
 test('finishing after jumping ahead celebrates that flight without claiming unfinished chapters',async({page})=>{
