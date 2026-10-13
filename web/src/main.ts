@@ -100,6 +100,18 @@ const hintOrders=new Set<string>();
 let hintOffered=false,hintCue=false;
 let hintBlockSet='',bestTargetHits=-1,unsuccessfulRevisions=0;
 let initialized = false, pending = 0;
+// Persist the URL of acknowledged play, never a newer link still being checked.
+let acknowledgedEntry=location.hash;
+type WorkspaceIntent={generation:number;entry:string};
+let workspaceGeneration=0;
+const currentIntent=(intent:WorkspaceIntent)=>intent.generation===workspaceGeneration;
+function replaceEntry(entry:string){window.history.replaceState(window.history.state,'',location.pathname+location.search+entry);}
+function beginWorkspaceChange(entry=acknowledgedEntry):WorkspaceIntent {
+  const intent={generation:++workspaceGeneration,entry};
+  const previous=leaveChange;leaveChange=undefined;previous?.cancel();
+  if(previous)$<HTMLDialogElement>('leave-dialog').close();
+  return intent;
+}
 let chain = Promise.resolve();
 let notice = {text:'Tap or drag a block.',kind:''};
 let morphFrame=0, displayedPoints: Result['points'] | undefined,displayedSlope:number|undefined;
@@ -198,7 +210,7 @@ function refreshCompletions() {
 }
 function progress() {
   if(!state)return;
-  const snapshot=clone({schema:1,type:'save',state,slots:railSlots,view,entry:location.hash.slice(0,8192),confirmed:throwWon});
+  const snapshot=clone({schema:1,type:'save',state,slots:railSlots,view,entry:acknowledgedEntry.slice(0,8192),confirmed:throwWon});
   const epoch=progressEpoch,additions=[...pendingWins].filter(([,generation])=>generation===epoch).map(([id])=>id);
   void storageTransactions.run(SAVE,()=>{
     const merged=mergeCompletions(completionRecord(readStored(localStorage,SAVE)),epoch,additions);
@@ -288,7 +300,7 @@ function restoreConfirmedThrow(confirmed:boolean) {
   // Resuming a finished flight must not replay a picture reward or award it again.
   pictureCelebrated=true;pictureCollecting=false;
 }
-function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:RailSlots,requestedView?:View,animateCurve=true,editedId?:string,emptySelection?:number,completeSelection=false,move?:CellMove,options:{confirmed?:boolean}={}) {
+function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:RailSlots,requestedView?:View,animateCurve=true,editedId?:string,emptySelection?:number,completeSelection=false,move?:CellMove,options:{persist?:boolean;confirmed?:boolean}={}) {
   requireOk(reply);
   const firstArrival=!state;
   const previousState=state,previousResult=result,previousPoints=displayedPoints||result?.points,previousSlope=displayedSlope??result?.startSlope,previousProbeX=result?probePoints(result)[probeIndex]?.[0]:undefined;
@@ -378,7 +390,8 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
   insertionIndex=completeSelection?undefined:emptySelection;
   notice={text:emptyPathMessage(result)||(state.circle?'':state.nodes.length?'':choiceActive()?'Choose a block.':'Tap or drag a block.'),kind:''};
   if(history==='clear')restoreConfirmedThrow(options.confirmed===true);
-  progress();render(move&&(completeSelection||movingEmpty)?move.to:emptySelection);
+  if(options.persist!==false)progress();
+  render(move&&(completeSelection||movingEmpty)?move.to:emptySelection);
   if(repeatHint&&hintCue)for(const animation of $('hints-open').getAnimations()) {
     if(animation instanceof CSSAnimation&&animation.animationName==='hint-invite')animation.currentTime=0;
   }
@@ -866,7 +879,8 @@ new ResizeObserver(sizeInspection).observe($('scene'));
 document.fonts.addEventListener('loadingdone',sizeInspection);
 
 function closeDialogs(){document.querySelectorAll<HTMLDialogElement>('dialog[open]').forEach(dialog=>dialog.close());}
-let leaveAction:(()=>Promise<unknown>)|undefined;
+type LeaveChange={intent:WorkspaceIntent;proceed:()=>Promise<unknown>;cancel:()=>void};
+let leaveChange:LeaveChange|undefined;
 function recipeKey(snapshot:Snapshot) {
   const s=snapshot.state;
   return JSON.stringify([s.mode,s.sourceId,s.goals,s.inventory,s.limit,s.circle,s.crop,snapshot.slots.map(id=>id?s.nodes.find(node=>node.id===id)?.op:null)]);
@@ -877,12 +891,22 @@ function unsavedRecipe() {
   const current=recipeKey({state,slots:railSlots});
   return !seeds.some(seed=>{try{return seed.snapshot&&recipeKey(seed.snapshot)===current;}catch{return false;}});
 }
-function changeWorkspace(action:()=>Promise<unknown>,destination:string,carry=false,explanation?:string) {
-  if(!unsavedRecipe()){closeDialogs();void action();return;}
+async function changeWorkspace(action:()=>Promise<unknown>,destination:string,carry=false,explanation?:string,intent=beginWorkspaceChange()) {
+  // Wait outside serial: Save & continue must be able to enqueue its own export.
+  // A queued accepted edit can be the first unsaved work in this workspace.
+  while(pending>0)await chain;
+  if(!currentIntent(intent))return false;
+  if(!unsavedRecipe()){closeDialogs();return action();}
   $('leave-description').textContent=explanation??(carry?'Create carries your construction over. Save this puzzle recipe to resume it later.':`Save your current recipe before opening ${destination}.`);
   $<HTMLInputElement>('leave-name').value=state?.mode==='puzzle'?LEVELS[state.sourceId-1].name:'My flight';
   $('leave-error').hidden=true;
-  open('leave-dialog');leaveAction=action;
+  return new Promise<unknown>(resolve=>{
+    open('leave-dialog');
+    leaveChange={intent,proceed:async()=>resolve(currentIntent(intent)?await action():false),cancel:()=>{
+      if(currentIntent(intent))replaceEntry(acknowledgedEntry);
+      resolve(false);
+    }};
+  });
 }
 function goToPuzzle(sourceId:number,protect=true) {
   if(state?.mode==='puzzle'&&state.sourceId===sourceId) {
@@ -1380,23 +1404,26 @@ $('reset-progress-confirm').onclick=async()=>{
   const reset=await serial(async()=>{
     const reply=await kernel.run(undefined,{type:'level',sourceId:1,mode:'puzzle'});requireOk(reply);
     await replaceProgress(reply,undefined,view,[],'');
-    window.history.replaceState(null,'',location.pathname+location.search);
+    acknowledgedEntry='';window.history.replaceState(null,'',location.pathname+location.search);
     accept(reply,'clear');return true;
   });
   confirm.disabled=false;cancel.disabled=false;
   if(reset){closeDialogs();requestAnimationFrame(()=>focusGameControl());$('move-announcement').textContent='Puzzle progress reset. Chapter 1 is ready.';}
   else {$('reset-progress-error').textContent=notice.text;$('reset-progress-error').hidden=false;}
 };
-$('leave-dialog').addEventListener('close',()=>{leaveAction=undefined;});
-$('leave-discard').onclick=()=>{const action=leaveAction;leaveAction=undefined;closeDialogs();if(action)void action();};
+$('leave-dialog').addEventListener('close',()=>{
+  if($<HTMLDialogElement>('leave-dialog').open)return;
+  const change=leaveChange;leaveChange=undefined;change?.cancel();
+});
+$('leave-discard').onclick=()=>{const change=leaveChange;leaveChange=undefined;closeDialogs();if(change)void change.proceed();};
 $('leave-save').onclick=async()=>{
-  const action=leaveAction;if(!action)return;
+  const change=leaveChange;if(!change)return;
   const save=$<HTMLButtonElement>('leave-save'),discard=$<HTMLButtonElement>('leave-discard');
   save.disabled=true;discard.disabled=true;
   const saved=await saveRecipe($<HTMLInputElement>('leave-name').value);
   save.disabled=false;discard.disabled=false;
-  if(saved&&leaveAction===action){leaveAction=undefined;closeDialogs();void action();}
-  else if(!saved){$('leave-error').textContent=notice.text;$('leave-error').hidden=false;}
+  if(saved&&leaveChange===change){leaveChange=undefined;closeDialogs();void change.proceed();}
+  else if(!saved&&leaveChange===change){$('leave-error').textContent=notice.text;$('leave-error').hidden=false;}
 };
 document.querySelectorAll<HTMLElement>('[data-icon]').forEach(el=>el.innerHTML=icon(el.dataset.icon!,el.matches('.menu-art,.help-art')?32:18));
 renderBrand(document.querySelector<HTMLElement>('.brand')!);
@@ -1583,66 +1610,136 @@ function parseSave(value:unknown) {
   if(data.progressEpoch!==undefined&&(typeof data.progressEpoch!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(data.progressEpoch))||data.confirmed!==undefined&&typeof data.confirmed!=='boolean')throw new Error('The progress file has invalid fields.');
   if(!Array.isArray(data.completed)||data.completed.length>LEVELS.length||!data.completed.every(n=>Number.isInteger(n)&&n>=1&&n<=LEVELS.length)||!isView(data.view)||!data.state)throw new Error('The progress file has invalid fields.');
   if(data.slots!==undefined&&(!Array.isArray(data.slots)||data.slots.length>65||!data.slots.every(id=>id===null||typeof id==='string'&&/^[A-Za-z0-9_-]{1,64}$/.test(id))))throw new Error('The saved recipe slots are invalid.');
-  return {state:data.state as State,slots:data.slots as RailSlots|undefined,completed:data.completed as number[],view:data.view};
+  return {state:data.state as State,slots:data.slots as RailSlots|undefined,completed:data.completed as number[],view:data.view,confirmed:data.confirmed===true,progressEpoch:data.progressEpoch as string|undefined};
 }
-function importData(value:unknown,{onEngineFailure,keepDialogs=false}:{onEngineFailure?:(failure:Error)=>void;keepDialogs?:boolean}={}) {
+type ImportOrigin='restore'|'link'|'file'|'library';
+type PreparedImport={origin:ImportOrigin;reply:Response;slots?:RailSlots;view?:View;completed?:number[];confirmed?:boolean};
+type ImportAttempt={kind:'ready';prepared:PreparedImport}|{kind:'invalid';message:string}|{kind:'unavailable';message:string}|{kind:'superseded'};
+const failureMessage=(failure:unknown)=>failure instanceof Error?failure.message:String(failure);
+function prepareImport(value:unknown,origin:ImportOrigin,intent:WorkspaceIntent):Promise<ImportAttempt|undefined> {
   return serial(async()=>{
-    const run=async(snapshot:State|undefined,action:Action)=>{
-      let reply:Response;
-      try {reply=await kernel.run(snapshot,action);}
-      catch(e){onEngineFailure?.(e instanceof Error?e:new Error(String(e)));throw e;}
-      if(reply.status==='error')onEngineFailure?.(new Error(reply.message||'The math engine could not open this recipe. Try again.'));
-      return reply;
-    };
-    if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Choose an Angouri JSON file.');
-    const data={...value,view:canonicalView((value as Record<string,unknown>).view)} as Record<string,unknown>;
-    if(data.type==='save'){const save=parseSave(data);const reply=await run(save.state,{type:'evaluate'});requireOk(reply);completed=new Set(save.completed);accept(reply,'clear',save.slots,save.view);}
-    else if(data.type==='level'){
-      if(data.schema!==1||Object.keys(data).some(k=>!['schema','type','sourceId','view'].includes(k))||!isView(data.view))throw new Error('Unsupported puzzle link file.');
-      const reply=await run(undefined,{type:'level',sourceId:data.sourceId,mode:'puzzle'});requireOk(reply);accept(reply,'clear',undefined,data.view);
-    } else {const reply=await run(state,{type:'import',artifact:data});requireOk(reply);accept(reply,'clear',undefined,isView(data.view)?data.view:undefined);}
-    if(!keepDialogs)closeDialogs();preferences();return true;
+    if(!currentIntent(intent))return {kind:'superseded'};
+    let snapshot:State|undefined,action:Action,slots:RailSlots|undefined,requestedView:View|undefined,ids:number[]|undefined,confirmed:boolean|undefined;
+    try {
+      if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Choose an Angouri JSON file.');
+      const data={...value,view:canonicalView((value as Record<string,unknown>).view)} as Record<string,unknown>;
+      // Sharing grants no authority to replace local chapter progress. Full
+      // saves belong to the explicit file import and trusted local restoration.
+      if(origin==='link'&&!['level','creation','challenge'].includes(String(data.type)))throw new Error('This is not a shared puzzle or recipe link. Use Import progress from file for a progress save.');
+      if(data.type==='save') {
+        const save=parseSave(data);snapshot=save.state;action={type:'evaluate'};
+        slots=save.slots;requestedView=save.view;ids=save.completed;confirmed=save.confirmed;
+      } else if(data.type==='level') {
+        if(data.schema!==1||Object.keys(data).some(k=>!['schema','type','sourceId','view'].includes(k))||!isView(data.view))throw new Error('Unsupported puzzle link file.');
+        action={type:'level',sourceId:data.sourceId,mode:'puzzle'};requestedView=data.view;
+      } else {snapshot=state;action={type:'import',artifact:data};requestedView=isView(data.view)?data.view:undefined;}
+    }catch(failure){return {kind:'invalid',message:failureMessage(failure)};}
+    let reply:Response;
+    try {reply=await kernel.run(snapshot,action);}
+    catch(failure){return currentIntent(intent)?{kind:'unavailable',message:failureMessage(failure)}:{kind:'superseded'};}
+    if(!currentIntent(intent))return {kind:'superseded'};
+    if(reply.status==='error')return {kind:'unavailable',message:reply.message||'The math engine could not open this recipe. Try again.'};
+    try {requireOk(reply);}catch(failure){return {kind:'invalid',message:failureMessage(failure)};}
+    return {kind:'ready',prepared:{origin,reply,slots,view:requestedView,completed:ids,confirmed}};
   });
 }
+function acceptPreparedImport(prepared:PreparedImport,intent:WorkspaceIntent,persist=true) {
+  return serial(async()=>{
+    if(!currentIntent(intent))return false;
+    if(prepared.completed&&prepared.origin==='file')await replaceProgress(prepared.reply,prepared.slots,prepared.view??view,prepared.completed,intent.entry);
+    else if(prepared.completed&&prepared.origin==='restore')completed=new Set(prepared.completed);
+    acknowledgedEntry=intent.entry;replaceEntry(acknowledgedEntry);
+    accept(prepared.reply,'clear',prepared.slots,prepared.view,true,undefined,undefined,false,undefined,{persist,confirmed:prepared.confirmed});
+    preferences();return true;
+  });
+}
+async function importData(value:unknown,origin:'library'|'file'|'link'='library',intent=beginWorkspaceChange()) {
+  const attempt=await prepareImport(value,origin,intent);
+  if(!attempt||attempt.kind==='superseded'||!currentIntent(intent))return false;
+  if(attempt.kind!=='ready'){replaceEntry(acknowledgedEntry);error(attempt.message);return false;}
+  // Invalid files do not cancel an initial load. Claim navigation only after
+  // validation, provided no newer navigation arrived while the file was read.
+  const transition=origin==='file'?beginWorkspaceChange(intent.entry):intent;
+  const commit=()=>acceptPreparedImport(attempt.prepared,transition);
+  if(origin==='library')return commit();
+  return changeWorkspace(commit,origin==='file'?'this file':'this shared link',false,undefined,transition);
+}
+function linkValue(entry:string):unknown {
+  const fragment=new URLSearchParams(entry.slice(1));
+  if(fragment.has('v1')) {
+    const value=decode(fragment.get('v1')!);
+    if(!value||typeof value!=='object'||!['creation','challenge'].includes(String((value as {type?:unknown}).type)))
+      throw new Error('This is not a shared puzzle or recipe link. Use Import progress from file for a progress save.');
+    return value;
+  }
+  if(fragment.has('level'))return {schema:1,type:'level',sourceId:Number(fragment.get('level')),view:isView(fragment.get('view'))?fragment.get('view'):'flight'};
+}
 $('import-open').onclick=()=>{closeDialogs();$<HTMLInputElement>('import-file').click();};
-$<HTMLInputElement>('import-file').onchange=async()=>{const file=$<HTMLInputElement>('import-file').files?.[0];if(!file)return;try{if(file.size>65536)throw new Error('Files must be smaller than 64 KiB.');await importData(JSON.parse(await file.text()));}catch(e){error(e instanceof Error?e.message:'Could not open this file.');}finally{$<HTMLInputElement>('import-file').value='';}};
-async function start() {
+$<HTMLInputElement>('import-file').onchange=async()=>{
+  const file=$<HTMLInputElement>('import-file').files?.[0];if(!file)return;
+  const intent={generation:workspaceGeneration,entry:acknowledgedEntry};
+  try {
+    if(file.size>65536)throw new Error('Files must be smaller than 64 KiB.');
+    const value=JSON.parse(await file.text());
+    if(currentIntent(intent))await importData(value,'file',intent);
+  }catch(failure){if(currentIntent(intent))error(failureMessage(failure));}
+  finally{$<HTMLInputElement>('import-file').value='';}
+};
+async function start(intent=beginWorkspaceChange(location.hash)) {
   palette();
   const saved=read(SAVE);
   // A new deep link replaces the open workspace, not the chapter record.
   if(saved)try {completed=new Set(parseSave(saved).completed);}catch {/* Invalid saves are handled below. */}
-  let opened=false;
-  const openInitial=async(value:unknown)=>{
-    let failure:Error|undefined;
-    const opened=!!await importData(value,{onEngineFailure:error=>{failure=error;},keepDialogs:true});
-    // A worker failure says nothing about the validity of the saved workspace.
-    // Retry it intact; only invalid input may fall through to a fresh puzzle.
-    if(failure)throw failure;
-    return opened;
+  const savedEntry=saved&&typeof saved==='object'&&(saved as {entry?:unknown}).entry;
+  const restoreEntry=typeof savedEntry==='string'&&(!savedEntry||savedEntry.startsWith('#'))?savedEntry:'';
+  let invalidMessage='',triedSaved=false;
+  const tryOpen=async(value:unknown,origin:ImportOrigin,entry=intent.entry)=>{
+    const attempt=await prepareImport(value,origin,intent);
+    if(!attempt||attempt.kind==='superseded'||!currentIntent(intent))return false;
+    if(attempt.kind==='unavailable')throw new Error(attempt.message);
+    if(attempt.kind==='invalid'){invalidMessage=attempt.message;return false;}
+    return !!await acceptPreparedImport(attempt.prepared,{...intent,entry},origin!=='restore');
   };
   try {
-    const fragment=new URLSearchParams(location.hash.slice(1));
-    if(saved&&typeof saved==='object'&&(saved as {entry?:unknown}).entry===location.hash&&location.hash)opened=await openInitial(saved);
-    if(!opened&&fragment.has('v1'))opened=await openInitial(decode(fragment.get('v1')!));
-    else if(!opened&&fragment.has('level')) {
-      const sourceId=Number(fragment.get('level'));
-      opened=await openInitial({schema:1,type:'level',sourceId,view:isView(fragment.get('view'))?fragment.get('view'):'flight'});
-      // A known puzzle can fail to load transiently. Keep its link and the
-      // existing save recoverable instead of accepting puzzle 1 over them.
-      if(!opened&&Number.isInteger(sourceId)&&sourceId>=1&&sourceId<=LEVELS.length)
-        throw new Error(notice.text||'The requested puzzle could not load. Try again.');
+    if(saved&&savedEntry===intent.entry&&intent.entry) {
+      triedSaved=true;if(await tryOpen(saved,'restore'))return;
     }
-    else if(!opened&&saved)opened=await openInitial(saved);
-    if(!opened){const reply=await kernel.run(undefined,{type:'evaluate'});accept(reply,'clear');if(saved||location.hash)error('The saved or shared file could not be opened. A fresh puzzle is ready.');}
-  }catch(e){$('scene').innerHTML=`<div class="loading-scene"><img src="./favicon.svg" width="56" height="56" alt=""><p>Getting ready to throw.</p><small>${escape(e instanceof Error?e.message:String(e))}</small><button id="retry-engine" class="button primary">Try again</button></div>`;$('retry-engine').onclick=()=>{kernel.restart();void start();};error('The math engine is unavailable. Your saved progress is still on this device.');}
+    if(!currentIntent(intent))return;
+    let incoming:unknown;
+    try {incoming=linkValue(intent.entry);}catch(failure){invalidMessage=failureMessage(failure);}
+    if(incoming!==undefined) {
+      if(await tryOpen(incoming,'link'))return;
+      if(!currentIntent(intent))return;
+      const source=(incoming as {type?:unknown;sourceId?:unknown})?.sourceId;
+      if((incoming as {type?:unknown})?.type==='level'&&Number.isInteger(source)&&Number(source)>=1&&Number(source)<=LEVELS.length)
+        throw new Error(invalidMessage||'The requested puzzle could not load. Try again.');
+    }
+    if(!currentIntent(intent))return;
+    // A rejected link and a saved workspace are independent candidates. Restore
+    // valid local work without rewriting its original durable representation.
+    if(saved&&!triedSaved&&await tryOpen(saved,'restore',invalidMessage?restoreEntry:intent.entry)) {
+      if(invalidMessage)error('This shared link could not be opened. Your saved recipe is ready.');
+      return;
+    }
+    if(!currentIntent(intent))return;
+    if(await tryOpen({schema:1,type:'level',sourceId:1,view},'library',invalidMessage?'':intent.entry)&&invalidMessage)
+      error('The saved or shared file could not be opened. A fresh puzzle is ready.');
+  }catch(failure){
+    if(!currentIntent(intent))return;
+    $('scene').innerHTML=`<div class="loading-scene"><img src="./favicon.svg" width="56" height="56" alt=""><p>Getting ready to throw.</p><small>${escape(failureMessage(failure))}</small><button id="retry-engine" class="button primary">Try again</button></div>`;
+    $('retry-engine').onclick=()=>{kernel.restart();void start();};
+    error('The math engine is unavailable. Your saved progress is still on this device.');
+  }
 }
 void start();
-window.addEventListener('hashchange',()=>{
+window.addEventListener('hashchange',event=>{
+  const intent=beginWorkspaceChange(new URL(event.newURL).hash);
+  if(!initialized){void start(intent);return;}
   try {
-    const fragment=new URLSearchParams(location.hash.slice(1));
-    if(fragment.has('v1'))void importData(decode(fragment.get('v1')!));
-    else if(fragment.has('level'))void importData({schema:1,type:'level',sourceId:Number(fragment.get('level')),view:isView(fragment.get('view'))?fragment.get('view'):'flight'});
-  }catch(e){error(e instanceof Error?e.message:'Could not open this shared link.');}
+    const value=linkValue(intent.entry);
+    if(value!==undefined)void importData(value,'link',intent);
+    else {acknowledgedEntry=intent.entry;replaceEntry(acknowledgedEntry);}
+  }catch(failure){replaceEntry(acknowledgedEntry);error(failureMessage(failure));}
 });
 // Read-only diagnostics for reproducible loading/latency/recovery checks.
 Object.defineProperty(window,'angouri',{value:{get state(){return clone(state);},get slots(){return [...railSlots];},get result(){return clone(result);},get view(){return view;},get flight(){return clone(flight);},get history(){return {undo:undo.length,redo:redo.length};},get measurements(){return clone(kernel.measurements);},restart:()=>kernel.restart(),whenIdle:async()=>{await chain;await storageTransactions.idle();}}});

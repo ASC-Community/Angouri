@@ -919,14 +919,14 @@ test('Equation marks exact decimals with equals and rounded decimals with approx
   await menu(page,'share-open');await page.locator('#share-kind').selectOption('challenge');await idle(page);
   const artifact=JSON.parse(Buffer.from(new URL(await page.locator('#share-link').inputValue()).hash.split('=')[1],'base64url').toString());
   const goal=artifact.goals.find(g=>g.x==='1');goal.y='-8333333/10000000';
-  await page.keyboard.press('Escape');await page.locator('#import-file').setInputFiles({name:'close-match.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(artifact))});await idle(page);
+  await page.keyboard.press('Escape');await page.locator('#import-file').setInputFiles({name:'close-match.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(artifact))});await page.locator('#leave-discard').click();await idle(page);
   for(const op of 'II')await place(page,op);
   const miss=page.locator('.value-table tr[data-status="miss"]');await expect(miss).toHaveCount(1);
   await expect(miss.locator('.decimal-value annotation')).toHaveText(['\\approx -0.8333','\\approx -0.8333']);
   await expect(miss.locator('td:nth-child(3) .exact-value annotation')).toHaveText('-\\frac{5}{6}');
   expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(false);
   artifact.goals.find(g=>g.x==='0').y='1/10000000';artifact.goals.find(g=>g.x==='4').y='-1/8';
-  await page.locator('#import-file').setInputFiles({name:'exact-decimals.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(artifact))});await idle(page);
+  await page.locator('#import-file').setInputFiles({name:'exact-decimals.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(artifact))});await page.locator('#leave-discard').click();await idle(page);
   await expect(page.locator('.value-table tbody tr').first().locator('td:nth-child(2) .decimal-value annotation')).toHaveText('= 1\\times 10^{-7}');
   await expect(page.locator('.value-table tbody tr').last().locator('td:nth-child(2) .decimal-value annotation')).toHaveText('= -0.125');
 });
