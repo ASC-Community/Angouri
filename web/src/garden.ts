@@ -412,13 +412,15 @@ export class Garden {
   private startReveal(version:number) {
     const shell=this.root.querySelector<HTMLElement>('.garden-shell');
     if(!shell)return;
-    if(this.options.reduced()) {
+    const settleReduced=()=>{
+      this.frame=undefined;
       shell.classList.add('is-revealing','trace-complete');
       if(this.revealSource===77)shell.classList.add('show-canonical');
       this.revealMessage();
+      this.endCollection();this.hitTest?.refresh();
       this.completeReveal();
-      return;
-    }
+    };
+    if(this.options.reduced()){settleReduced();return;}
     const paper=this.root.querySelector<SVGSVGElement>('.garden-paper')!,overlay=this.collection!;
     const closed=[74,75,77,83].includes(this.revealSource!);
     const sample=this.samples!.get(this.revealSource!)!;
@@ -437,6 +439,7 @@ export class Garden {
     let last:number|undefined,elapsed=0,placed=false;
     const animate=(time:number)=>{
       if(!this.active||version!==this.generation)return;
+      if(this.options.reduced()){settleReduced();return;}
       // Preserve the visible journey after a slow frame or a backgrounded tab.
       // Wall-clock catch-up would make the picture and moving curve jump ahead.
       last??=time;elapsed+=Math.min(50,Math.max(0,time-last));last=time;

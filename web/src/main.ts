@@ -65,7 +65,10 @@ const canonicalView = (value: unknown) => value==='equations'?'function':value;
 const preference = read(PREF) as {view?:unknown;motion?:unknown;characterShortcuts?:unknown} | undefined;
 const preferredView=canonicalView(preference?.view);
 let view: View = isView(preferredView) ? preferredView : 'flight';
-let reduced = typeof preference?.motion==='boolean' ? preference.motion : matchMedia('(prefers-reduced-motion: reduce)').matches;
+const systemMotion=matchMedia('(prefers-reduced-motion: reduce)');
+// An inferred default stays live; only the player's switch becomes a saved override.
+let motionOverride=typeof preference?.motion==='boolean'?preference.motion:undefined;
+let reduced=motionOverride??systemMotion.matches;
 let characterShortcuts=preference?.characterShortcuts!==false;
 let flight: Flight = {phase:'ready',position:0};
 let throwWon=false;
@@ -183,7 +186,7 @@ const cropEditor=new CropEditor($('construction'),()=>state&&result&&pending===0
     $('flight-spin')?.setAttribute('transform',`rotate(${fruit.degrees})`);
   });
 
-function preferences() { write(PREF,{view,motion:reduced,characterShortcuts}); }
+function preferences() { write(PREF,{view,...(motionOverride===undefined?{}:{motion:motionOverride}),characterShortcuts}); }
 function progress() { if(state) write(SAVE,{schema:1,type:'save',state,slots:railSlots,completed:[...completed],view,entry:location.hash.slice(0,8192)}); }
 let feedbackContent:string|undefined;
 function showNotice() {
@@ -1369,8 +1372,15 @@ $('leave-save').onclick=async()=>{
 document.querySelectorAll<HTMLElement>('[data-icon]').forEach(el=>el.innerHTML=icon(el.dataset.icon!,el.matches('.menu-art,.help-art')?32:18));
 renderBrand(document.querySelector<HTMLElement>('.brand')!);
 $('axis-help').innerHTML=`The dashed ${operationTex()} in a block stands for its input. ${tex('x')} is horizontal position and ${tex('h')} is height. An equation such as ${tex('h=x')} describes the path; ${tex('h^2=x')} can describe two heights at one position. The blocks shape the path; throwing speed does not affect the result.`;
-$<HTMLInputElement>('motion-toggle').checked=reduced;document.body.classList.toggle('reduced-motion',reduced);
-$<HTMLInputElement>('motion-toggle').onchange=()=>{reduced=$<HTMLInputElement>('motion-toggle').checked;document.body.classList.toggle('reduced-motion',reduced);preferences();if(reduced&&(flight.phase==='flying'||flight.phase==='releasing'))finishFlight();render();};
+function reflectMotionPreference() {
+  reduced=motionOverride??systemMotion.matches;
+  $<HTMLInputElement>('motion-toggle').checked=reduced;document.body.classList.toggle('reduced-motion',reduced);
+  if(reduced&&(flight.phase==='flying'||flight.phase==='releasing'))finishFlight();
+  render();
+}
+reflectMotionPreference();
+$<HTMLInputElement>('motion-toggle').onchange=()=>{motionOverride=$<HTMLInputElement>('motion-toggle').checked;preferences();reflectMotionPreference();};
+systemMotion.addEventListener('change',()=>{if(motionOverride===undefined)reflectMotionPreference();});
 function reflectCharacterShortcuts() {
   document.documentElement.dataset.characterShortcuts=String(characterShortcuts);
   $<HTMLInputElement>('character-shortcuts').checked=!characterShortcuts;

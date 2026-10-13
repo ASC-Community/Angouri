@@ -133,7 +133,9 @@ export function installCircleHandles(root:HTMLElement,get:()=>CircleContext|unde
     } finally {previewBusy=false;}
   };
   const cancel=()=>{
+    const pointerId=drag?.id;
     version++;queued=undefined;lastPreview='';drag=undefined;selected=undefined;
+    if(pointerId!==undefined&&root.hasPointerCapture(pointerId))root.releasePointerCapture(pointerId);
     for(const {el,attributes} of [...verdicts,...geometry])for(const [key,value] of attributes){
       if(value===null)el.removeAttribute(key);else el.setAttribute(key,value);
     }
@@ -160,8 +162,11 @@ export function installCircleHandles(root:HTMLElement,get:()=>CircleContext|unde
     return next;
   };
   root.addEventListener('pointerdown',event=>{
+    // This preview and its cancellation snapshot belong to one pointer until
+    // release. Another touch must not replace them with uncommitted artwork.
+    if(drag||event.button!==0||event.pointerType==='touch'&&!event.isPrimary)return;
     const ctx=get(),button=(event.target as Element).closest<HTMLElement>('[data-circle-handle]'),svg=root.querySelector<SVGSVGElement>('#flight-svg'),matrix=svg?.getScreenCTM();
-    if(!ctx||!matrix||event.button!==0||!(event.target as Element).closest('.flight-diagram'))return;
+    if(!ctx||!matrix||!(event.target as Element).closest('.flight-diagram'))return;
     if(!button&&selected) {event.preventDefault();const next=valueAt(event,selected,ctx,matrix);cancel();void commit(next);return;}
     if(!button)return;event.preventDefault();window.getSelection()?.removeAllRanges();button.focus({preventScroll:true});root.setPointerCapture(event.pointerId);
     const [x,y]=coordinateAt(event,ctx,matrix),circle=ctx.state.circle!;
@@ -202,8 +207,9 @@ export function installCircleHandles(root:HTMLElement,get:()=>CircleContext|unde
     }else select(held.control);
   });
   root.addEventListener('click',event=>{const button=(event.target as Element).closest<HTMLElement>('[data-circle-handle]');if(button&&event.detail===0)select(button);});
-  root.addEventListener('pointercancel',cancel);
-  root.addEventListener('lostpointercapture',()=>{if(drag)cancel();});
+  const cancelPointer=(event:PointerEvent)=>{if(drag?.id===event.pointerId)cancel();};
+  root.addEventListener('pointercancel',cancelPointer);
+  root.addEventListener('lostpointercapture',cancelPointer);
   root.addEventListener('keydown',event=>{
     if(event.defaultPrevented||event.isComposing||event.altKey||event.ctrlKey||event.metaKey)return;
     if(event.key==='Escape'){if(drag||selected){event.preventDefault();cancel();}return;}
