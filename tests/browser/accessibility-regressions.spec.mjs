@@ -43,10 +43,10 @@ test('both crop ranges retain view, menu, throw and history shortcuts',async({pa
   }
 });
 
-for(const kind of ['crop','circle'])test(`${kind} exact fields preserve drafts for composing, modified and handled Enter or Escape`,async({page})=>{
+for(const [kind,field,draft,discarded] of [['crop','from','1/2','1'],['crop','to','3','2'],['circle','radius','1','3/4']])test(`${kind} ${field} exact fields preserve drafts for composing, modified and handled Enter or Escape`,async({page})=>{
   if(kind==='crop')await createCrop(page);else await ready(page,43);
-  const input=page.locator(kind==='crop'?'[data-crop-exact="to"]':'[data-circle-value="radius"]');
-  const draft=kind==='crop'?'3':'1',discarded=kind==='crop'?'2':'3/4',before=await snapshot(page);
+  const input=page.locator(kind==='crop'?`[data-crop-exact="${field}"]`:`[data-circle-value="${field}"]`);
+  const before=await snapshot(page);
   await input.fill(draft);
   for(const key of ['Enter','Escape'])for(const options of guardedKeys) {
     expect(await guardedKey(input,key,options),`${key} ${JSON.stringify(options)}`).toEqual({prevented:!!options.handled,connected:true});
@@ -55,10 +55,13 @@ for(const kind of ['crop','circle'])test(`${kind} exact fields preserve drafts f
   }
   await input.press('Enter');await idle(page);
   const committed=await snapshot(page);
-  expect(kind==='crop'?committed.state.crop.to:committed.state.circle.radius).toBe(draft);
+  expect(kind==='crop'?committed.state.crop[field]:committed.state.circle[field]).toBe(draft);
   expect(committed.history.undo).toBe(before.history.undo+1);
   expect(await page.evaluate(()=>window.angouri.flight.phase)).toBe('ready');
   await input.fill(discarded);await input.press('Escape');await idle(page);
+  await expect(input).toHaveValue(draft);await expect(input).toBeFocused();expect(await snapshot(page)).toEqual(committed);
+  // Leaving the restored field cannot commit the discarded draft later.
+  await page.keyboard.press('Tab');await expect(input).not.toBeFocused();await idle(page);
   await expect(input).toHaveValue(draft);expect(await snapshot(page)).toEqual(committed);
 });
 

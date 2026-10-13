@@ -68,7 +68,14 @@ export class CropEditor {
       if(event.defaultPrevented||event.isComposing||event.altKey||event.ctrlKey||event.metaKey||event.shiftKey)return;
       if(!(event.target as HTMLElement).matches('[data-crop-range],[data-crop-exact]'))return;
       if(event.key==='Escape'&&(event.target as HTMLElement).matches('[data-crop-range]')&&!this.held)return;
-      if(event.key==='Escape'){event.preventDefault();event.stopPropagation();this.cancel();const context=this.context();if(context)this.restore(context.result);}
+      if(event.key==='Escape') {
+        event.preventDefault();event.stopPropagation();
+        // Discard a typed draft before restoring. Chromium commits a focused,
+        // changed field with a change event as the restore render removes it.
+        const input=event.target as HTMLInputElement,key=input.dataset.cropExact as keyof Crop|undefined,acknowledged=this.context()?.state.crop;
+        if(key&&acknowledged)input.value=acknowledged[key];
+        this.cancel();const context=this.context();if(context)this.restore(context.result);
+      }
       if(event.key==='Enter'&&(event.target as HTMLElement).matches('[data-crop-exact]')){event.preventDefault();event.stopPropagation();(event.target as HTMLInputElement).dispatchEvent(new Event('change',{bubbles:true}));}
     });
     root.addEventListener('pointercancel',()=>this.cancel());
