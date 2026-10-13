@@ -431,7 +431,11 @@ test('view tabs follow the focused tab while Tab and Shift+Tab keep native order
   await expect(page.locator('#scene')).toHaveAttribute('aria-labelledby','tab-flow');
 
   await page.keyboard.press('Shift+Tab');
+  await expect(page.locator('#ideas-open')).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
   await expect(page.locator('#menu-open')).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#ideas-open')).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(flow).toBeFocused();
   await page.keyboard.press('Tab');
