@@ -48,9 +48,30 @@ const SAVE = 'angouri:vine:v1:progress', PREF = 'angouri:vine:v1:preferences', S
 const views: View[] = ['flight','function','flow'];
 const clone = <T>(value: T): T => structuredClone(value);
 const failedStorage=new Set<string>();
+// The exact primary progress bytes that this page must not replace: unreadable
+// or unsupported data, a kernel-rejected workspace, a restore still in flight or
+// temporarily unavailable, or an unread primary (raw undefined). Neither
+// progress writer may replace it; play continues as a session-only draft.
+// A deliberate change archives known bytes once, under the candidate's stable
+// backup key, in the same transaction that replaces them.
+type SaveCandidate={raw:string|undefined;status:'pending'|'unavailable'|'rejected'|'malformed'|'oversized'|'unsupported';reason:string;completion?:CompletionRecord;backup?:string};
+let savedCandidate:SaveCandidate|undefined;
+const protecting=()=>!!savedCandidate;
+// Unread primary bytes cannot be archived, and a restore still in flight is not yet a failure.
+const archivable=(candidate:SaveCandidate|undefined):candidate is SaveCandidate=>!!candidate&&candidate.raw!==undefined&&candidate.status!=='pending';
+// Exact primary bytes this page may replace: its own committed write or bytes
+// the kernel restored. Writers compare them inside each SAVE transaction.
+let trustedRaw:string|undefined;
+// Only a committed write of the latest progress revision, with no newer write
+// queued, claims that progress is saved; never a preference or library write,
+// or a verified restore under a newer draft.
+let progressSaved=false,progressRevision=0,queuedSaves=0;
+function renderStorageStatus() {
+  $('save-status').innerHTML=protecting()?'Session only · Saved progress kept unchanged · Export to keep new play':failedStorage.size?'Session only · Export to keep your progress':queuedSaves?'Saving…':progressSaved?'<span class="status-dot"></span> Saved on this device':'Progress stays on this device';
+}
 function storageStatus(key:string,available:boolean) {
   if(available)failedStorage.delete(key);else failedStorage.add(key);
-  $('save-status').innerHTML=!failedStorage.size?'<span class="status-dot"></span> Saved on this device':'Session only · Export to keep your progress';
+  renderStorageStatus();
 }
 function read(key: string,maxLength=65536): unknown {
   let s: string | null;
@@ -217,42 +238,170 @@ const cropEditor=new CropEditor($('construction'),()=>state&&result&&pending===0
   });
 
 function preferences() { write(PREF,{view,...(motionOverride===undefined?{}:{motion:motionOverride}),characterShortcuts}); }
+// The latest readable completion record this tab adopted. A recovery of
+// unreadable bytes keeps it rather than discarding acknowledged wins.
+let acknowledgedCompletion:CompletionRecord={progressEpoch,completed:[]};
 function adoptCompletions(record:CompletionRecord) {
+  acknowledgedCompletion={progressEpoch:record.progressEpoch,completed:[...record.completed]};
   progressEpoch=record.progressEpoch;
   for(const [id,epoch] of pendingWins)if(epoch!==progressEpoch)pendingWins.delete(id);
   completed=new Set([...record.completed,...pendingWins.keys()]);
 }
-async function refreshCompletions() {
-  try{adoptCompletions(completionRecord(parseStored(await storageTransactions.read(SAVE))));return true;}
-  catch{storageStatus(SAVE,false);return false;}
+// An absent record has no completions; otherwise read only fields shaped as a
+// supported save writes them. Opaque or foreign values never clear completions.
+function readableCompletion(value:unknown):CompletionRecord|undefined {
+  if(value===undefined)return completionRecord(undefined);
+  if(!value||typeof value!=='object'||Array.isArray(value))return undefined;
+  const {progressEpoch:epoch,completed:ids}=value as Record<string,unknown>;
+  if(epoch!==undefined&&(typeof epoch!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(epoch)))return undefined;
+  if(!Array.isArray(ids)||ids.length>LEVELS.length||!ids.every(id=>Number.isInteger(id)&&id>=1&&id<=LEVELS.length))return undefined;
+  return completionRecord(value);
 }
-function progress(award?:number) {
+// Classify canonical bytes without normalizing them. Structural support is not
+// proof that the kernel can restore the workspace.
+function inspectSave(raw:string|null):{value?:unknown;failure?:Omit<SaveCandidate,'raw'>} {
+  if(raw===null)return {};
+  let value:unknown;
+  try{value=parseStored(raw);}
+  catch(failure){return {failure:{status:raw.length>65536?'oversized':'malformed',reason:failureMessage(failure)}};}
+  const completion=readableCompletion(value);
+  if(!value||typeof value!=='object'||Array.isArray(value))return {value,failure:{status:'unsupported',reason:'The saved progress is not a progress record.',completion}};
+  try{parseSave(value);}catch(failure){return {value,failure:{status:'unsupported',reason:failureMessage(failure),completion}};}
+  return {value};
+}
+function protectSave(candidate:SaveCandidate|undefined){savedCandidate=candidate;if(candidate)progressSaved=false;renderStorageStatus();}
+// Readable metadata in newly protected bytes is the latest durable record:
+// wins earned from now on belong to its epoch, while earlier ones stay stale.
+// Callers adopt only bytes they have just read as canonical.
+function protectVerified(candidate:SaveCandidate){protectSave(candidate);if(candidate.completion){adoptCompletions(candidate.completion);renderLevels();}}
+// Unknown canonical bytes (another tab's write) are validated outside any
+// transaction. A kernel rejection protects them; a temporary failure only
+// fails this write, so the next one checks again.
+async function verifySave(raw:string) {
+  const {value,failure}=inspectSave(raw);
+  if(failure){if(!savedCandidate)protectVerified({raw,...failure});return false;}
+  let reply:Response;
+  try{reply=await kernel.run(parseSave(value).state,{type:'evaluate'},'background');}catch{return false;}
+  // Trust covers only these exact bytes; every writer compares them again in its transaction.
+  if(reply.status==='ok'&&reply.state&&reply.result){trustedRaw=raw;return true;}
+  if(reply.status==='error'||savedCandidate)return false;
+  // While the kernel ran, another tab may have replaced these bytes and this
+  // tab adopted the newer record. Only bytes still canonical are protected; a
+  // failed check protects, trusts and adopts nothing.
+  let current:string|null;
+  try{current=await storageTransactions.read(SAVE);}catch{return false;}
+  if(current===raw&&!savedCandidate)protectVerified({raw,status:'rejected',reason:reply.message||'The saved recipe could not be opened.',completion:readableCompletion(value)});
+  return false;
+}
+const blocked=Symbol('blocked'),stale=Symbol('stale');
+type SaveChange<T>=(raw:string|null,archived?:SaveCandidate)=>{raw?:string;result:T};
+// Both progress writers queue here, so a write waiting on validation cannot
+// land after a later write. The transform never awaits; when canonical bytes
+// are neither absent nor trusted it writes nothing, and only bytes verified
+// meanwhile, still identical in the next transaction, may be replaced. A
+// protected candidate is replaced only by a write granted its archive, while
+// its exact bytes are still canonical; the immutable copy commits atomically.
+// A write queued behind an authorized archive runs only once that archive
+// has committed; it never archives itself.
+let saving:Promise<unknown>=Promise.resolve(),archiving=0;
+function writeSave<T>(change:SaveChange<T>,archive?:SaveCandidate):Promise<T|typeof blocked|typeof stale> {
+  queuedSaves++;if(archive)archiving++;
+  const task=saving.then(async()=>{
+    for(let check=0;check<2;check++) {
+      let unknown:string|undefined,written:string|undefined;
+      const result=await storageTransactions.change<T|typeof blocked|typeof stale>(SAVE,raw=>{
+        if(savedCandidate) {
+          if(!archive||archive!==savedCandidate||!archivable(archive))return {result:blocked};
+          // Another tab replaced these bytes; never overwrite or re-archive them under a stale identity.
+          if(raw!==archive.raw)return {result:stale};
+          const next=change(raw,archive);if(next.raw===undefined)return next;
+          written=next.raw;return {...next,backup:{key:archive.backup??=`${SAVE}:recovery:${new Date().toISOString()}:${crypto.randomUUID()}`,raw}};
+        }
+        if(raw!==null&&raw!==trustedRaw){unknown=raw;return {result:blocked};}
+        const next=change(raw);written=next.raw;return next;
+      });
+      // The transaction committed; these exact bytes are now this page's own.
+      if(written!==undefined){trustedRaw=written;if(archive&&savedCandidate===archive)protectSave(undefined);}
+      if(unknown===undefined||!await verifySave(unknown))return result;
+    }
+    return blocked;
+  }).finally(()=>{queuedSaves--;if(archive)archiving--;});
+  saving=task.catch(()=>{});
+  return task;
+}
+async function savesIdle(){for(;;){const current=saving;await current;await storageTransactions.idle();if(current===saving)return;}}
+// A restore result affects only the candidate it was started for. Kernel
+// success, current or obsolete, proves those exact bytes restorable; a stale
+// failure cannot relabel the candidate a newer start now owns.
+function settleSave(candidate:SaveCandidate,intent:WorkspaceIntent,attempt:ImportAttempt) {
+  if(savedCandidate!==candidate||candidate.raw===undefined)return;
+  if(attempt.kind==='ready'||attempt.kind==='superseded'&&attempt.restorable){trustedRaw=candidate.raw;protectSave(undefined);return;}
+  if(!currentIntent(intent)||attempt.kind==='superseded')return;
+  candidate.status=attempt.kind==='invalid'?'rejected':'unavailable';candidate.reason=attempt.message;renderStorageStatus();
+}
+const protectedNotice=()=>archivable(savedCandidate)
+  ? 'Your saved progress could not be opened, so it stays unchanged on this device. Your next change keeps a recovery copy of it and saves this recipe.'
+  : 'Saved progress could not be read from this device, so it stays unchanged. New play is session only; export progress to keep it.';
+const protectedReplacement='Saved progress on this device could not be read, so it cannot be replaced yet. Your current recipe and completions are unchanged; export progress to keep them, then reload.';
+const staleNotice='Saved progress changed in another tab, so this tab did not replace it. Your recipe here is unchanged; export progress to keep it, then reload.';
+// Startup and restore refreshes adopt only while their navigation still owns the page.
+async function refreshCompletions(owns=()=>true) {
+  try{const record=readableCompletion(parseStored(await storageTransactions.read(SAVE)));if(!owns())return false;if(record)adoptCompletions(record);return true;}
+  catch{if(owns())storageStatus(SAVE,false);return false;}
+}
+// Only an accepted edit or deliberate workspace change may archive protected
+// bytes; view, preference, award and automatic writes leave them exact.
+function progress(award?:number,deliberate=false) {
   if(!state)return;
+  const archive=deliberate&&archivable(savedCandidate)?savedCandidate:undefined;
+  // An earlier save does not cover this newer workspace until it commits.
+  const revision=++progressRevision;progressSaved=false;
+  // Protected bytes stay exact unless this change, or one already queued, holds the archive.
+  if(protecting()&&!archive&&!archiving){renderStorageStatus();return;}
   const snapshot=clone({schema:1,type:'save',state,slots:railSlots,view,entry:acknowledgedEntry.slice(0,8192),confirmed:throwWon});
   const epoch=progressEpoch,additions=[...pendingWins].filter(([,generation])=>generation===epoch).map(([id])=>id);
-  void storageTransactions.change(SAVE,raw=>{
-    const merged=mergeCompletions(completionRecord(parseStored(raw)),epoch,additions);
+  void writeSave((raw,archived)=>{
+    // Recovery keeps readable completion IDs and their epoch; it is not a reset.
+    // Unreadable bytes keep this tab's acknowledged record; a readable one, even
+    // of a newer epoch, decides alone.
+    const merged=mergeCompletions(archived?archived.completion??acknowledgedCompletion:completionRecord(parseStored(raw)),epoch,additions);
     // A deliberate new throw awards against the latest durable generation,
     // including a reset this tab has not observed. Autosave never does that.
     if(award!==undefined)merged.completed=[...new Set([...merged.completed,award])];
     return {raw:JSON.stringify({...snapshot,...merged}),result:merged};
-  }).then(async()=>{
+  },archive).then(async merged=>{
+    // A blocked write keeps pending wins and makes no save claim.
+    if(merged===stale)error(staleNotice);
+    if(merged===blocked||merged===stale){if(!protecting())storageStatus(SAVE,false);else renderStorageStatus();return;}
     for(const id of additions)if(pendingWins.get(id)===epoch)pendingWins.delete(id);
-    storageStatus(SAVE,true);announceStorage(SAVE);await refreshCompletions();renderLevels();
+    // The commit acknowledges its exact metadata even if the reread below fails.
+    adoptCompletions(merged);
+    progressSaved=revision===progressRevision;storageStatus(SAVE,true);announceStorage(SAVE);await refreshCompletions();renderLevels();
   }).catch(()=>storageStatus(SAVE,false));
+  renderStorageStatus();
 }
 function recordCompletion(id:number) {
   pendingWins.set(id,progressEpoch);completed.add(id);progress(id);
 }
 async function replaceProgress(reply:Response,slots:RailSlots|undefined,nextView:View,ids:number[],entry:string,owns=()=>true) {
   requireOk(reply);
+  if(!owns())return false;
+  // Confirmed replacement archives protected bytes in its own transaction.
+  const archive=archivable(savedCandidate)?savedCandidate:undefined;
+  if(protecting()&&!archive)throw new Error(protectedReplacement);
   const record={progressEpoch:crypto.randomUUID(),completed:[...new Set(ids)]};
   const snapshot={schema:1,type:'save',state:reply.state,slots:normalizeSlots(reply.state,slots),view:nextView,entry,confirmed:false,...record};
-  let written:boolean;
-  try{written=await storageTransactions.change(SAVE,()=>owns()?{raw:JSON.stringify(snapshot),result:true}:{result:false});}
-  catch{storageStatus(SAVE,false);throw new Error('Could not save the new progress on this device. Your current recipe and completions are unchanged. Try again.');}
-  if(!written)return false;
-  storageStatus(SAVE,true);announceStorage(SAVE);
+  const failed='Could not save the new progress on this device. Your current recipe and completions are unchanged. Try again.';
+  let written:boolean|typeof blocked|typeof stale;
+  const revision=++progressRevision;progressSaved=false;
+  const write=writeSave(()=>owns()?{raw:JSON.stringify(snapshot),result:true}:{result:false},archive);renderStorageStatus();
+  try{written=await write;}
+  catch{storageStatus(SAVE,false);throw new Error(failed);}
+  renderStorageStatus();
+  if(written===false||written!==true&&!owns())return false;
+  if(written===stale)throw new Error(staleNotice);
+  if(written===blocked){if(!protecting())storageStatus(SAVE,false);throw new Error(protecting()?protectedReplacement:failed);}
+  progressSaved=revision===progressRevision;storageStatus(SAVE,true);announceStorage(SAVE);
   if(!owns())return false;
   pendingWins.clear();if(!await refreshCompletions())adoptCompletions(record);
   return owns();
@@ -289,7 +438,7 @@ function serial<T>(work: ()=>Promise<T>,retainCirclePreview=false): Promise<T | 
   cropEditor.cancel();
   if(!retainCirclePreview)cancelCirclePickup();
   pending++; $('playground').setAttribute('aria-busy','true');updatePrimary();
-  const task=chain.then(async()=>{const value=await work();await storageTransactions.idle();return value;});
+  const task=chain.then(async()=>{const value=await work();await savesIdle();return value;});
   chain=task.then(()=>{},e=>{
     const message=e instanceof Error?e.message:String(e);
     error(message==='Engine interrupted'||message==='Engine recovery failed'
@@ -414,7 +563,7 @@ function accept(reply: Response, history: 'push'|'keep'|'clear' = 'push',slots?:
   insertionIndex=completeSelection?undefined:emptySelection;
   notice={text:emptyPathMessage(result)||(state.circle?'':state.nodes.length?'':choiceActive()?'Choose a block.':'Tap or drag a block.'),kind:''};
   if(history==='clear')restoreConfirmedThrow(options.confirmed===true);
-  if(options.persist!==false)progress();
+  if(options.persist!==false)progress(undefined,history==='clear'||!!changed||layoutChanged);
   render(move&&(completeSelection||movingEmpty)?move.to:emptySelection);
   if(repeatHint&&hintCue)for(const animation of $('hints-open').getAnimations()) {
     if(animation instanceof CSSAnimation&&animation.animationName==='hint-invite')animation.currentTime=0;
@@ -1695,41 +1844,48 @@ function parseSave(value:unknown) {
 }
 type ImportOrigin='restore'|'link'|'file'|'library';
 type PreparedImport={origin:ImportOrigin;reply:Response;slots?:RailSlots;view?:View;completed?:number[];confirmed?:boolean};
-type ImportAttempt={kind:'ready';prepared:PreparedImport}|{kind:'invalid';message:string}|{kind:'unavailable';message:string}|{kind:'superseded'};
+type ImportAttempt={kind:'ready';prepared:PreparedImport}|{kind:'invalid';message:string}|{kind:'unavailable';message:string}|{kind:'superseded';restorable?:boolean};
 const failureMessage=(failure:unknown)=>failure instanceof Error?failure.message:String(failure);
-function prepareImport(value:unknown,origin:ImportOrigin,intent:WorkspaceIntent):Promise<ImportAttempt|undefined> {
+// A restore attempt reports its kernel outcome to its own saved-work candidate,
+// even when a newer navigation has superseded the workspace change.
+function prepareImport(value:unknown,origin:ImportOrigin,intent:WorkspaceIntent,candidate?:SaveCandidate):Promise<ImportAttempt|undefined> {
   return serial(async()=>{
-    if(!currentIntent(intent))return {kind:'superseded'};
-    let snapshot:State|undefined,action:Action,slots:RailSlots|undefined,requestedView:View|undefined,ids:number[]|undefined,confirmed:boolean|undefined;
-    try {
-      if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Choose an Angouri JSON file.');
-      const data={...value,view:canonicalView((value as Record<string,unknown>).view)} as Record<string,unknown>;
-      // Sharing grants no authority to replace local chapter progress. Full
-      // saves belong to the explicit file import and trusted local restoration.
-      if(origin==='link'&&!['level','creation','challenge'].includes(String(data.type)))throw new Error('This is not a shared puzzle or recipe link. Use Import progress from file for a progress save.');
-      if(data.type==='save') {
-        const save=parseSave(data);snapshot=save.state;action={type:'evaluate'};
-        slots=save.slots;requestedView=save.view;ids=save.completed;confirmed=save.confirmed;
-      } else if(data.type==='level') {
-        if(data.schema!==1||Object.keys(data).some(k=>!['schema','type','sourceId','view'].includes(k))||!isView(data.view))throw new Error('Unsupported puzzle link file.');
-        action={type:'level',sourceId:data.sourceId,mode:'puzzle'};requestedView=data.view;
-      } else {snapshot=state;action={type:'import',artifact:data};requestedView=isView(data.view)?data.view:undefined;}
-    }catch(failure){return {kind:'invalid',message:failureMessage(failure)};}
-    let reply:Response;
-    try {reply=await kernel.run(snapshot,action);}
-    catch(failure){return currentIntent(intent)?{kind:'unavailable',message:failureMessage(failure)}:{kind:'superseded'};}
-    if(!currentIntent(intent))return {kind:'superseded'};
-    if(reply.status==='error')return {kind:'unavailable',message:reply.message||'The math engine could not open this recipe. Try again.'};
-    try {requireOk(reply);}catch(failure){return {kind:'invalid',message:failureMessage(failure)};}
-    return {kind:'ready',prepared:{origin,reply,slots,view:requestedView,completed:ids,confirmed}};
+    const attempt=await prepareAttempt(value,origin,intent);
+    if(candidate)settleSave(candidate,intent,attempt);
+    return attempt;
   });
+}
+async function prepareAttempt(value:unknown,origin:ImportOrigin,intent:WorkspaceIntent):Promise<ImportAttempt> {
+  if(!currentIntent(intent))return {kind:'superseded'};
+  let snapshot:State|undefined,action:Action,slots:RailSlots|undefined,requestedView:View|undefined,ids:number[]|undefined,confirmed:boolean|undefined;
+  try {
+    if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Choose an Angouri JSON file.');
+    const data={...value,view:canonicalView((value as Record<string,unknown>).view)} as Record<string,unknown>;
+    // Sharing grants no authority to replace local chapter progress. Full
+    // saves belong to the explicit file import and trusted local restoration.
+    if(origin==='link'&&!['level','creation','challenge'].includes(String(data.type)))throw new Error('This is not a shared puzzle or recipe link. Use Import progress from file for a progress save.');
+    if(data.type==='save') {
+      const save=parseSave(data);snapshot=save.state;action={type:'evaluate'};
+      slots=save.slots;requestedView=save.view;ids=save.completed;confirmed=save.confirmed;
+    } else if(data.type==='level') {
+      if(data.schema!==1||Object.keys(data).some(k=>!['schema','type','sourceId','view'].includes(k))||!isView(data.view))throw new Error('Unsupported puzzle link file.');
+      action={type:'level',sourceId:data.sourceId,mode:'puzzle'};requestedView=data.view;
+    } else {snapshot=state;action={type:'import',artifact:data};requestedView=isView(data.view)?data.view:undefined;}
+  }catch(failure){return {kind:'invalid',message:failureMessage(failure)};}
+  let reply:Response;
+  try {reply=await kernel.run(snapshot,action);}
+  catch(failure){return currentIntent(intent)?{kind:'unavailable',message:failureMessage(failure)}:{kind:'superseded'};}
+  if(!currentIntent(intent))return {kind:'superseded',restorable:reply.status==='ok'&&!!reply.state&&!!reply.result};
+  if(reply.status==='error')return {kind:'unavailable',message:reply.message||'The math engine could not open this recipe. Try again.'};
+  try {requireOk(reply);}catch(failure){return {kind:'invalid',message:failureMessage(failure)};}
+  return {kind:'ready',prepared:{origin,reply,slots,view:requestedView,completed:ids,confirmed}};
 }
 function acceptPreparedImport(prepared:PreparedImport,intent:WorkspaceIntent,persist=true) {
   return serial(async()=>{
     if(!currentIntent(intent))return false;
     if(prepared.completed&&prepared.origin==='file') {
       if(!await owned(intent,replaceProgress(prepared.reply,prepared.slots,prepared.view??view,prepared.completed,intent.entry,()=>currentIntent(intent))))return false;
-    } else if(prepared.origin==='restore')await refreshCompletions();
+    } else if(prepared.origin==='restore')await refreshCompletions(()=>currentIntent(intent));
     if(!currentIntent(intent))return false;
     acknowledge(intent);
     accept(prepared.reply,'clear',prepared.slots,prepared.view,true,undefined,undefined,false,undefined,{persist,confirmed:prepared.confirmed});
@@ -1771,30 +1927,58 @@ $<HTMLInputElement>('import-file').onchange=async()=>{
 };
 async function start(intent=beginWorkspaceChange(location.hash)) {
   palette();
-  let saved:unknown,raw:string|null;
+  let raw:string|null,primary=true;
   try{raw=await storageTransactions.read(SAVE);}
-  catch{storageStatus(SAVE,false);try{raw=localStorage.getItem(SAVE);}catch{raw=null;}}
-  try{saved=parseStored(raw);adoptCompletions(completionRecord(saved));}catch{/* Preserve unreadable bytes; an autosave will refuse to replace them. */}
-  await refreshLibrary();
+  // The compatibility mirror may still open a session draft, but it is not
+  // proof of the primary bytes and grants no authority to replace them.
+  catch{primary=false;try{raw=localStorage.getItem(SAVE);}catch{raw=null;}}
+  // An obsolete startup changes no metadata, status or protection.
+  if(!currentIntent(intent))return;
+  if(!primary)storageStatus(SAVE,false);
+  const inspected=inspectSave(raw),saved=inspected.failure?undefined:inspected.value;
+  const completion=inspected.failure?inspected.failure.completion:readableCompletion(inspected.value);
+  // An unread primary is unknown, not absent: keep acknowledged completions.
+  if(primary&&completion)adoptCompletions(completion);
+  const savedFirst=!!saved&&(saved as {entry?:unknown}).entry===intent.entry&&!!intent.entry;
+  // The latest startup owns protection for the bytes it just read, installed
+  // before any await. Identical bytes keep their candidate and failure evidence.
+  let candidate:SaveCandidate|undefined;
+  if(!primary)protectSave(savedCandidate?.raw===undefined&&savedCandidate||{raw:undefined,status:'unavailable',reason:'The saved device record could not be read.'});
+  else if(raw===null||raw===trustedRaw)protectSave(undefined);
+  else {
+    candidate=savedCandidate?.raw===raw?savedCandidate:{raw,...inspected.failure??{status:'pending',reason:'',completion}};
+    protectSave(candidate);
+  }
+  await refreshLibrary(false,()=>currentIntent(intent));
   // A new deep link replaces the open workspace, not the chapter record.
-  await refreshCompletions();
+  if(primary)await refreshCompletions(()=>currentIntent(intent));
   const savedEntry=saved&&typeof saved==='object'&&(saved as {entry?:unknown}).entry;
   const restoreEntry=typeof savedEntry==='string'&&(!savedEntry||savedEntry.startsWith('#'))?savedEntry:'';
   let invalidMessage='',triedSaved=false;
   const tryOpen=async(value:unknown,origin:ImportOrigin,entry=intent.entry)=>{
-    const attempt=await prepareImport(value,origin,intent);
+    const attempt=await prepareImport(value,origin,intent,origin==='restore'?candidate:undefined);
     if(!attempt||attempt.kind==='superseded'||!currentIntent(intent))return false;
     if(attempt.kind==='unavailable')throw new Error(attempt.message);
     if(attempt.kind==='invalid'){invalidMessage=attempt.message;return false;}
-    return !!await acceptPreparedImport(attempt.prepared,{...intent,entry},origin!=='restore');
+    // A protected candidate leaves every opened workspace session-only.
+    const opened=!!await acceptPreparedImport(attempt.prepared,{...intent,entry},origin!=='restore'&&!protecting());
+    if(opened&&protecting()&&currentIntent(intent))error(protectedNotice());
+    return opened;
   };
   try {
-    if(saved&&savedEntry===intent.entry&&intent.entry) {
+    if(savedFirst) {
       triedSaved=true;if(await tryOpen(saved,'restore'))return;
     }
     if(!currentIntent(intent))return;
     let incoming:unknown;
     try {incoming=linkValue(intent.entry);}catch(failure){invalidMessage=failureMessage(failure);}
+    // A different link replaces saved work only after the kernel accepts those
+    // bytes. Validate without opening the old workspace; a temporary failure
+    // leaves them protected and the link session-only.
+    if(incoming!==undefined&&saved&&!triedSaved&&candidate&&savedCandidate===candidate) {
+      const check=await prepareImport(saved,'restore',intent,candidate);
+      if(!check||check.kind==='superseded'||!currentIntent(intent))return;
+    }
     if(incoming!==undefined) {
       if(await tryOpen(incoming,'link'))return;
       if(!currentIntent(intent))return;
@@ -1806,11 +1990,11 @@ async function start(intent=beginWorkspaceChange(location.hash)) {
     // A rejected link and a saved workspace are independent candidates. Restore
     // valid local work without rewriting its original durable representation.
     if(saved&&!triedSaved&&await tryOpen(saved,'restore',invalidMessage?restoreEntry:intent.entry)) {
-      if(invalidMessage)error('This shared link could not be opened. Your saved recipe is ready.');
+      if(invalidMessage&&!protecting())error('This shared link could not be opened. Your saved recipe is ready.');
       return;
     }
     if(!currentIntent(intent))return;
-    if(await tryOpen({schema:1,type:'level',sourceId:1,view},'library',invalidMessage?'':intent.entry)&&invalidMessage)
+    if(await tryOpen({schema:1,type:'level',sourceId:1,view},'library',invalidMessage?'':intent.entry)&&invalidMessage&&!protecting())
       error('The saved or shared file could not be opened. A fresh puzzle is ready.');
   }catch(failure){
     if(!currentIntent(intent))return;
@@ -1830,4 +2014,4 @@ window.addEventListener('hashchange',event=>{
   }catch(failure){replaceEntry(acknowledgedEntry);error(failureMessage(failure));}
 });
 // Read-only diagnostics for reproducible loading/latency/recovery checks.
-Object.defineProperty(window,'angouri',{value:{get state(){return clone(state);},get slots(){return [...railSlots];},get result(){return clone(result);},get view(){return view;},get flight(){return clone(flight);},get history(){return {undo:undo.length,redo:redo.length};},get measurements(){return clone(kernel.measurements);},restart:()=>kernel.restart(),whenIdle:async()=>{await chain;await storageTransactions.idle();}}});
+Object.defineProperty(window,'angouri',{value:{get state(){return clone(state);},get slots(){return [...railSlots];},get result(){return clone(result);},get view(){return view;},get flight(){return clone(flight);},get history(){return {undo:undo.length,redo:redo.length};},get measurements(){return clone(kernel.measurements);},restart:()=>kernel.restart(),whenIdle:async()=>{await chain;await savesIdle();}}});
