@@ -92,7 +92,8 @@ test('short Equation has whole readings and every view can reveal a complete rec
   for(const view of ['flight','function','flow']) {
     await page.locator(`#tab-${view}`).click();await idle(page);await paint(page);
     for(const selector of ['.empty-slot','#palette .ingredient:not(:disabled)']) {
-      const control=page.locator(selector).first();await control.focus();await page.keyboard.press('Shift');await paint(page);
+      // Settle pointer focus before keyboard decoration appears on the same control.
+      const control=page.locator(selector).first();await control.focus();await paint(page);await page.keyboard.press('Shift');await paint(page);
       await expect(control).toBeFocused();
       const bounds=await control.evaluate(element=>{
         const face=element.querySelector('.ingredient-surface')??element,box=face.getBoundingClientRect();

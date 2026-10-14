@@ -28,7 +28,7 @@ function anchorVisible(element:Element,rect:DOMRect,anchorY:number,anchorBottom=
  * share the focus outline; ordinary menu buttons retain their Tab stops. */
 export function installKeyboardAffordances(documentRoot:Document) {
   let frame=0;
-  let pendingFocus:HTMLElement|undefined;
+  let pendingFocus:HTMLElement|undefined,keyboardShown=false;
   const observed=new Set<Element>();
   const cue=documentRoot.createElement('span');
   cue.className='keyboard-focus-cue';cue.setAttribute('aria-hidden','true');cue.hidden=true;
@@ -102,9 +102,18 @@ export function installKeyboardAffordances(documentRoot:Document) {
     cue.hidden=false;
   };
   const resize=new ResizeObserver(()=>schedule());
-  const measure=()=>{
+  const measure=(time?:number)=>{
     if(frame)cancelAnimationFrame(frame);
     frame=0;
+    // A keyboard ring and cue can appear on a control that already owns
+    // focus, after its focusin reveal used pointer styling. Reveal it once
+    // under the applied keyboard styling. Tab's synchronous pass skips this,
+    // so the departing control stays put before native focus moves.
+    const keyboard=documentRoot.documentElement.dataset.focusModality==='keyboard',owner=documentRoot.activeElement;
+    if(time!==undefined) {
+      if(keyboard&&!keyboardShown&&!pendingFocus&&owner instanceof HTMLElement&&owner!==documentRoot.body)pendingFocus=owner;
+      keyboardShown=keyboard;
+    }
     if(pendingFocus&&pendingFocus===documentRoot.activeElement)revealFocusRing(pendingFocus);
     pendingFocus=undefined;
     const readers=[...documentRoot.querySelectorAll<HTMLElement>(READERS)];

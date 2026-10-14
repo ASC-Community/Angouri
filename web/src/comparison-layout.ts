@@ -19,7 +19,10 @@ export function sizeEquationTables(root:HTMLElement) {
     // The body focus border belongs to the stationary table, below its header.
     // Keep the native header height when columns reflow; never scroll this ring.
     table.style.setProperty('--comparison-header-height',`${head.getBoundingClientRect().height}px`);
-    body.tabIndex=-1;body.setAttribute('aria-label','Comparison values');
+    // Keyboard affordances own the rows' Tab eligibility after this first
+    // value; reflow must not withdraw a stop that still scrolls.
+    if(!body.hasAttribute('tabindex'))body.tabIndex=-1;
+    body.setAttribute('aria-label','Comparison values');
     const align=()=>{
       head.style.transform=`translateX(${-body.scrollLeft}px)`;
       if(table.tFoot)table.tFoot.style.transform=`translateX(${-body.scrollLeft}px)`;
