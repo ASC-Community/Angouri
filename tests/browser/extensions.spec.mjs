@@ -30,7 +30,9 @@ test('10.9 nonlinear sine placements stay responsive on cold and repeated edits 
   expect(result.checkpoints.map(point=>point.hit)).toEqual([true,false,false,false,false,false,false,true,true]);
   expect(result.heightGuide.hit).toBe(false);expect(result.solved).toBe(false);
   // Keep a generous machine-independent margin while preventing a regression
-  // to the reported >8s watchdog loop. Record cold and warm readings separately.
+  // to the reported >8s watchdog loop. Record cold and warm readings separately,
+  // attaching the cold readings before the threshold so a failure keeps them.
+  await testInfo.attach('10.9-cold-placement-timings',{body:JSON.stringify({timings,measurements:await page.evaluate(()=>window.angouri.measurements)},null,2),contentType:'application/json'});
   expect(timings.at(-1).milliseconds).toBeLessThan(2000);
   await page.locator('#undo').click();await idle(page);
   expect(await page.evaluate(()=>window.angouri.state.nodes.map(node=>node.op).join(''))).toBe('DQS');
@@ -86,7 +88,7 @@ test('squared-height recipes simplify, solve for height, and travel continuously
 });
 
 test('the shared figure-eight flies through its crossing twice with one cucumber and one continuous trail',async({page},testInfo)=>{
-  await page.emulateMedia({reducedMotion:'no-preference'});
+  await page.emulateMedia({reducedMotion:'no-preference'});await page.clock.install();
   const artifact={schema:1,rules:'vine-1',engine:'AngouriMath-2.5.0',type:'creation',sourceId:75,view:'flight',nodes:[...'QHNAQNA'].map((op,i)=>({id:`crossing-${i}`,op}))};
   await page.goto('/#v1='+Buffer.from(JSON.stringify(artifact)).toString('base64url'));
   await page.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground').getAttribute('aria-busy')==='false');
@@ -100,11 +102,19 @@ test('the shared figure-eight flies through its crossing twice with one cucumber
     expect((2-a[0])*(b[0]-2)).toBeGreaterThan(0);
   }
   await expect(page.locator('[data-flight-stroke]')).toHaveCount(1);await expect(page.locator('[data-flight-stroke] > [id^="cucumber"]')).toHaveCount(1);
-  await page.locator('#launch').click();
-  await page.waitForFunction(()=>window.angouri.flight.phase==='flying'&&window.angouri.flight.position>.3);
+  // Hold the finite flight mid-air so slow screenshots cannot land it before Flow
+  // is inspected. Pause ahead of the idle page's clock, as in layout-motion.
+  await page.clock.pauseAt(await page.evaluate(()=>Date.now()+60_000));
+  await page.locator('#launch').click();await page.clock.runFor(1100);
+  const held=await page.evaluate(()=>window.angouri.flight);
+  expect(held.phase).toBe('flying');expect(held.position).toBeGreaterThan(.3);expect(held.position).toBeLessThan(1);
   await page.screenshot({path:testInfo.outputPath('figure-eight-in-flight.png')});
   await page.locator('#tab-flow').click();await expect(page.locator('#flow-position')).toBeDisabled();
   await page.locator('#tab-flight').click();await expect(page.locator('[data-flight-stroke]')).toHaveCount(1);
+  await expect(page.locator('[data-flight-stroke] > [id^="cucumber"]')).toHaveCount(1);
+  expect(await page.evaluate(()=>window.angouri.flight)).toEqual(held);
+  // Release the held clock before the genuine landing; this page's fake clock ends with the test.
+  await page.clock.runFor(3000);await page.clock.resume();
   await page.waitForFunction(()=>window.angouri.flight.phase==='landed');
   const trail=await page.locator('#flight-trail').getAttribute('d');expect(trail.match(/M/g)).toHaveLength(1);
   await page.screenshot({path:testInfo.outputPath('figure-eight-complete.png')});expect(await snapshot(page)).toEqual(before);
@@ -234,11 +244,15 @@ test('nine reusable operations remain readable and exact sine rounding stays edi
   }
 });
 
-test('Notes keep independent reference examples while puzzle sketches require explicit Hints disclosures',async({page})=>{
+test('Notes keep independent reference examples while puzzle sketches require explicit Hints disclosures',async({page},testInfo)=>{
   test.setTimeout(150000);
+  // Engine readings at ready and after Notes separate startup recovery from Notes work.
+  const engine=phase=>page.evaluate(phase=>({phase,sourceId:window.angouri.state.sourceId,at:performance.now(),...window.angouri.measurements}),phase);
   for(const [id,next] of [[43,44],[48,68],[50,51],[56,57],[64,65]]){
-    await ready(page,id);const before=await snapshot(page);await page.locator('#ideas-open').click();
+    await ready(page,id);const atReady=await engine('ready');
+    const before=await snapshot(page);await page.locator('#ideas-open').click();
     await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
+    await testInfo.attach(`notes-engine-${id}`,{body:JSON.stringify([atReady,await engine('notes')],null,2),contentType:'application/json'});
     expect(await page.evaluate(()=>window.angouri.measurements.restarts)).toBe(0);
     await expect(page.locator(`#notes-content [data-reference-lesson="${id}"]`)).toHaveCount(1);
     await expect(page.locator(`#notes-content [data-reference-lesson="${next}"]`)).toHaveCount(0);
