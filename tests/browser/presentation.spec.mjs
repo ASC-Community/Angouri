@@ -29,6 +29,11 @@ test('Hints reveal covered spoilers once while Notes follow relevant prerequisit
   const sketch=page.getByRole('button',{name:'Reveal sketch',exact:true});await expect(page.locator('#hint-sketch')).toBeHidden();await expect(sketch).toBeVisible();
   await page.keyboard.press('Tab');await expect(sketch).toBeFocused();
   await page.keyboard.press('Space');await expect(page.locator('#hint-sketch')).toBeVisible();await expect(page.locator('#hint-sketch-toggle')).toHaveAttribute('aria-expanded','true');await expect(page.locator('#hint-sketch')).toBeFocused();
+  await expect(page.locator('#hint-sketch')).toHaveAttribute('aria-busy','false');
+  await page.keyboard.press('Tab');
+  const choices=page.locator('#hint-sketch').getByRole('tablist',{name:'What changes when you square again?',exact:true});
+  await expect(choices.getByRole('tab',{name:'Fitted bowl',exact:true})).toBeFocused();
+  await expect(choices.locator('[role=tab][tabindex="0"]')).toHaveCount(1);
   await page.keyboard.press('Tab');await expect(page.locator('#hints-dialog .close-dialog')).toBeFocused();
   await page.locator('#hint-notes').click();await expect(page.locator('#hints-dialog')).not.toBeVisible();
   await expect(page.locator('#ideas-dialog')).toHaveAccessibleName('Notes');await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
@@ -163,5 +168,5 @@ test('deck formulas stand alone while operation help is available on focus and h
   await add(page,'A');
   await expect(page.getByRole('button',{name:'Undo',exact:true})).toBeEnabled();
   await expect(page.getByRole('button',{name:'Redo',exact:true})).toBeDisabled();
-  await expect(page.locator('.history-actions')).toHaveText('');
+  await expect(page.locator('.history-actions')).toHaveText('',{useInnerText:true});
 });

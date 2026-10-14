@@ -83,7 +83,12 @@ test('sixth and eighth powers are playable through the existing square block',as
       await expect(page.locator('annotation').filter({hasText:'(u^3)^2=u^6'})).toHaveCount(0);
     } else {
       await expect(page.locator('#notes-content')).toContainText(/sixth/i);
-      await expect(page.locator('annotation').filter({hasText:'(u^3)^2=u^6'})).toHaveCount(1);
+      if(id===30) {
+        await expect(page.locator('#notes-content').getByRole('tab',{name:'Sixth power',exact:true})).toBeVisible();
+        await expect(page.locator('#notes-content').getByRole('tab',{name:'Reflected sixth power',exact:true})).toBeVisible();
+        await page.locator('[data-note-lesson="29"]').click();await expect(page.locator('#notes-content')).toHaveAttribute('aria-busy','false');
+      }
+      await expect(page.locator('#notes-content annotation').filter({hasText:'(u^3)^2=u^6'})).toHaveCount(1);
     }
     await page.keyboard.press('Escape');
   }

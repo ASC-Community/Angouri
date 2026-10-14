@@ -73,7 +73,16 @@ for(const scenario of uiCases)for(const view of ['flight','function','flow']){
   const context=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion:'reduce'});
   const uiPage=await context.newPage();
   await uiPage.goto(baseUrl);
-  await uiPage.waitForFunction(()=>window.angouri?.state&&window.angouri?.whenIdle);
+  await uiPage.waitForFunction(()=>window.angouri?.result&&document.querySelector('#playground')?.getAttribute('aria-busy')==='false');
+  // A workspace choice can await storage before joining the kernel queue.
+  // Acknowledge setup before timing any placement, including a same-source no-op.
+  await uiPage.evaluate(sourceId=>document.querySelector(`[data-level="${sourceId}"]`).click(),scenario.sourceId);
+  await uiPage.waitForFunction(sourceId=>window.angouri.state.mode==='puzzle'&&window.angouri.state.sourceId===sourceId&&
+    document.querySelector('#playground')?.getAttribute('aria-busy')==='false'&&!document.querySelector('#leave-dialog').open,scenario.sourceId);
+  await uiPage.evaluate(()=>window.angouri.whenIdle());
+  await uiPage.evaluate(view=>document.querySelector(`#tab-${view}`).click(),view);
+  await uiPage.waitForFunction(view=>window.angouri.view===view&&document.querySelector('#scene').dataset.view===view,view);
+  await uiPage.evaluate(()=>window.angouri.whenIdle());
   uiRuns.push(await uiPage.evaluate(async({view,recipe,sourceId,name,expected,afterStation})=>{
     const idle=()=>Promise.race([
       window.angouri.whenIdle(),
@@ -84,13 +93,6 @@ for(const scenario of uiCases)for(const view of ['flight','function','flow']){
       if(!(element instanceof HTMLElement))throw Error(`Missing UI control ${selector}`);
       element.click();
     };
-    click(`[data-level="${sourceId}"]`);
-    await idle();
-    if(window.angouri.state.sourceId!==sourceId)throw Error(`Could not open source ${sourceId}.`);
-    click(`#tab-${view}`);
-    await idle();
-    if(window.angouri.view!==view)throw Error(`Could not open ${view} view.`);
-
     const rows=[];
     const measure=async(kind,action,index)=>{
       if(kind==='insert'&&afterStation)click(`[data-insert="${window.angouri.state.station.before+1+index}"]`);

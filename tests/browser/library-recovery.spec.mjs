@@ -28,8 +28,9 @@ test('deleted recipes retain individual Undo through menu navigation, saving and
   await page.getByRole('button',{name:'Undo deletion of Second bowl'}).click();
   expect((await stored(page)).find(seed=>seed.name==='Second bowl')).toEqual(original[1]);
   await expect(page.locator('.deleted-seeds')).toHaveCount(0);
-  await page.getByRole('button',{name:'Open First bowl',exact:true}).click();await idle(page);
-  expect(await workspace(page)).toEqual(before);
+  await page.getByRole('button',{name:'Open First bowl',exact:true}).click();await expect(page.locator('#library-dialog')).toBeHidden();
+  await page.waitForFunction(()=>document.querySelector('#playground').getAttribute('aria-busy')==='false');
+  await expect.poll(()=>workspace(page)).toEqual(before);await idle(page);
 });
 
 test('Undo preserves its recovery copy when the library is full or storage fails',async({page})=>{

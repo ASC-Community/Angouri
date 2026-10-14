@@ -112,7 +112,8 @@ test('finite hidden stock refills from below, becomes literal at three, and shar
   await checkCompactTray(page);
   await page.screenshot({path:testInfo.outputPath('finite-stock.png'),fullPage:true});
   await page.locator('#menu-open').click();await page.locator('#nav-create').click();
-  if(await page.locator('#leave-dialog').isVisible())await page.locator('#leave-discard').click();await idle(page);
+  await expect(page.locator('#leave-dialog')).toBeVisible();await page.locator('#leave-discard').click();
+  await page.waitForFunction(()=>window.angouri.state.mode==='remix'&&document.querySelector('#playground').getAttribute('aria-busy')==='false');await idle(page);
   expect(await markerStyle(pile(page,'A').locator('.reusable-mark'))).toEqual(finiteStyle);
   await expect(pile(page,'A').locator('.reusable-mark annotation')).toHaveText('\\infty');
   await place(page,'A');await checkRefill(page,'A');

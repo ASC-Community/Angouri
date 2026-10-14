@@ -59,12 +59,14 @@ test('dragging previews exact target verdicts without committing or measuring a 
   const geometry=()=>page.evaluate(()=>({scene:document.querySelector('#scene').getBoundingClientRect().toJSON(),scroll:[document.documentElement.scrollWidth,document.documentElement.scrollHeight],targets:[...document.querySelectorAll('.ring-outer')].map(el=>[el.getAttribute('cx'),el.getAttribute('cy')])}));
   const frame=await geometry();
   await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();
-  // Track application layout reads after pointer-down captured the coordinate frame.
-  await page.evaluate(()=>{window.circleReads=0;window.circleOriginalRect=Element.prototype.getBoundingClientRect;Element.prototype.getBoundingClientRect=function(){window.circleReads++;return window.circleOriginalRect.call(this);};});
+  // Pointer-down schedules a one-time focus reveal. Settle that pickup work
+  // before measuring the preview loop; every drag move must still read no layout.
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  await page.evaluate(()=>{window.circleReads=[];window.circleOriginalRect=Element.prototype.getBoundingClientRect;Element.prototype.getBoundingClientRect=function(){window.circleReads.push({element:this.tagName+'#'+this.id,stack:new Error().stack});return window.circleOriginalRect.call(this);};});
   await page.mouse.move(box.x+box.width/2+delta,box.y+box.height/2,{steps:8});
   await expect(page.locator('.ring[data-match="hit"]')).toHaveCount(4);
   expect(await snapshot(page)).toEqual(before);expect(await page.evaluate(()=>window.angouri.history.undo)).toBe(0);
-  expect(await page.evaluate(()=>window.circleReads)).toBe(0);
+  expect(await page.evaluate(()=>window.circleReads)).toEqual([]);
   await page.evaluate(()=>{Element.prototype.getBoundingClientRect=window.circleOriginalRect;});expect(await geometry()).toEqual(frame);
   await page.keyboard.press('Escape');await page.mouse.up();await expect(page.locator('.ring[data-match="miss"]')).toHaveCount(4);expect(await snapshot(page)).toEqual(before);
   const again=await handle.boundingBox();await page.mouse.move(again.x+again.width/2,again.y+again.height/2);await page.mouse.down();await page.mouse.move(again.x+again.width/2+delta,again.y+again.height/2,{steps:8});
@@ -142,11 +144,25 @@ test('circle Flow reveals components and a selectable chord without changing the
   await page.locator('[data-circle-target="2"]').click();await expect(page.locator('[data-circle-target="2"]')).toBeFocused();await expect(page.locator('[data-circle-target="2"]')).toHaveAttribute('aria-pressed','true');
   for(const viewport of [{width:1146,height:850},{width:320,height:568},{width:844,height:390}]){
     await page.setViewportSize(viewport);
-    const bounds=await page.locator('.circle-flow-controls').evaluate(controls=>{
-      const r=controls.getBoundingClientRect();
-      return {clipped:[...controls.querySelectorAll('[data-circle-target]')].some(button=>{const b=button.getBoundingClientRect();return b.left<r.left||b.right>r.right||button.scrollWidth>button.clientWidth+1;}),overflow:document.documentElement.scrollWidth-innerWidth};
-    });
-    expect(bounds).toEqual({clipped:false,overflow:0});
+    const choices=page.locator('.circle-flow-controls .flow-goals');
+    if(await page.locator('.circle-flow-controls').evaluate(el=>el.clientWidth)<600) {
+      await expect(choices).toHaveCSS('flex-wrap','nowrap');await expect(choices).toHaveCSS('overflow-x',/auto|scroll/);
+      const row=await choices.evaluate(el=>({width:el.clientWidth,content:el.scrollWidth,tops:[...el.children].map(child=>child.getBoundingClientRect().top)}));
+      expect(Math.max(...row.tops)-Math.min(...row.tops)).toBeLessThan(1);
+      if(row.content>row.width) {await choices.evaluate(el=>el.scrollLeft=el.scrollWidth);expect(await choices.evaluate(el=>el.scrollLeft)).toBeGreaterThan(0);}
+    } else {
+      expect(await choices.evaluate(el=>{const r=el.getBoundingClientRect();return [...el.children].every(child=>{const b=child.getBoundingClientRect();return b.left>=r.left-1&&b.right<=r.right+1;});})).toBe(true);
+    }
+    for(const button of await choices.locator('[data-circle-target]').all()) {
+      await button.scrollIntoViewIfNeeded();
+      await expect(button).toBeInViewport({ratio:1});
+      expect(await button.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+      expect(await button.evaluate(el=>{
+        const b=el.getBoundingClientRect(),r=el.closest('.flow-goals').getBoundingClientRect();
+        return b.left>=r.left-1&&b.right<=r.right+1;
+      })).toBe(true);
+    }
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
   }
   expect(await snapshot(page)).toEqual(before);expect(await page.evaluate(()=>window.angouri.history)).toEqual(history);
   await page.locator('#tab-function').click();await expect(page.locator('.gap-comparison')).toHaveCount(0);await expect(page.locator('.value-table')).toContainText('Distance');
@@ -169,7 +185,8 @@ test('circle challenges omit their solution and reopen with an exact solvable co
   await expect.poll(()=>page.locator('#share-link').inputValue()).toContain('v1=');const url=await page.locator('#share-link').inputValue();
   const encoded=new URL(url).hash.slice(4),artifact=JSON.parse(Buffer.from(encoded.replace(/-/g,'+').replace(/_/g,'/'),'base64').toString('utf8'));
   expect(artifact.circle).toBeUndefined();expect(artifact.nodes).toBeUndefined();expect(artifact.goals).toHaveLength(3);
-  await page.goto(url);await page.waitForFunction(()=>window.angouri?.state?.mode==='challenge');await idle(page);await solve(page,47);expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(true);
+  await page.goto(url);await expect(page.locator('#leave-dialog')).toBeVisible();await page.locator('#leave-discard').click();
+  await page.waitForFunction(()=>window.angouri?.state?.mode==='challenge');await idle(page);await solve(page,47);expect(await page.evaluate(()=>window.angouri.result.solved)).toBe(true);
 });
 
 test('circle diagrams keep equal units, readable whole formulas and usable controls across layouts',async({page})=>{

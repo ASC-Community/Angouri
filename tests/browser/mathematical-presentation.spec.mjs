@@ -47,7 +47,8 @@ test('rounded real branches keep ownership and isolated endpoint heights before 
 });
 
 test('symbolic squared targets use the kernel exact expression and approximate aid',async({page})=>{
-  await imported(page,artifact('',{type:'challenge',view:'function',goals:[{x:'3',y:'1+sqrt(2)'},{x:'2',y:'1'},{x:'1',y:'0'},{x:'2',y:'-1'}],inventory:{Q:1,N:1,A:1},limit:3}));
+  const challenge=artifact('',{type:'challenge',view:'function',goals:[{x:'3',y:'1+sqrt(2)'},{x:'2',y:'1'},{x:'1',y:'0'},{x:'2',y:'-1'}],inventory:{Q:1,N:1,A:1},limit:3});
+  delete challenge.nodes;await imported(page,challenge);
   const before=await page.evaluate(()=>window.angouri.result.checkpoints),first=before[0];
   expect(first.lhsLatex).toBeTruthy();expect(first.lhsNumber).toBeCloseTo(3+2*Math.SQRT2,10);expect(first.hit).toBe(false);
   const expected=page.locator('.value-table tbody tr').first().locator('td').nth(1);

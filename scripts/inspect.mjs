@@ -1,6 +1,7 @@
 import { launchChromium, previewURL } from './browser.mjs';
 import { mkdir } from 'node:fs/promises';
 import assert from 'node:assert/strict';
+import { discardToWorkspace } from './browser-workspace.mjs';
 const browser=await launchChromium();
 const smoke=process.argv.includes('--smoke');
 await mkdir('artifacts',{recursive:true});
@@ -9,9 +10,8 @@ const page=await context.newPage(),errors=[];
 page.on('pageerror',e=>errors.push(e.stack));page.on('console',m=>{if(m.type()==='error')errors.push(m.text())});
 const idle=()=>page.evaluate(()=>window.angouri.whenIdle());
 const shot=name=>page.screenshot({path:`artifacts/${name}.png`,fullPage:true});
-const discard=async()=>{if(await page.locator('#leave-dialog').isVisible())await page.locator('#leave-discard').click();};
-const menu=async id=>{await page.locator('#menu-open').click();await page.locator(`#${id}`).click();if(id==='nav-create')await discard();};
-const puzzle=async n=>{await menu('puzzles-open');const option=page.locator(`[data-level="${n}"]`);if(!await option.isVisible())await option.locator('xpath=ancestor::details').locator('summary').click();await option.click();await discard();await idle();};
+const menu=async id=>{await page.locator('#menu-open').click();await page.locator(`#${id}`).click();if(id==='nav-create')await discardToWorkspace(page,{mode:'remix',fromDialog:'#menu-dialog'});};
+const puzzle=async n=>{await menu('puzzles-open');const option=page.locator(`[data-level="${n}"]`);if(!await option.isVisible())await option.locator('xpath=ancestor::details').locator('summary').click();await option.click();await discardToWorkspace(page,{mode:'puzzle',sourceId:n,fromDialog:'#puzzles-dialog'});};
 const place=async op=>{await page.locator(`[data-op="${op}"]`).click();await idle();};
 const playbackCaptures=async()=>{
   await puzzle(1);await place('H');await menu('settings-open');await page.locator('#motion-toggle').uncheck();await page.keyboard.press('Escape');
