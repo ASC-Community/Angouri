@@ -27,7 +27,7 @@ test('reselecting the current puzzle returns to the unchanged recipe and history
   // Saving the current recipe must not turn the same row into an unguarded restart.
   await page.locator('#menu-open').click();await page.locator('#library-open').click();
   await page.locator('#seed-name').fill('Keep this ordering');await page.locator('#favorite-save').click();await idle(page);
-  await expect(page.locator('#library-dialog .muted')).toHaveText('Export progress copies your current recipe and puzzle completions. Named saved recipes, including Recently deleted, stay on this device.');
+  await expect(page.locator('#library-dialog .muted')).toHaveText('Export progress copies your current recipe and puzzle completions. Named saved recipes, including Recently deleted, and saved work recovery copies stay on this device.');
   await page.keyboard.press('Escape');await puzzles(page);await page.locator('[data-level="3"]').click();
   await expect(page.locator('dialog[open]')).toHaveCount(0);expect(await snapshot(page)).toEqual(before);
 

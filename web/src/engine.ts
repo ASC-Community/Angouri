@@ -15,6 +15,9 @@ type Epoch = {
   pending: Map<string, Pending>;
 };
 
+/** A worker error or unreadable message retired the epoch serving a request. */
+export const workerStopped = 'The math engine stopped. Try again.';
+
 export class Kernel {
   private current!: Epoch;
   private sequence = 0;
@@ -57,7 +60,7 @@ export class Kernel {
           job.resolve(data.response);
         }
       };
-      worker.onerror = worker.onmessageerror = () => this.retire(epoch, new Error('The math engine stopped. Try again.'));
+      worker.onerror = worker.onmessageerror = () => this.retire(epoch, new Error(workerStopped));
     } catch (error) { this.retire(epoch, error instanceof Error ? error : new Error(String(error))); }
     return epoch;
   }

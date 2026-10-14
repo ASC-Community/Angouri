@@ -3,7 +3,7 @@ import './play.css';
 import './crop.css';
 import { CropEditor, cropControl, cropEdited, updateCropWindow, probePoints } from './crop';
 import { renderBrand } from './brand';
-import { Kernel } from './engine';
+import { Kernel, workerStopped } from './engine';
 import { completionRecord, deviceDatabase, DeviceStorageError, mergeCompletions, mutateLibrary, parseStored, readLibrary, seedStorageLimit, StorageTransactions, type CompletionRecord, type DeletedSeed, type LibraryMutation, type Seed, type Snapshot } from './persistence';
 import { icon } from './icons';
 import { adjacentSlot, insertedSlots, movedSlots, normalizeSlots, type RailSlots } from './rail';
@@ -54,7 +54,8 @@ const failedStorage=new Set<string>();
 // progress writer may replace it; play continues as a session-only draft.
 // A deliberate change archives known bytes once, under the candidate's stable
 // backup key, in the same transaction that replaces them.
-type SaveCandidate={raw:string|undefined;status:'pending'|'unavailable'|'rejected'|'malformed'|'oversized'|'unsupported';reason:string;completion?:CompletionRecord;backup?:string};
+// failures counts temporary restore failures of these exact bytes only.
+type SaveCandidate={raw:string|undefined;status:'pending'|'unavailable'|'rejected'|'malformed'|'oversized'|'unsupported';reason:string;completion?:CompletionRecord;backup?:string;failures?:number};
 let savedCandidate:SaveCandidate|undefined;
 const protecting=()=>!!savedCandidate;
 // Unread primary bytes cannot be archived, and a restore still in flight is not yet a failure.
@@ -150,7 +151,7 @@ async function owned<T>(intent:WorkspaceIntent,work:Promise<T>):Promise<T|undefi
   catch(failure){if(currentIntent(intent))throw failure;return undefined;}
 }
 let chain = Promise.resolve();
-let notice = {text:'Tap or drag a block.',kind:''};
+let notice:{text:string;kind:string;savedWork?:boolean} = {text:'Tap or drag a block.',kind:''};
 let morphFrame=0, displayedPoints: Result['points'] | undefined,displayedSlope:number|undefined;
 let clearCurveFade:(()=>void)|undefined,clearCurveEnds:(()=>void)|undefined;
 function cancelCurveChange(settle=false) {
@@ -269,7 +270,7 @@ function inspectSave(raw:string|null):{value?:unknown;failure?:Omit<SaveCandidat
   try{parseSave(value);}catch(failure){return {value,failure:{status:'unsupported',reason:failureMessage(failure),completion}};}
   return {value};
 }
-function protectSave(candidate:SaveCandidate|undefined){savedCandidate=candidate;if(candidate)progressSaved=false;renderStorageStatus();}
+function protectSave(candidate:SaveCandidate|undefined){savedCandidate=candidate;if(candidate)progressSaved=false;renderStorageStatus();if($<HTMLDialogElement>('library-dialog').open)void refreshRecovery();}
 // Readable metadata in newly protected bytes is the latest durable record:
 // wins earned from now on belong to its epoch, while earlier ones stay stale.
 // Callers adopt only bytes they have just read as canonical.
@@ -337,10 +338,11 @@ function settleSave(candidate:SaveCandidate,intent:WorkspaceIntent,attempt:Impor
   if(savedCandidate!==candidate||candidate.raw===undefined)return;
   if(attempt.kind==='ready'||attempt.kind==='superseded'&&attempt.restorable){trustedRaw=candidate.raw;protectSave(undefined);return;}
   if(!currentIntent(intent)||attempt.kind==='superseded')return;
+  if(attempt.kind==='unavailable')candidate.failures=(candidate.failures??0)+1;
   candidate.status=attempt.kind==='invalid'?'rejected':'unavailable';candidate.reason=attempt.message;renderStorageStatus();
 }
 const protectedNotice=()=>archivable(savedCandidate)
-  ? 'Your saved progress could not be opened, so it stays unchanged on this device. Your next change keeps a recovery copy of it and saves this recipe.'
+  ? 'Saved work could not open. It stays unchanged.'
   : 'Saved progress could not be read from this device, so it stays unchanged. New play is session only; export progress to keep it.';
 const protectedReplacement='Saved progress on this device could not be read, so it cannot be replaced yet. Your current recipe and completions are unchanged; export progress to keep them, then reload.';
 const staleNotice='Saved progress changed in another tab, so this tab did not replace it. Your recipe here is unchanged; export progress to keep it, then reload.';
@@ -414,7 +416,12 @@ function showNotice() {
   const retryIntro=introActive()&&flight.phase==='landed'&&!result?.solved;
   const finding=state&&result&&!unavailable&&notice.kind!=='error'&&!retryIntro?discoveryObservation(state,result,discoveryStage):'';
   $('feedback').classList.toggle('discovery-feedback',!!finding);
-  const content=finding||`${notice.kind==='error'?'':icon('hand',16)}<span>${escape(text)}</span>`;
+  // Protected saved bytes stay downloadable from their concise status; Save &
+  // open explains what the next change does with them.
+  const savedWork=!finding&&notice.kind==='error'&&!!notice.savedWork&&archivable(savedCandidate);
+  $('feedback').classList.toggle('saved-work-feedback',savedWork);
+  const action=savedWork?`<button type="button" class="button notice-action" data-download-saved>${icon('download',14)}Download saved work</button>`:'';
+  const content=finding||`${notice.kind==='error'?'':icon('hand',16)}<span>${escape(text)}</span>${action}`;
   if(content!==feedbackContent){$('feedback').innerHTML=content;feedbackContent=content;}
   const hints=!!state&&state.mode==='puzzle'&&!introActive()&&!isDiscovery(state)&&!throwWon;
   $('hints-open').hidden=!hints;
@@ -425,7 +432,7 @@ function showNotice() {
   $('feedback').hidden=!(finding||text)||(throwWon&&!reserveGuidance&&notice.kind!=='error')||(hints&&text==='Tap or drag a block.'&&notice.kind!=='error');
   $('recipe-guidance').hidden=$('feedback').hidden&&!hints;
 }
-function error(message: string) { notice={text:message,kind:'error'}; showNotice(); }
+function error(message: string,savedWork=false) { notice={text:message,kind:'error',savedWork}; showNotice(); }
 function emptyPathMessage(value:Result|undefined) {
   if(!value||flightPoints(value).length)return '';
   if(!value.relation)return 'No path to throw yet.';
@@ -433,7 +440,11 @@ function emptyPathMessage(value:Result|undefined) {
     ? 'No real heights in this crop. Expand or remove Crop, or make the right side zero or positive within it.'
     : 'No real heights in this interval. Make the right side zero or positive.';
 }
-function serial<T>(work: ()=>Promise<T>,retainCirclePreview=false): Promise<T | undefined> {
+const moveInterrupted='That move could not finish. Your previous recipe is unchanged. Try the move again.';
+const openInterrupted='The math engine stopped before this could open. Your current recipe is unchanged. Try again.';
+// interrupted describes the work a stopped, errored or timed-out worker cut
+// short: recipe and history edits are moves, other callers name their own task.
+function serial<T>(work: ()=>Promise<T>,retainCirclePreview=false,interrupted=moveInterrupted): Promise<T | undefined> {
   if(pointer)finishPointer(undefined,true);
   cropEditor.cancel();
   if(!retainCirclePreview)cancelCirclePickup();
@@ -441,9 +452,7 @@ function serial<T>(work: ()=>Promise<T>,retainCirclePreview=false): Promise<T | 
   const task=chain.then(async()=>{const value=await work();await savesIdle();return value;});
   chain=task.then(()=>{},e=>{
     const message=e instanceof Error?e.message:String(e);
-    error(message==='Engine interrupted'||message==='Engine recovery failed'
-      ? 'That move could not finish. Your previous recipe is unchanged. Try the move again.'
-      : message);
+    error(message==='Engine interrupted'||message==='Engine recovery failed'||message===workerStopped?interrupted:message);
   }).finally(()=>{
     pending--; $('playground').setAttribute('aria-busy',String(!initialized||pending>0));updatePrimary();
   });
@@ -597,7 +606,7 @@ function navigate(action:Action,slots?:RailSlots,intent=beginWorkspaceChange('')
     if(!currentIntent(intent))return false;
     const reply=await owned(intent,kernel.run(state,action));if(!reply)return false;
     requireOk(reply);acknowledge(intent);return accept(reply,'clear',slots);
-  });
+  },false,openInterrupted);
 }
 function historyMove(back: boolean) {
   return serial(async()=> {
@@ -1599,7 +1608,7 @@ $('reset-progress-confirm').onclick=async()=>{
     if(!await owned(intent,replaceProgress(reply,undefined,view,[],'',()=>currentIntent(intent))))return false;
     acknowledgedEntry='';window.history.replaceState(null,'',location.pathname+location.search);
     accept(reply,'clear');return true;
-  });
+  },false,'The math engine stopped before progress could reset. Your current recipe and completions are unchanged. Try again.');
   confirm.disabled=false;cancel.disabled=false;
   // A committed reset stays durable, but a newer navigation owns the page's UI.
   if(!currentIntent(intent))return;
@@ -1660,7 +1669,7 @@ async function updateShare() {
   const payload=await serial(async()=>{
     if(kind==='level'&&state?.mode==='puzzle')return {schema:1,type:'level',sourceId:state.sourceId,view};
     const reply=await kernel.run(state,{type:'export',kind:kind==='challenge'?'challenge':'creation',view});requireOk(reply);return reply.artifact!;
-  });
+  },false,'The math engine stopped before this link was ready. Your recipe is unchanged. Try again.');
   if(version!==shareVersion)return;
   if(!payload){$<HTMLTextAreaElement>('share-link').value='';$('share-message').textContent=notice.text;return;}
   sharingArtifact=payload;
@@ -1675,7 +1684,98 @@ async function updateShare() {
 $('share-open').onclick=()=>{const option=$<HTMLSelectElement>('share-kind').options[0];option.disabled=state?.mode!=='puzzle';$<HTMLSelectElement>('share-kind').value=state?.mode==='puzzle'?'level':'creation';open('share-dialog');void updateShare();};
 $<HTMLSelectElement>('share-kind').onchange=()=>void updateShare();
 $('copy-link').onclick=async()=>{try{await navigator.clipboard.writeText($<HTMLTextAreaElement>('share-link').value);$('share-message').textContent='Copied. A little curiosity is ready to travel.';}catch{$<HTMLTextAreaElement>('share-link').select();$('share-message').textContent='Select and copy the link above.';}};
-function download(value:unknown,name:string){const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+// A string Blob is UTF-8; saved work downloads its exact stored text, never a reparsed copy.
+function downloadText(text:string,name:string){const url=URL.createObjectURL(new Blob([text],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function download(value:unknown,name:string){downloadText(JSON.stringify(value,null,2),name);}
+const savedWorkUnavailable='This saved work is no longer waiting here. Find its recovery copy in Menu → Save & open.';
+// While the same known bytes stay protected, a failed download can simply be retried.
+const savedWorkFailure=(failure:unknown)=>archivable(savedCandidate)?'Download failed. Try again. Saved work is unchanged.':failureMessage(failure);
+// Downloading protected bytes neither restores nor replaces them.
+function downloadSavedWork() {
+  if(!archivable(savedCandidate))throw new Error(savedWorkUnavailable);
+  downloadText(savedCandidate.raw!,'angouri-saved-work.json');
+}
+$('feedback').addEventListener('click',event=>{
+  const button=(event.target as Element).closest('[data-download-saved]');if(!button)return;
+  const focused=document.activeElement===button;
+  try{downloadSavedWork();}
+  catch(failure){
+    // The failure keeps its retry and focus while the bytes stay protected.
+    error(savedWorkFailure(failure),archivable(savedCandidate));
+    if(!focused)return;
+    const retry=$('feedback').querySelector<HTMLElement>('[data-download-saved]');
+    if(retry)retry.focus({preventScroll:true});else focusGameControl();
+  }
+});
+// Immutable recovery copies, read on demand. Only the latest list read paints.
+const RECOVERY=`${SAVE}:recovery:`;
+let recoveryCopies:{key:string;raw:string}[]=[],recoveryFailed=false,recoveryRead=0;
+// Keys written by this version begin with an ISO timestamp; older or foreign keys have no trusted date.
+function recoveryDate(key:string) {
+  const stamp=/^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z):/.exec(key.slice(RECOVERY.length))?.[1],date=stamp?new Date(stamp):undefined;
+  return date&&Number.isFinite(date.getTime())?date:undefined;
+}
+// A short code derived from the storage key, never the bytes, tells copies made
+// in the same minute or without a date apart and stays the same across reads.
+function recoveryCode(key:string) {
+  let hash=0x811c9dc5;
+  for(let i=0;i<key.length;i++)hash=Math.imul(hash^key.charCodeAt(i),0x01000193)>>>0;
+  const letters='23456789ABCDEFGHJKMNPQRSTUVWXYZ';let code='';
+  for(let i=0;i<5;i++){code+=letters[hash%letters.length];hash=Math.floor(hash/letters.length);}
+  return code;
+}
+async function refreshRecovery() {
+  const read=++recoveryRead;
+  try {
+    const copies=await storageTransactions.list(RECOVERY);if(read!==recoveryRead)return;
+    recoveryCopies=copies.sort((a,b)=>(recoveryDate(b.key)?.getTime()??-Infinity)-(recoveryDate(a.key)?.getTime()??-Infinity)||(a.key<b.key?-1:1));recoveryFailed=false;
+  }
+  catch{if(read!==recoveryRead)return;recoveryFailed=true;}
+  renderRecovery();
+}
+// Painting never opens or closes Save & open. Focus inside the section returns
+// to the same logical control; an archived candidate hands it to the copy list.
+function renderRecovery() {
+  const section=$('recovery-copies'),list=$('recovery-list');
+  const focused=document.activeElement as HTMLElement|null,owned=!!focused&&list.contains(focused);
+  const focusKey=focused?.closest<HTMLElement>('[data-recovery-key]')?.dataset.recoveryKey,retrying=!!focused?.hasAttribute('data-retry-recovery');
+  const rowErrors=new Map([...list.querySelectorAll<HTMLElement>('[data-recovery-key] .favorite-error')].map(message=>[message.closest<HTMLElement>('[data-recovery-key]')!.dataset.recoveryKey!,message.textContent||'']));
+  const dateFormat=new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeStyle:'short'});
+  const row=(key:string,name:string,meta:string,label:string)=>{
+    const message=rowErrors.get(key);
+    return `<div class="favorite-row recovery-row" data-recovery-key="${escape(key)}"><div class="favorite-info"><span class="favorite-name">${name}</span><span class="favorite-meta">${meta}</span></div><div class="favorite-actions"><button class="button" data-download-recovery aria-label="${escape(label)}">${icon('download',16)} Download</button></div>${message?`<p class="favorite-error reset-progress-error" role="alert">${escape(message)}</p>`:''}</div>`;
+  };
+  const codes=new Set<string>();
+  const rows=recoveryCopies.map(copy=>{
+    const date=recoveryDate(copy.key),text=date?dateFormat.format(date):'';
+    let code=recoveryCode(copy.key);for(let n=2;codes.has(code);n++)code=`${recoveryCode(copy.key)}-${n}`;codes.add(code);
+    return row(copy.key,`Recovery copy ${code}`,date?`<time datetime="${date.toISOString()}">${escape(text)}</time>`:'<span>Date unavailable</span>',date?`Download recovery copy ${code} from ${text}`:`Download recovery copy ${code}, date unavailable`);
+  });
+  if(archivable(savedCandidate))rows.unshift(row('candidate','Saved progress that could not be opened','<span>Kept unchanged on this device. Your next change keeps a recovery copy of it here, then saves your new recipe.</span>','Download saved work that could not be opened'));
+  const failure=recoveryFailed?'<p class="reset-progress-error" role="alert">Recovery copies could not be read. Your saved work is unchanged on this device.</p><button class="button" data-retry-recovery aria-label="Try reading recovery copies again">Try again</button>':'';
+  list.innerHTML=rows.join('')+failure;
+  section.hidden=!rows.length&&!recoveryFailed;
+  if(!owned)return;
+  const next=retrying?list.querySelector<HTMLElement>('[data-retry-recovery]'):focusKey&&list.querySelector<HTMLElement>(`[data-recovery-key="${CSS.escape(focusKey)}"] [data-download-recovery]`);
+  (next||list.querySelector<HTMLElement>('[data-download-recovery],[data-retry-recovery]')||$('download-save')).focus({preventScroll:true});
+}
+$('recovery-list').addEventListener('click',event=>{
+  const button=(event.target as Element).closest<HTMLElement>('button');if(!button)return;
+  if(button.hasAttribute('data-retry-recovery')){void refreshRecovery();return;}
+  const key=button.closest<HTMLElement>('[data-recovery-key]')?.dataset.recoveryKey;if(!key||!button.hasAttribute('data-download-recovery'))return;
+  const row=button.closest('.recovery-row')!;row.querySelector('.favorite-error')?.remove();
+  try {
+    if(key==='candidate')downloadSavedWork();
+    else {
+      const copy=recoveryCopies.find(copy=>copy.key===key);
+      if(!copy)throw new Error('This recovery copy could not be found. Close and reopen Save & open to try again.');
+      downloadText(copy.raw,`angouri-recovery-copy-${recoveryCode(key)}.json`);
+    }
+  }catch(failure){
+    const message=document.createElement('p');message.className='favorite-error reset-progress-error';message.setAttribute('role','alert');
+    message.textContent=failure instanceof Error&&failure.message===savedWorkUnavailable?failure.message:'Could not download this copy. It is still kept on this device. Try again.';row.append(message);
+  }
+});
 $('download-artifact').onclick=()=>{if(sharingArtifact)download(sharingArtifact,`angouri-${sharingArtifact.type}.json`);};
 $('download-save').onclick=()=>{if(state)download({schema:1,type:'save',state,slots:railSlots,completed:[...completed],view},'angouri-progress.json');};
 let renamingSeed:string|undefined,renameSeed:Seed|undefined,renameDraft='';
@@ -1710,7 +1810,7 @@ function renderSeeds(preserveDraft=true){
     if(selection&&next instanceof HTMLInputElement)next.setSelectionRange(...selection);
   }
 }
-$('library-open').onclick=()=>{renamingSeed=undefined;renameSeed=undefined;$('library-error').hidden=true;renderSeeds();open('library-dialog');void refreshLibrary(true);};
+$('library-open').onclick=()=>{renamingSeed=undefined;renameSeed=undefined;$('library-error').hidden=true;renderSeeds();renderRecovery();open('library-dialog');void refreshLibrary(true);void refreshRecovery();};
 function saveRecipe(name:string) {
   return serial(async()=>{
     if(!state)return;
@@ -1723,7 +1823,7 @@ function saveRecipe(name:string) {
       throw e;
     }
     notice={text:'',kind:''};showNotice();renderSeeds();return true;
-  });
+  },false,'The math engine stopped before this recipe was saved. It is still open here. Try saving again.');
 }
 $('seed-save').onsubmit=async event=>{
   event.preventDefault();if(!initialized)return;
@@ -1743,7 +1843,7 @@ function openSeed(seed:Seed,intent=beginWorkspaceChange('')) {
     const reply=await owned(intent,kernel.run(saved.state,{type:'evaluate'}));if(!reply)return false;
     requireOk(reply);acknowledge(intent);
     accept(reply,'clear',saved.slots,saved.view);preferences();return true;
-  });
+  },false,openInterrupted);
 }
 function finishRename(id:string) {
   renamingSeed=undefined;renameSeed=undefined;renderSeeds();
@@ -1826,6 +1926,7 @@ $('purge-seed-confirm').onclick=async()=>{
 };
 async function refreshDeviceStorage(key:string|null) {
   if(key===SEEDS||key===null)await refreshLibrary(true);
+  if((key===SAVE||key===null)&&$<HTMLDialogElement>('library-dialog').open)void refreshRecovery();
   if(key===SAVE||key===null){await refreshCompletions();if(initialized){renderLevels();if($<HTMLDialogElement>('ending-dialog').open)renderEnding();}}
 }
 window.addEventListener('storage',event=>{if(event.key===SEEDS||event.key===SAVE||event.key===null)void refreshDeviceStorage(event.key);});
@@ -1853,7 +1954,7 @@ function prepareImport(value:unknown,origin:ImportOrigin,intent:WorkspaceIntent,
     const attempt=await prepareAttempt(value,origin,intent);
     if(candidate)settleSave(candidate,intent,attempt);
     return attempt;
-  });
+  },false,openInterrupted);
 }
 async function prepareAttempt(value:unknown,origin:ImportOrigin,intent:WorkspaceIntent):Promise<ImportAttempt> {
   if(!currentIntent(intent))return {kind:'superseded'};
@@ -1890,7 +1991,7 @@ function acceptPreparedImport(prepared:PreparedImport,intent:WorkspaceIntent,per
     acknowledge(intent);
     accept(prepared.reply,'clear',prepared.slots,prepared.view,true,undefined,undefined,false,undefined,{persist,confirmed:prepared.confirmed});
     preferences();return true;
-  });
+  },false,openInterrupted);
 }
 async function importData(value:unknown,origin:'library'|'file'|'link'='library',intent=beginWorkspaceChange()) {
   const attempt=await prepareImport(value,origin,intent);
@@ -1962,7 +2063,7 @@ async function start(intent=beginWorkspaceChange(location.hash)) {
     if(attempt.kind==='invalid'){invalidMessage=attempt.message;return false;}
     // A protected candidate leaves every opened workspace session-only.
     const opened=!!await acceptPreparedImport(attempt.prepared,{...intent,entry},origin!=='restore'&&!protecting());
-    if(opened&&protecting()&&currentIntent(intent))error(protectedNotice());
+    if(opened&&protecting()&&currentIntent(intent))error(protectedNotice(),true);
     return opened;
   };
   try {
@@ -1998,9 +2099,58 @@ async function start(intent=beginWorkspaceChange(location.hash)) {
       error('The saved or shared file could not be opened. A fresh puzzle is ready.');
   }catch(failure){
     if(!currentIntent(intent))return;
-    $('scene').innerHTML=`<div class="loading-scene"><img src="./favicon.svg" width="56" height="56" alt=""><p>Getting ready to throw.</p><small>${escape(failureMessage(failure))}</small><button id="retry-engine" class="button primary">Try again</button></div>`;
-    $('retry-engine').onclick=()=>{kernel.restart();void start();};
+    renderStartupFailure(failureMessage(failure));
     error('The math engine is unavailable. Your saved progress is still on this device.');
+  }
+}
+// Retry and Download stay available. After two temporary failures of the same
+// known bytes, Start fresh is an explicit alternative, never a fallback.
+function renderStartupFailure(message:string) {
+  const known=archivable(savedCandidate),fresh=known&&(savedCandidate!.failures??0)>=2;
+  $('scene').innerHTML=`<div class="loading-scene loading-failure"><img src="./favicon.svg" width="56" height="56" alt=""><p>Getting ready to throw.</p><small>${escape(message)}</small><div class="loading-actions"><button id="retry-engine" class="button primary">Try again</button>${known?`<button id="download-saved-work" class="button">${icon('download',16)}Download saved work</button>`:''}${fresh?`<button id="start-fresh" class="button" aria-describedby="start-fresh-note">Start fresh</button>`:''}</div>${fresh?'<small id="start-fresh-note" class="loading-note">Start fresh opens Puzzle 1 and keeps a recovery copy of this saved work in Save &amp; open. Completed puzzles stay complete.</small>':''}<small id="startup-action-error" class="loading-error" role="alert" hidden></small></div>`;
+  $('retry-engine').onclick=()=>{kernel.restart();void start();};
+  const report=(text:string)=>{const target=document.getElementById('startup-action-error');if(target){target.textContent=text;target.hidden=false;}};
+  if(known)$('download-saved-work').onclick=()=>{try{downloadSavedWork();}catch(failure){report(savedWorkFailure(failure));}};
+  if(fresh)$('start-fresh').onclick=()=>void startFresh(report);
+}
+let startingFresh=false;
+// Prepare Puzzle 1, then archive and replace the same known bytes in one
+// transaction before the new workspace or URL is accepted. Readable completion
+// IDs and their epoch carry over; the library and preferences are untouched.
+async function startFresh(report:(text:string)=>void) {
+  const candidate=savedCandidate;
+  if(startingFresh||!archivable(candidate))return;
+  startingFresh=true;
+  const button=document.getElementById('start-fresh');button?.setAttribute('aria-disabled','true');
+  const intent=beginWorkspaceChange(''),owns=()=>currentIntent(intent);
+  const fail=(text:string)=>{if(owns())report(text);};
+  const unchanged='Your saved work is unchanged on this device. Try again, download it, or start fresh again.';
+  try {
+    const attempt=await prepareImport({schema:1,type:'level',sourceId:1,view},'library',intent);
+    if(!attempt||attempt.kind==='superseded'||!owns())return;
+    if(attempt.kind!=='ready'){fail(`Puzzle 1 could not be prepared. ${unchanged}`);return;}
+    const reply=attempt.prepared.reply,epoch=progressEpoch;
+    const revision=++progressRevision;progressSaved=false;
+    let written:CompletionRecord|false|typeof blocked|typeof stale;
+    try {
+      written=await writeSave<CompletionRecord|false>((_,archived)=>{
+        // Only the latest intent, holding this exact candidate's archive, may replace it.
+        if(!owns()||archived!==candidate)return {result:false};
+        const merged=mergeCompletions(archived.completion??acknowledgedCompletion,epoch,[]);
+        return {raw:JSON.stringify({schema:1,type:'save',state:reply.state,slots:normalizeSlots(reply.state!,undefined),view,entry:'',confirmed:false,...merged}),result:merged};
+      },candidate);
+    }catch{storageStatus(SAVE,false);fail(`Could not start fresh on this device. ${unchanged}`);return;}
+    renderStorageStatus();
+    if(written===stale){fail(staleNotice);return;}
+    if(written===blocked||written===false){fail(`Could not start fresh. ${unchanged}`);return;}
+    // The archive and replacement committed; they stay durable even if a newer
+    // navigation now owns the page and suppresses this continuation.
+    adoptCompletions(written);progressSaved=revision===progressRevision;storageStatus(SAVE,true);announceStorage(SAVE);
+    if(!owns())return;
+    const opened=await acceptPreparedImport(attempt.prepared,intent,false);
+    if(opened&&owns()&&!document.querySelector('dialog[open]')&&document.activeElement===document.body)focusGameControl();
+  } finally {
+    startingFresh=false;document.getElementById('start-fresh')?.removeAttribute('aria-disabled');
   }
 }
 void start();

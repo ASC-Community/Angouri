@@ -33,18 +33,21 @@ test('empty paired-height paths explain the interval and never announce a ready 
   await expect(page.locator('#launch')).toBeEnabled();await expect(page.locator('#move-announcement')).toContainText('Ready to throw.');
 });
 
-test('a terminal worker interruption preserves the acknowledged recipe and explains how to retry',async({page})=>{
-  await page.addInitScript(()=>{
+for(const event of ['error','messageerror'])test(`a terminal worker ${event} preserves the acknowledged recipe and explains how to retry`,async({page})=>{
+  await page.addInitScript(event=>{
     const post=Worker.prototype.postMessage;
     Worker.prototype.postMessage=function(message,...rest){
       if(window.failLanguageMoves&&message.request?.action?.type==='insert') {
         window.failLanguageMoves--;
-        queueMicrotask(()=>this.dispatchEvent(new ErrorEvent('error',{message:'Test interruption'})));
+        // Chromium does not run an onmessageerror attribute for a synthetic
+        // dispatch, so call the installed handler as the browser would.
+        const handler=this.onmessageerror;
+        queueMicrotask(()=>event==='error'?this.dispatchEvent(new ErrorEvent('error',{message:'Test interruption'})):handler.call(this,new MessageEvent('messageerror')));
         return;
       }
       return post.call(this,message,...rest);
     };
-  });
+  },event);
   await ready(page,3);await add(page,'A');
   const workspace=()=>snapshotWithProgress(page,()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}),'save');
   const before=await workspace();await page.evaluate(()=>window.failLanguageMoves=2);
@@ -55,6 +58,49 @@ test('a terminal worker interruption preserves the acknowledged recipe and expla
   await add(page,'H');
   expect(await page.evaluate(()=>window.angouri.state.nodes.map(node=>node.op).join(''))).toBe('AH');
   expect(await page.evaluate(()=>window.angouri.history.undo)).toBe(before.history.undo+1);
+  await expect(page.locator('#feedback')).not.toHaveClass(/error/);
+});
+
+// Saving and opening a recipe are not moves; their terminal interruptions say what stopped.
+for(const event of ['error','messageerror'])test(`a terminal worker ${event} while saving or opening a recipe keeps both and never mentions a move`,async({page})=>{
+  await page.addInitScript(event=>{
+    const post=Worker.prototype.postMessage;
+    Worker.prototype.postMessage=function(message,...rest){
+      if(window.failLanguageAction?.count&&message.request?.action?.type===window.failLanguageAction.type) {
+        window.failLanguageAction.count--;
+        const handler=this.onmessageerror;
+        queueMicrotask(()=>event==='error'?this.dispatchEvent(new ErrorEvent('error',{message:'Test interruption'})):handler.call(this,new MessageEvent('messageerror')));
+        return;
+      }
+      return post.call(this,message,...rest);
+    };
+  },event);
+  await ready(page,3);await add(page,'A');
+  const workspace=()=>snapshotWithProgress(page,()=>({state:window.angouri.state,slots:window.angouri.slots,history:window.angouri.history}),'save');
+  const fail=type=>page.evaluate(type=>window.failLanguageAction={type,count:2},type);
+  const failures=()=>page.evaluate(()=>window.failLanguageAction.count);
+  await page.locator('#menu-open').click();await page.locator('#library-open').click();
+  const before=await workspace();await fail('export');
+  await page.locator('#seed-name').fill('Kept draft');await page.locator('#favorite-save').click();await idle(page);
+  await expect(page.locator('#library-error')).toHaveText('The math engine stopped before this recipe was saved. It is still open here. Try saving again.');
+  await expect(page.locator('#feedback')).not.toContainText('move');
+  expect(await failures()).toBe(0);expect(await workspace()).toEqual(before);
+  await expect(page.locator('#seed-name')).toHaveValue('Kept draft');await expect(page.locator('#favorites-list [data-seed]')).toHaveCount(0);
+  await page.locator('#favorite-save').click();await idle(page);
+  await expect(page.locator('#library-error')).toBeHidden();await expect(page.locator('#favorites-list [data-seed]')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  // Opening the saved recipe evaluates its snapshot; the empty recipe stays.
+  await page.locator('#reset').click();await idle(page);
+  const empty=await workspace();await fail('evaluate');
+  await page.locator('#menu-open').click();await page.locator('#library-open').click();
+  await page.getByRole('button',{name:'Open Kept draft'}).click();await idle(page);
+  await expect(page.locator('#feedback')).toHaveText('The math engine stopped before this could open. Your current recipe is unchanged. Try again.');
+  expect(await failures()).toBe(0);expect(await workspace()).toEqual(empty);
+  await page.locator('#menu-open').click();await page.locator('#library-open').click();
+  // Open first rereads the library, so wait for the accepted recipe, not only idle work.
+  await page.getByRole('button',{name:'Open Kept draft'}).click();
+  await page.waitForFunction(()=>window.angouri.state.nodes.length>0);await idle(page);
+  expect(await page.evaluate(()=>window.angouri.state.nodes.map(node=>node.op).join(''))).toBe('A');
   await expect(page.locator('#feedback')).not.toHaveClass(/error/);
 });
 

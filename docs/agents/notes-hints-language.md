@@ -12,6 +12,8 @@ Player-facing explanations must be concise and logically connected. Lead with th
 
 - Prefer clear shapes, icons, placement, motion, and effects for repeated actions and outcomes. Keep short text where it teaches an unfamiliar mechanic or names an operation. Avoid repeated instructions and status sentences after every edit.
 
+When known saved work cannot open, keep its play-screen notice short and retain a direct Download saved work action. Save & open holds the full explanation: the original stays unchanged until a deliberate accepted change keeps its recovery copy and saves the new recipe. Explain that downloading does not restore or delete a copy. Start fresh states that it opens Puzzle 1, keeps a recovery copy and preserves completed puzzles. Failed downloads explain that the saved work remains available and how to retry.
+
 ## Notes, Hints and discovery support
 
 Notes and the three views first appear at authored 1.3. Hints first appears at the planning lesson 1.5; discovery lessons such as 1.3–1.4 keep it hidden. Support mode comes from the explicit classification in web/src/discovery.ts, never from remaining holes, attempts or completion history. Create and shared challenges offer the complete Notes reference without authored Hints. Optional practice uses the same discovery classification for Hints and its established full-book or geometry-prerequisite Notes scope.

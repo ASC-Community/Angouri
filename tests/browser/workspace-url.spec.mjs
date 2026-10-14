@@ -167,24 +167,31 @@ async function resetProgress(page) {
   await page.locator('#reset-progress-confirm').click();
 }
 
-test('reset progress supersedes a delayed startup restore',async({page})=>{
-  await open(page,'#level=3&view=flow');await place(page,'A');
+test('reset progress supersedes a delayed saved-recipe open',async({page})=>{
+  // The saved snapshot holds A; the current workspace returns to the empty puzzle, so Open needs no leave prompt.
+  await open(page,'#level=3&view=flow');await place(page,'A');await saveRecipe(page,'Kept recipe');
+  await page.keyboard.press('Escape');await expect(page.locator('#library-dialog')).toBeHidden();
+  await page.locator('#undo').click();await idle(page);
   const save=JSON.parse(await readStorage(page,SAVE));save.completed=[1,2];await writeStorage(page,SAVE,JSON.stringify(save));
-  await page.addInitScript(()=>{
-    const post=Worker.prototype.postMessage;let held=false;
-    Worker.prototype.postMessage=function(message,...rest){
-      if(!held&&message.request?.action?.type==='evaluate'&&message.request.state?.sourceId===3){
-        held=true;const worker=this;window.releaseStartup=()=>post.call(worker,message,...rest);return;
-      }
-      return post.call(this,message,...rest);
-    };
-  });
-  await page.reload();await page.waitForFunction(()=>!!window.releaseStartup);
-  await resetProgress(page);await page.evaluate(()=>window.releaseStartup());
-  await page.waitForFunction(()=>window.angouri?.state?.sourceId===1);await idle(page);
+  await page.reload();await ready(page);await idle(page);
+  expect(await workspace(page)).toMatchObject({state:{sourceId:3,nodes:[]}});
+  expect(JSON.parse(await readStorage(page,SAVE)).completed).toEqual([1,2]);
+  const restarts=await page.evaluate(()=>window.angouri.measurements.restarts);
+  await holdAction(page,'evaluate');
+  await page.locator('#menu-open').click();await page.locator('#library-open').click();
+  await page.getByRole('button',{name:'Open Kept recipe',exact:true}).click();await page.waitForFunction(()=>!!window.releaseHeld);
+  await expect(page.locator('#leave-dialog')).toBeHidden();await expect(page.locator('#library-dialog')).toBeHidden();
+  await resetProgress(page);
+  // Reset has claimed the page and waits behind the held Open.
+  await expect(page.locator('#reset-progress-confirm')).toBeDisabled();await expect(page.locator('#reset-progress-dialog')).toBeVisible();
+  expect(await workspace(page)).toMatchObject({state:{sourceId:3,nodes:[]}});
+  await page.evaluate(()=>window.releaseHeld());
+  await page.waitForFunction(()=>window.angouri.state.sourceId===1);await idle(page);
   expect(await workspace(page)).toMatchObject({state:{sourceId:1,nodes:[]},entry:''});
-  expect(JSON.parse(await readStorage(page,SAVE))).toMatchObject({state:{sourceId:1},entry:'',completed:[]});
+  expect(JSON.parse(await readStorage(page,SAVE))).toMatchObject({state:{sourceId:1,nodes:[]},entry:'',completed:[]});
   await expect(page.locator('#move-announcement')).toHaveText('Puzzle progress reset. Chapter 1 is ready.');
+  await expect(page.locator('#reset-progress-dialog')).toBeHidden();await expect(page.locator('#leave-dialog')).toBeHidden();
+  expect(await page.evaluate(()=>window.angouri.measurements.restarts)).toBe(restarts);
 });
 
 // Another page holds a real readwrite transaction on the shared records store,

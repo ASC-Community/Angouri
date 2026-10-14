@@ -60,6 +60,24 @@ html:has(.game-shell), body:has(.game-shell) { height: 100%; overflow: hidden; }
 .loading-scene { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #7a8d60; }
 .loading-scene p { font: 23px Georgia,serif; margin: 15px 0 5px; }
 .loading-scene small { font-size: 12px; color: #899976; }.loading-scene .button { margin-top: 20px; }
+/* Recovery choices grow the scene's own scroller from its start, never the page. */
+.loading-failure { height: auto; min-height: 100%; box-sizing: border-box; padding: 12px; text-align: center; }
+.loading-failure img { flex: none; }
+.loading-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 10px; max-width: 100%; }
+.loading-failure .loading-note, .loading-failure .loading-error { max-width: 34em; margin-top: 12px; line-height: 1.45; }
+.loading-failure .loading-error { color: var(--miss-ink); }
+/* Protected saved work: a short status above its own Download, in the footer
+   beside Throw. The footer clears the recipe scroller's 8px overflow padding;
+   the gap clears Download's focus ring and Space cue from the status text. */
+.play-dock .dock-footer:has(.saved-work-feedback) { padding-top: 8px; }
+.feedback.error.saved-work-feedback { flex-direction: column; gap: 9px; padding: 3px 6px 4px; }
+.notice-action.button { flex: none; min-height: 28px; padding: 3px 8px; gap: 4px; font-size: 11px; font-weight: 600; color: #8a4b31; border-color: #ddb9a6; box-shadow: 0 2px 0 #e7cbbb; white-space: nowrap; }
+@media(max-width:600px) { .notice-action svg { display: none; } }
+.recovery-copies { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+.recovery-copies h3 { margin: 0 0 4px; font-size: 13px; font-weight: 500; color: #637754; }
+.recovery-note { margin: 0 0 4px; font-size: 11px; color: #7c8b6b; }
+.recovery-row .button { flex: none; font-size: 11px; }
+.recovery-copies>div>.reset-progress-error { margin: 10px 0 0; font-size: 12px; }.recovery-copies [data-retry-recovery] { margin-top: 8px; font-size: 11px; }
 
 /* Equation preserves the construction above its simplified result. */
 .equation-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); grid-template-rows: minmax(0,1fr); align-items: stretch; gap: 26px; padding: 20px; height: 100%; min-height: 0; }
