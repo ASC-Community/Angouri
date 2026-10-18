@@ -692,3 +692,20 @@ AngouriMath 2.5.0 runs in the trimmed .NET WebAssembly runtime inside a dedicate
 These desktop timings do not establish physical-phone or throttled-network performance. Public hosting compression, caching and WebAssembly MIME responses need a check after publication. Playwright WebKit is not physical Safari/iOS testing; injected touch is not a physical Android or iPhone session.
 
 No outsider sessions or invitation sends have occurred. The [formative facilitator sheet](playtest.md) prepares that step. Automated checks establish functional behavior; audience attraction, intuitive first use and voluntary sharing remain questions for the pilot.
+
+## Editorial garden silhouettes — 19 October 2026 (HKT)
+
+Baseline: `68cae20448eea86a2ad997450d319f154fa58e33`, branch `prototype/vine-playground`. Changes affect `web/src/garden.ts`, `web/src/garden-landscape.ts` and `web/src/garden.css`, plus the corresponding agent/design records. No generated site outputs or canonical cucumber assets changed.
+
+Cloud Chromium rendered a separate review harness at 1180 × 757, matching original/revised views, paired 390 × 568 compact views, and empty/partly earned states. The harness invokes the SVG renderer with independently sampled authored equations. It does not run the .NET kernel, reproduce exact kernel sample spacing, or establish game interaction/animation correctness; surrounding page typography is minimal harness styling. Temporary screenshots and harness files are not repository dependencies.
+
+Checks performed:
+- All eight rendered earned contour path strings match between baseline and revision.
+- Source comparison preserves authored puzzle data, kernel source, canonical fruit, hit-testing and collection-animation modules, piece definitions, fitting and event methods.
+- Node's built-in TypeScript syntax transformation parsed the changed modules; cloud Chromium rendered them. This is not TypeScript typechecking.
+- Six focused geometry and learning-path tests passed.
+- `git diff --check` passed.
+
+Blocked/not run: `npm run check` lacks installed TypeScript; the complete unit run has six passing cases but six test files fail to load due to missing TypeScript/marked dependencies. No full-suite pass is claimed. The .NET/full app build, garden/garden-art browser regressions, interaction and animation checks, Firefox/WebKit and physical-device testing remain unverified. No new external Astra review was run. Before treating this art-direction pass as fully validated, run the normal dependency-backed typecheck/build and garden browser checks on this revision.
+
+Visual assessment: quieter hierarchy and less repeated leaf geometry, with an angular-versus-soft rendering tradeoff. This is an incremental improvement, not evidence that all stylistic issues are solved.

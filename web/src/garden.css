@@ -38,7 +38,7 @@
 .garden-piece-support.is-earned .garden-art-path { stroke:url(#garden-bamboo); stroke-width:8; }
 .garden-piece-flower.is-earned .garden-art-path { stroke:#d0af58; stroke-width:.65; }
 .garden-piece-flower.is-earned .garden-piece-fill { fill:url(#garden-flower); }
-.garden-piece-moon.is-earned .garden-art-path { stroke:#e7ce99; stroke-width:1.25; }
+.garden-piece-moon.is-earned .garden-art-path { stroke:#d1c49b; stroke-width:1.25; }
 .garden-piece-leaf .garden-art-path { stroke:#91ac75; }
 .garden-piece-cucumber .garden-art-path { stroke:#315f42; }
 .garden-piece-fill { pointer-events:none; fill:#a4bbb1; opacity:.035; }
@@ -48,7 +48,7 @@
 .garden-piece-bank.is-earned .garden-piece-fill { fill:url(#garden-bank); }
 .garden-piece-cucumber.is-earned .garden-piece-fill { fill:#6d9144; }
 .garden-leaf-vein { fill:none; stroke:#bec999; stroke-width:1.3; opacity:.65; pointer-events:none; }
-.garden-moon-texture { fill:#c5ac77; opacity:.17; pointer-events:none; }
+.garden-moon-texture { fill:#a99d76; opacity:.10; pointer-events:none; }
 .is-missing .garden-leaf-vein,.is-missing .garden-moon-texture { opacity:0; }
 .garden-piece-label { cursor:pointer; pointer-events:all; }
 .garden-piece-label rect { fill:#213d40; fill-opacity:.75; stroke:#6c8980; stroke-opacity:.4; stroke-width:1; vector-effect:non-scaling-stroke; }
@@ -108,7 +108,7 @@ body.reduced-motion .garden-art-path,body.reduced-motion .garden-piece-art,body.
 
 .garden-stem-details,.garden-reed-details,.garden-bank-details,.garden-moonlight,.garden-ripple-echo,.garden-bamboo-nodes,.garden-flower-details { pointer-events:none; }
 .is-missing .garden-bamboo-nodes,.is-missing .garden-flower-details { opacity:0; }
-.garden-bamboo-nodes path { fill:none; stroke:#b6b789; stroke-width:2; opacity:.7; }
+.garden-bamboo-nodes path { fill:none; stroke:#a3a37c; stroke-width:1.5; opacity:.45; }
 .garden-flower-details circle { fill:#ad8934; }
 .garden-flower-details path { fill:none; stroke:#b68f3e; stroke-width:.7; opacity:.5; }
 .garden-flower-base,.garden-tie { pointer-events:none; }
@@ -117,7 +117,7 @@ body.reduced-motion .garden-art-path,body.reduced-motion .garden-piece-art,body.
 .garden-calyx { fill:#718c55; stroke:#385b40; stroke-width:.8; }
 .garden-tie path { fill:none; stroke-linecap:round; }
 .garden-tie-back { stroke:#7f8160; stroke-width:1.8; }
-.garden-tie-front,.garden-tie-tail { stroke:#c2b78b; stroke-width:1.8; }
+.garden-tie-front,.garden-tie-tail { stroke:#9e9e77; stroke-width:1.5; }
 .garden-tie-tail { stroke-width:1.2; }
 .garden-piece.is-missing .garden-stem-details,.garden-piece.is-missing .garden-reed-details,.garden-piece.is-missing .garden-bank-details,.garden-piece.is-missing .garden-moonlight,.garden-piece.is-missing .garden-ripple-echo { opacity:0; }
 .garden-stalk,.garden-reed-stalk { fill:none; stroke:#91a66c; stroke-width:3; stroke-linecap:round; }
@@ -126,11 +126,11 @@ body.reduced-motion .garden-art-path,body.reduced-motion .garden-piece-art,body.
 .garden-young-fruit { opacity:.82; }
 .garden-tendril { fill:none; stroke:#a7b581; stroke-width:1.5; stroke-linecap:round; }
 .garden-vine-leaf>path:first-of-type { stroke:#375840; stroke-width:1.6; }
-.garden-small-vein { fill:none; stroke:#bdc697; stroke-width:1.1; opacity:.55; }
+.garden-small-vein { fill:none; stroke:#b2bf8f; stroke-width:1; opacity:.42; }
 .garden-leaf-veinlets { fill:none; stroke:#bdc697; stroke-width:.7; opacity:.24; }
 .garden-flower>path { fill:#e5ca7c; stroke:#fae6ab; stroke-width:1; }
 .garden-flower>circle { fill:#a9833a; }
-.garden-distant-path { fill:#79816c; opacity:.48; }
+.garden-distant-path { fill:#728178; opacity:.22; }
 .garden-water-glints { fill:none; stroke:#a3bdb9; stroke-width:1; stroke-linecap:round; opacity:.24; }
 .garden-bank-soil { fill:url(#garden-soil); }
 .garden-planting-pocket { fill:#354533; }
@@ -156,3 +156,11 @@ body.reduced-motion .garden-art-path,body.reduced-motion .garden-piece-art,body.
   .garden-stalk { vector-effect:non-scaling-stroke; stroke-width:1.1; }
   .garden-fruit-stalk,.garden-canonical [data-cucumber-part="stem"] { vector-effect:non-scaling-stroke; stroke-width:1.4!important; }
 }
+
+/* Limited-volume leaf planes: three drawn poses, no repeated bevel or glow. */
+.garden-leaf-body { fill:#718b5d; }
+.garden-leaf-plane { fill:#526f4d; }
+.garden-vine-leaf-turned .garden-leaf-body { fill:#809567; }
+.garden-vine-leaf-turned .garden-leaf-plane { fill:#617e56; }
+.garden-vine-leaf-folded .garden-leaf-body { fill:#789065; }
+.garden-vine-leaf-folded .garden-leaf-plane { fill:#496a4c; }

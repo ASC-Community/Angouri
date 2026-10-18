@@ -39,3 +39,7 @@ The earned garden keeps its coherent lake-garden composition. On short landscape
 ## Curve transitions and player language
 
 For chapter-10 picture pieces, hold the Next action until the garden collection and final artwork crossfade finish. A successful Enter throw hands focus to the garden's enabled Done button at that point; Done returns to Next for Space to advance. Preserve deliberate Tab/pointer navigation during the animation and keep pointer-opened gardens neutral. Skip animation completes this handoff immediately after the artwork is ready. Back/Escape can dismiss the celebration; closing releases the pending progression without awarding anything twice.
+
+## Garden art-direction continuity
+
+Keep decorative cucumber leaves in distinct authored poses (open, turned and folded), rather than scaling and rotating one identical stamp. Preserve plausible petiole attachments and palmate structure; avoid random jitter as a substitute for drawing. Background canopies should read as broad asymmetric masses, with restrained branches and path contrast behind the foreground character. Keep the warm moon as a compositional counterweight without overwhelming the cucumber. Judge these choices together at full and compact scale; angular leaf planes are a stylistic tradeoff, not an automatic quality improvement. Preserve all eight earned mathematical contours and the canonical cucumber while refining decorative scenery. See the dated verification record for actual validation limits; a standalone renderer preview does not establish full-game correctness.
